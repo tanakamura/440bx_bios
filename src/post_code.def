@@ -1,0 +1,19 @@
+# name hex description
+POST_BOOT 00 boot
+POST_UART_INIT_DONE 01 uart init done
+POST_BEFORE_CAR 0E before car
+
+POST_CAR_DONE 10 car done
+POST_ENTER_C 11 enter to C
+POST_LEAVE_CAR 12 leave CAR / switch to DRAM stack
+POST_DRAM_STACK 13 running on DRAM stack
+
+POST_PCI_PROBE_START E7 pci probe start
+POST_SMBUS_PROBE_START E8 smbus probe start
+POST_DRAM_INIT_START E9 dram init start
+POST_DRAM_TEST_PASS EA dram test pass
+
+POST_DRAM_UNSUPPORTED F0 unsupported dram configuration
+POST_DRAM_INIT_FAIL F1 dram init failed
+POST_DRAM_TEST_FAIL F2 dram test failed
+POST_BIST_FAIL FF bist fail
