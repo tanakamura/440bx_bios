@@ -1,9 +1,14 @@
 *.o
+*.obj
 post_code.h
 post_code.inc
 start
 *.elf
 *.su
+*.map
+*.exe
+*.com
+*.img
 romtest
-start.map
 *.bin
+__pycache__/

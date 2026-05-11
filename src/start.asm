@@ -14,9 +14,13 @@ bits 16
 %define UART_IER  1
 %define UART_FCR  2
 %define UART_LCR  3
+%define UART_MCR  4
 %define CODE_SEL  0x08
 %define DATA_SEL  0x10
+%define CODE16_SEL 0x18
+%define DATA16_SEL 0x20
 %define CAR_STACK_TOP 0x000C1000
+%define BIOS32_ENTRY 0x00101000
 %define IA32_MTRR_PHYSBASE0   0x200
 %define IA32_MTRR_PHYSMASK0   0x201
 %define IA32_MTRR_FIX64K_00000 0x250
@@ -35,7 +39,7 @@ bits 16
 %define MTRR_DEF_TYPE_FE      0x00000400
 
 extern c_entry
-extern postcar_resume
+extern postcar_bootblock_resume
 
 global start
 global postcar_transition
@@ -46,12 +50,11 @@ start:
     jz .normal_boot
     mov al, POST_BIST_FAIL
     out 0x80, al
-.bist_halt:
-    jmp short .bist_halt
 
 .normal_boot:
     cli
     cld
+
     ; disable cache
     mov eax, cr0
     or eax, 0x40000000
@@ -77,7 +80,6 @@ fini_init_uart:
 
     jmp init_car
 fini_init_car:
-
     mov al, POST_CAR_DONE
     out 0x80, al
 
@@ -93,6 +95,7 @@ fini_init_car:
 
 bits 32
 protected_mode_entry:
+
     mov ax, DATA_SEL
     mov ds, ax
     mov es, ax
@@ -112,6 +115,7 @@ postcar_transition:
     mov ebx, [esp + 4]     ; new DRAM stack top
     mov edi, [esp + 8]     ; variable MTRR mask
     mov esi, [esp + 12]    ; total bytes
+    mov ebp, [esp + 16]    ; SDRAM gdtr pointer
 
     mov eax, cr0
     or eax, 0x40000000
@@ -120,6 +124,21 @@ postcar_transition:
     invd
 
     mov ecx, IA32_MTRR_DEF_TYPE
+    xor eax, eax
+    xor edx, edx
+    wrmsr
+
+    mov ecx, IA32_MTRR_FIX64K_00000
+    mov eax, 0x06060606
+    mov edx, 0x06060606
+    wrmsr
+
+    mov ecx, IA32_MTRR_FIX16K_80000
+    mov eax, 0x06060606
+    mov edx, 0x06060606
+    wrmsr
+
+    mov ecx, IA32_MTRR_FIX16K_A0000
     xor eax, eax
     xor edx, edx
     wrmsr
@@ -154,6 +173,16 @@ postcar_transition:
     xor edx, edx
     wrmsr
 
+    mov ecx, IA32_MTRR_FIX4K_F0000
+    xor eax, eax
+    xor edx, edx
+    wrmsr
+
+    mov ecx, IA32_MTRR_FIX4K_F8000
+    xor eax, eax
+    xor edx, edx
+    wrmsr
+
     mov ecx, IA32_MTRR_PHYSBASE0
     mov eax, 0x00000006    ; WB @ 0
     xor edx, edx
@@ -169,25 +198,24 @@ postcar_transition:
     xor edx, edx
     wrmsr
 
-    mov ecx, IA32_MTRR_FIX4K_F0000
-    mov eax, 0x06060606
-    mov edx, 0x06060606
-    wrmsr
-
-    mov ecx, IA32_MTRR_FIX4K_F8000
-    mov eax, 0x06060606
-    mov edx, 0x06060606
-    wrmsr
-
     invd
 
     mov eax, cr0
     and eax, 0x9FFFFFFF
     mov cr0, eax
 
+    lgdt [ebp]
+    mov ax, DATA_SEL
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    mov ss, ax
+
     mov esp, ebx
     push esi
-    call postcar_resume
+    mov eax, postcar_bootblock_resume
+    call eax
     jmp halt32
 
 bits 16
@@ -197,7 +225,6 @@ init_car:
     or eax, 0x40000000
     and eax, 0xDFFFFFFF
     mov cr0, eax
-    invd
 
     mov ecx, IA32_MTRR_DEF_TYPE
     xor eax, eax
@@ -264,13 +291,13 @@ init_car:
     xor edx, edx
     wrmsr
 
-    invd
-
     mov eax, cr0
     and eax, 0x9FFFFFFF
     mov cr0, eax
 
     ; fill 4k
+    xor ax, ax
+    mov es, ax
     mov eax, 0x9999aaaa
     mov edi, 0xc0000
     mov ecx, 4*1024/4   ; 4k
@@ -333,6 +360,11 @@ init_uart:
     mov dx, COM1_BASE + UART_LCR
     mov al, 0x03
     out dx, al
+
+    mov dx, COM1_BASE + UART_MCR
+    mov al, 0x03
+    out dx, al
+
     jmp fini_init_uart
 
 align 8
@@ -340,6 +372,8 @@ gdt_start:
     dq 0x0000000000000000
     dq 0x00cf9b000000ffff
     dq 0x00cf93000000ffff
+    dq 0x00009b100000ffff
+    dq 0x000093100000ffff
 gdt_end:
 
 gdtr:
@@ -349,4 +383,4 @@ gdtr:
 section .reset progbits alloc exec nowrite align=16
 bits 16
 reset_vector:
-    jmp 0xF000:0x0000
+    jmp 0xFC00:0x0000

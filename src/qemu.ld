@@ -1,5 +1,5 @@
 OUTPUT_FORMAT(elf32-i386)
-ENTRY(start)
+ENTRY(qemu_start)
 
 SECTIONS
 {
@@ -10,7 +10,7 @@ SECTIONS
         BYTE(0xC3)
     }
 
-    . = 0x000C2000;
+    . = ALIGN(16);
 
     .fdos :
     {
@@ -30,16 +30,6 @@ SECTIONS
 
     . = ALIGN(16);
 
-    .l2svc :
-    {
-        __l2_service_start = .;
-        KEEP(*(.l2svc.entry))
-        KEEP(*(.l2svc))
-        __l2_service_end = .;
-    }
-
-    . = ALIGN(16);
-
     .blobsvc :
     {
         __blob_service_start = .;
@@ -48,7 +38,7 @@ SECTIONS
         __blob_service_end = .;
     }
 
-    . = 0x000FC000;
+    . = 0x000F0000;
 
     .start :
     {
