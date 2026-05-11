@@ -17,6 +17,8 @@ SECTIONS
         *(.entry)
     }
 
+    . = 0x00101080;
+
     .qentry :
     {
         *(.qentry)

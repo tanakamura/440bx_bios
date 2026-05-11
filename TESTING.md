@@ -25,8 +25,9 @@ make -C src test
 
 1. `stdtest.img` を QEMU 標準 BIOS で起動
 2. `qemu_flat_test_bios.bin` を QEMU 自作 BIOS として起動
-3. それぞれの serial 出力を見て `OK/NG` を判定
-4. DOS 側の `SHUTDOWN.EXE` で QEMU を `isa-debug-exit` 経由で終了する
+3. `qemu_flat_test_bios.bin` に QEMU IDE disk と `piix4-usb-uhci` + `usb-storage` を付けて起動
+4. それぞれの serial 出力を見て `OK/NG` を判定
+5. DOS 側の `SHUTDOWN.EXE` で QEMU を `isa-debug-exit` 経由で終了する
 
 ## テスト内容
 
@@ -48,6 +49,16 @@ QEMU 標準 BIOS で見る。
 自作 BIOS だけで見る。
 
 - `INT 60h` 経由の flat `read8/write8`
+- 自作 BIOS の `INT 12h` が `640 KiB` を返すこと
+
+### Storage Scan
+
+自作 BIOS の `postcar_resume` / QEMU entry で見る。
+
+- PCI bus enumeration が完走すること
+- PCI I/O BAR を割り当てて command register の I/O / bus master bit を有効にできること
+- QEMU IDE disk に ATA IDENTIFY を投げ、PIO READ SECTORS で LBA0 を読めること
+- QEMU `piix4-usb-uhci` + `usb-storage` を UHCI control / bulk transfer で enumerate し、USB Mass Storage Bulk-Only Transport の READ(10) で LBA0 を読めること
 
 ### SHUTDOWN.EXE
 

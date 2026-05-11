@@ -281,6 +281,16 @@ BLOBSVC_ENTRY int blob_expand_service(const void* blob_ptr, void* stage_ptr,
         }
     }
 
+    if (hdr->uncompressed_size <= BLOB_OUTPUT_CRC_LIMIT) {
+        unsigned int output_crc = blob_crc32(dst, hdr->uncompressed_size);
+        if (output_crc != hdr->uncompressed_crc32) {
+            blob_status_set(status, BLOB_ERR_OUTPUT_CRC, hdr->block_count,
+                            hdr->uncompressed_crc32, output_crc,
+                            hdr->uncompressed_size);
+            return BLOB_ERR_OUTPUT_CRC;
+        }
+    }
+
     blob_status_set(status, BLOB_STATUS_OK, 0, 0, 0, hdr->uncompressed_size);
     return 0;
 }

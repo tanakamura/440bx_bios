@@ -11,9 +11,29 @@ static inline unsigned char inb(unsigned short port) {
     return value;
 }
 
-__attribute__((section(".entry"))) void bios32_entry(unsigned int total_bytes);
+static inline void outw(unsigned short port, unsigned short value) {
+    __asm__ volatile("outw %0, %1" : : "a"(value), "Nd"(port));
+}
+
+static inline unsigned short inw(unsigned short port) {
+    unsigned short value;
+    __asm__ volatile("inw %1, %0" : "=a"(value) : "Nd"(port));
+    return value;
+}
+
+static inline void outl(unsigned short port, unsigned int value) {
+    __asm__ volatile("outl %0, %1" : : "a"(value), "Nd"(port));
+}
+
+static inline unsigned int inl(unsigned short port) {
+    unsigned int value;
+    __asm__ volatile("inl %1, %0" : "=a"(value) : "Nd"(port));
+    return value;
+}
+
+void bios32_entry_c(unsigned int total_bytes, unsigned int fdos_blob_linear);
 __attribute__((section(".qentry"))) void bios32_qemu_entry(
-    unsigned int total_bytes);
+    unsigned int total_bytes, unsigned int fdos_blob_linear);
 extern unsigned char bios16_thunk_start[];
 extern unsigned char bios16_int10[];
 extern unsigned char bios16_int11[];
@@ -31,11 +51,10 @@ extern unsigned int bios16_pm_stack_top;
 extern unsigned char bios16_thunk_end[];
 
 static unsigned int bios_total_bytes_global = 0;
-static const unsigned int bios16_thunk_runtime_base = 0x0009fc00u;
-static const unsigned short bios_base_mem_kb =
-    (unsigned short)(0x0009fc00u >> 10);
-static const unsigned short bios_ebda_segment = 0x9fc0u;
-static const unsigned short bios_dos_base_mem_kb = 256u;
+static const unsigned int bios16_thunk_runtime_base = 0x000f0000u;
+static const unsigned int bios_runtime_gdt_linear = 0x000ff800u;
+static const unsigned short bios_ebda_segment = 0x0000u;
+static const unsigned short bios_dos_base_mem_kb = 640u;
 static unsigned int bios_floppy_dpt_linear = 0x00000500u;
 static unsigned char bios_kbd_pending_valid = 0;
 static unsigned short bios_kbd_pending_ax = 0;
@@ -43,6 +62,81 @@ static unsigned int bios_tick_counter = 0;
 static unsigned char bios_tick_initialized = 0;
 static unsigned short bios_tick_last_raw = 0;
 static unsigned int bios_tick_subcount = 0;
+
+static unsigned int pci_read32(unsigned char bus, unsigned char device,
+                               unsigned char function, unsigned char reg) {
+    unsigned int address = 0x80000000u | ((unsigned int)bus << 16) |
+                           ((unsigned int)device << 11) |
+                           ((unsigned int)function << 8) | (reg & 0xfcu);
+    outl(0x0cf8, address);
+    return inl(0x0cfc);
+}
+
+static void pci_write32(unsigned char bus, unsigned char device,
+                        unsigned char function, unsigned char reg,
+                        unsigned int val) {
+    unsigned int address = 0x80000000u | ((unsigned int)bus << 16) |
+                           ((unsigned int)device << 11) |
+                           ((unsigned int)function << 8) | (reg & 0xfcu);
+    outl(0x0cf8, address);
+    outl(0x0cfc, val);
+}
+
+static unsigned short pci_read16(unsigned char bus, unsigned char device,
+                                 unsigned char function, unsigned char reg) {
+    unsigned int value = pci_read32(bus, device, function, reg);
+    return (unsigned short)(value >> ((reg & 0x02u) * 8u));
+}
+
+static void pci_write16(unsigned char bus, unsigned char device,
+                        unsigned char function, unsigned char reg,
+                        unsigned short val) {
+    unsigned char reg_lo = reg & 0x02u;
+    unsigned int address = 0x80000000u | ((unsigned int)bus << 16) |
+                           ((unsigned int)device << 11) |
+                           ((unsigned int)function << 8) | (reg & 0xfcu);
+    outl(0x0cf8, address);
+    outw((unsigned short)(0x0cfc + reg_lo), val);
+}
+
+static void pci_write8(unsigned char bus, unsigned char device,
+                       unsigned char function, unsigned char reg,
+                       unsigned char val) {
+    unsigned char reg_lo = reg & 0x03u;
+    unsigned int address = 0x80000000u | ((unsigned int)bus << 16) |
+                           ((unsigned int)device << 11) |
+                           ((unsigned int)function << 8) | (reg & 0xfcu);
+    outl(0x0cf8, address);
+    outb((unsigned short)(0x0cfc + reg_lo), val);
+}
+
+static unsigned char pci_read8(unsigned char bus, unsigned char device,
+                               unsigned char function, unsigned char reg) {
+    unsigned int value = pci_read32(bus, device, function, reg);
+    return (unsigned char)(value >> ((reg & 0x03u) * 8u));
+}
+
+static unsigned long long rdmsr64(unsigned int msr) {
+    unsigned int lo;
+    unsigned int hi;
+    __asm__ volatile("rdmsr" : "=a"(lo), "=d"(hi) : "c"(msr));
+    return ((unsigned long long)hi << 32) | lo;
+}
+
+static void wrmsr64(unsigned int msr, unsigned int lo, unsigned int hi) {
+    __asm__ volatile("wrmsr" : : "c"(msr), "a"(lo), "d"(hi));
+}
+
+#define IA32_MTRR_FIX4K_C0000 0x268u
+#define IA32_MTRR_FIX4K_C8000 0x269u
+#define IA32_MTRR_FIX4K_D0000 0x26au
+#define IA32_MTRR_FIX4K_D8000 0x26bu
+#define IA32_MTRR_FIX4K_E0000 0x26cu
+#define IA32_MTRR_FIX4K_E8000 0x26du
+#define IA32_MTRR_FIX4K_F0000 0x26eu
+#define IA32_MTRR_FIX4K_F8000 0x26fu
+#define IA32_MTRR_DEF_TYPE 0x2ffu
+#define MTRR_DEF_TYPE_E 0x00000800u
 
 #define BDA_TICK_COUNT 0x046cu
 #define BDA_MIDNIGHT_FLAG 0x0470u
@@ -577,6 +671,134 @@ static int bios_try_fill_keybuf(void) {
     return 1;
 }
 
+static const unsigned long long bios_gdt_template[] = {
+    0x0000000000000000ull, 0x00cf9b000000ffffull, 0x00cf93000000ffffull,
+    0x00009b100000ffffull, 0x000093100000ffffull,
+};
+
+struct gdtr32 {
+    unsigned short limit;
+    unsigned int base;
+} __attribute__((packed));
+
+static void load_bios_gdt(const unsigned long long* gdt) {
+    struct gdtr32 gdtr;
+    gdtr.limit = (unsigned short)(sizeof(bios_gdt_template) - 1u);
+    gdtr.base = (unsigned int)gdt;
+
+    __asm__ volatile("lgdt %0" : : "m"(gdtr) : "memory");
+    __asm__ volatile("movw $0x10, %%ax\n\t"
+                     "movw %%ax, %%ds\n\t"
+                     "movw %%ax, %%es\n\t"
+                     "movw %%ax, %%fs\n\t"
+                     "movw %%ax, %%gs\n\t"
+                     "movw %%ax, %%ss\n\t"
+                     :
+                     :
+                     : "eax", "memory");
+}
+
+static void cache_writeback_invalidate(void) {
+    __asm__ volatile("wbinvd" : : : "memory");
+}
+
+static void cache_disable_for_mtrr_update(void) {
+    __asm__ volatile("movl %%cr0, %%eax\n\t"
+                     "orl $0x40000000, %%eax\n\t"
+                     "andl $0xdfffffff, %%eax\n\t"
+                     "movl %%eax, %%cr0\n\t"
+                     "wbinvd"
+                     :
+                     :
+                     : "eax", "memory");
+}
+
+static void cache_enable_after_mtrr_update(void) {
+    __asm__ volatile("wbinvd\n\t"
+                     "movl %%cr0, %%eax\n\t"
+                     "andl $0x9fffffff, %%eax\n\t"
+                     "movl %%eax, %%cr0"
+                     :
+                     :
+                     : "eax", "memory");
+}
+
+static void serialize_instruction_stream(void) {
+    __asm__ volatile("xorl %%eax, %%eax\n\tcpuid"
+                     :
+                     :
+                     : "eax", "ebx", "ecx", "edx", "memory");
+}
+
+static void enable_shadow_wb_mtrrs(void) {
+    unsigned long long def_type = rdmsr64(IA32_MTRR_DEF_TYPE);
+    unsigned int def_lo = (unsigned int)def_type;
+    unsigned int def_hi = (unsigned int)(def_type >> 32);
+
+    cache_disable_for_mtrr_update();
+    wrmsr64(IA32_MTRR_DEF_TYPE, (def_lo & ~MTRR_DEF_TYPE_E), def_hi);
+    wrmsr64(IA32_MTRR_FIX4K_C0000, 0x06060606u, 0x06060606u);
+    wrmsr64(IA32_MTRR_FIX4K_C8000, 0x06060606u, 0x06060606u);
+    wrmsr64(IA32_MTRR_FIX4K_D0000, 0x06060606u, 0x06060606u);
+    wrmsr64(IA32_MTRR_FIX4K_D8000, 0x06060606u, 0x06060606u);
+    wrmsr64(IA32_MTRR_FIX4K_E0000, 0x06060606u, 0x06060606u);
+    wrmsr64(IA32_MTRR_FIX4K_E8000, 0x06060606u, 0x06060606u);
+    wrmsr64(IA32_MTRR_FIX4K_F0000, 0x06060606u, 0x06060606u);
+    wrmsr64(IA32_MTRR_FIX4K_F8000, 0x06060606u, 0x06060606u);
+    wrmsr64(IA32_MTRR_DEF_TYPE, def_lo, def_hi);
+    cache_enable_after_mtrr_update();
+    serial_write_string("MTRR shadow C-F WB\r\n");
+}
+
+static void enable_shadow_dram(void) {
+    unsigned char old_pam0;
+    unsigned char pam;
+
+    old_pam0 = pci_read8(0, 0, 0, 0x59);
+
+    cache_writeback_invalidate();
+    pci_write8(0, 0, 0, 0x59, (unsigned char)(old_pam0 | 0x30u));
+    for (pam = 0x5au; pam <= 0x5fu; ++pam) {
+        pci_write8(0, 0, 0, pam, 0x33u);
+    }
+    cache_writeback_invalidate();
+
+    serial_write_string("PAM shadow RAM C-F old=");
+    serial_write_hex8(old_pam0);
+    serial_write_string(" new=");
+    serial_write_hex8(pci_read8(0, 0, 0, 0x59));
+    serial_write_string("\r\n");
+}
+
+static void clear_shadow_window(void) {
+    volatile unsigned int* p = (volatile unsigned int*)0x000c0000u;
+    volatile unsigned int* end = (volatile unsigned int*)0x00100000u;
+
+    while (p < end) {
+        *p++ = 0u;
+    }
+}
+
+static void install_runtime_gdt(void) {
+    volatile unsigned long long* gdt =
+        (volatile unsigned long long*)bios_runtime_gdt_linear;
+    unsigned int i;
+
+    for (i = 0; i < sizeof(bios_gdt_template) / sizeof(bios_gdt_template[0]);
+         ++i) {
+        gdt[i] = bios_gdt_template[i];
+    }
+    load_bios_gdt((const unsigned long long*)bios_runtime_gdt_linear);
+}
+
+static void install_bios_shadow(void) {
+    load_bios_gdt(bios_gdt_template);
+    enable_shadow_dram();
+    clear_shadow_window();
+    enable_shadow_wb_mtrrs();
+    install_runtime_gdt();
+}
+
 static void install_ivt_vector(unsigned char vector, unsigned int linear) {
     volatile unsigned short* ivt = (volatile unsigned short*)0x00000000u;
     unsigned short offset;
@@ -620,6 +842,8 @@ static void install_bios_thunks(void) {
     unsigned int default_linear =
         bios16_thunk_runtime_base +
         (unsigned int)(bios16_default - bios16_thunk_start);
+
+    install_bios_shadow();
 
     for (thunk_off = 0; thunk_off < thunk_size; ++thunk_off) {
         thunk[thunk_off] = bios16_thunk_start[thunk_off];
@@ -667,6 +891,7 @@ static void install_bios_thunks(void) {
     for (i = 0; i < sizeof(floppy_dpt); ++i) {
         dpt[i] = floppy_dpt[i];
     }
+    serialize_instruction_stream();
     *(volatile unsigned short*)0x0410u = 0x0001u;
     *(volatile unsigned short*)0x0413u = bios_dos_base_mem_kb;
     *(volatile unsigned short*)0x040eu = bios_ebda_segment;
@@ -687,6 +912,1023 @@ static void install_bios_thunks(void) {
     *(volatile unsigned char*)0x0491u = 0x00u;
     *(volatile unsigned char*)0x0492u = 0x00u;
     bios_init_pit();
+}
+
+#define STORAGE_SECTOR_LINEAR 0x00500000u
+#define STORAGE_ID_LINEAR 0x00501000u
+#define USB_FRAME_LIST_LINEAR 0x00600000u
+#define USB_QH_LINEAR 0x00601000u
+#define USB_TD_LINEAR 0x00602000u
+#define USB_BUF_LINEAR 0x00610000u
+#define USB_CFG_BUF_LINEAR 0x00610400u
+#define USB_CBW_BUF_LINEAR 0x00610800u
+#define USB_CSW_BUF_LINEAR 0x00610900u
+#define USB_SECTOR_LINEAR 0x00612000u
+#define USB_MAX_TD 64u
+
+struct storage_pci_bdf {
+    unsigned char bus;
+    unsigned char dev;
+    unsigned char fn;
+};
+
+static struct storage_pci_bdf storage_ide_bdf;
+static struct storage_pci_bdf storage_uhci_bdf;
+static unsigned char storage_ide_found = 0;
+static unsigned char storage_uhci_found = 0;
+static unsigned int pci_next_io = 0xd000u;
+static unsigned int pci_next_mem = 0xf0000000u;
+static unsigned char usb_msd_quiet_status = 0;
+
+static void storage_memset(void* dst, unsigned char value, unsigned int len) {
+    unsigned char* p = (unsigned char*)dst;
+    while (len-- != 0u) {
+        *p++ = value;
+    }
+}
+
+static unsigned short le16(const unsigned char* p) {
+    return (unsigned short)((unsigned short)p[0] | ((unsigned short)p[1] << 8));
+}
+
+static unsigned int le32(const unsigned char* p) {
+    return (unsigned int)p[0] | ((unsigned int)p[1] << 8) |
+           ((unsigned int)p[2] << 16) | ((unsigned int)p[3] << 24);
+}
+
+static void put16le(unsigned char* p, unsigned short value) {
+    p[0] = (unsigned char)value;
+    p[1] = (unsigned char)(value >> 8);
+}
+
+static void put32le(unsigned char* p, unsigned int value) {
+    p[0] = (unsigned char)value;
+    p[1] = (unsigned char)(value >> 8);
+    p[2] = (unsigned char)(value >> 16);
+    p[3] = (unsigned char)(value >> 24);
+}
+
+static void delay_approx_ms(unsigned int ms) {
+    unsigned int i;
+    while (ms-- != 0u) {
+        for (i = 0; i < 4096u; ++i) {
+            (void)inb(0x0080u);
+        }
+    }
+}
+
+static unsigned int align_up_u32(unsigned int value, unsigned int align) {
+    if (align == 0u) {
+        return value;
+    }
+    return (value + align - 1u) & ~(align - 1u);
+}
+
+static void pci_print_bdf(unsigned char bus, unsigned char dev,
+                          unsigned char fn) {
+    serial_write_hex8(bus);
+    serial_write_char(':');
+    serial_write_hex8(dev);
+    serial_write_char('.');
+    serial_write_hex8(fn);
+}
+
+static void pci_assign_resources(unsigned char bus, unsigned char dev,
+                                 unsigned char fn, unsigned int class_code,
+                                 unsigned char header_type) {
+    unsigned char bar_index;
+    unsigned short command = pci_read16(bus, dev, fn, 0x04u);
+    unsigned short new_command = command;
+
+    if ((header_type & 0x7fu) != 0x00u) {
+        return;
+    }
+
+    for (bar_index = 0; bar_index < 6u; ++bar_index) {
+        unsigned char reg = (unsigned char)(0x10u + bar_index * 4u);
+        unsigned int orig = pci_read32(bus, dev, fn, reg);
+        unsigned int mask;
+        unsigned int size;
+        unsigned int base;
+
+        if (orig == 0xffffffffu) {
+            continue;
+        }
+
+        pci_write32(bus, dev, fn, reg, 0xffffffffu);
+        mask = pci_read32(bus, dev, fn, reg);
+        pci_write32(bus, dev, fn, reg, orig);
+
+        if (mask == 0u || mask == 0xffffffffu) {
+            continue;
+        }
+
+        if ((orig & 0x00000001u) != 0u) {
+            size = (~(mask & 0xfffffffcu)) + 1u;
+            base = orig & 0xfffffffcu;
+            if (size == 0u || size > 0x1000u) {
+                continue;
+            }
+            if (base == 0u) {
+                base = align_up_u32(pci_next_io, size);
+                pci_next_io = base + size;
+                pci_write32(bus, dev, fn, reg, base | 0x00000001u);
+                serial_write_string("  assign BAR");
+                serial_write_hex8(bar_index);
+                serial_write_string(" io=");
+                serial_write_hex16((unsigned short)base);
+                serial_write_string(" sz=");
+                serial_write_hex16((unsigned short)size);
+                serial_write_string("\r\n");
+            }
+            new_command |= 0x0001u;
+        } else {
+            unsigned int bar_type = orig & 0x00000006u;
+            size = (~(mask & 0xfffffff0u)) + 1u;
+            base = orig & 0xfffffff0u;
+            if (size == 0u || size > 0x01000000u) {
+                continue;
+            }
+            if (base == 0u) {
+                base = align_up_u32(pci_next_mem, size);
+                pci_next_mem = base + size;
+                pci_write32(bus, dev, fn, reg, base | (orig & 0x0000000fu));
+                serial_write_string("  assign BAR");
+                serial_write_hex8(bar_index);
+                serial_write_string(" mem=");
+                serial_write_hex32(base);
+                serial_write_string(" sz=");
+                serial_write_hex32(size);
+                serial_write_string("\r\n");
+            }
+            new_command |= 0x0002u;
+            if (bar_type == 0x00000004u) {
+                ++bar_index;
+            }
+        }
+    }
+
+    if (((class_code >> 16) == 0x01u) || ((class_code >> 16) == 0x0cu)) {
+        new_command |= 0x0004u;
+    }
+    if (new_command != command) {
+        pci_write16(bus, dev, fn, 0x04u, new_command);
+        serial_write_string("  cmd ");
+        serial_write_hex16(command);
+        serial_write_string("->");
+        serial_write_hex16(new_command);
+        serial_write_string("\r\n");
+    }
+}
+
+static void pci_enumerate_and_assign(void) {
+    unsigned char bus;
+    unsigned char dev;
+    unsigned char fn;
+
+    outb(0x80, POST_PCI_PROBE_START);
+    storage_ide_found = 0;
+    storage_uhci_found = 0;
+    pci_next_io = 0xd000u;
+    pci_next_mem = 0xf0000000u;
+
+    serial_write_string("PCI enum...\r\n");
+    for (bus = 0; bus < 4u; ++bus) {
+        for (dev = 0; dev < 32u; ++dev) {
+            unsigned short vendor0 = pci_read16(bus, dev, 0, 0x00u);
+            unsigned char header0;
+            unsigned char fn_count;
+
+            if (vendor0 == 0xffffu) {
+                continue;
+            }
+            header0 = pci_read8(bus, dev, 0, 0x0eu);
+            fn_count = (header0 & 0x80u) != 0u ? 8u : 1u;
+            for (fn = 0; fn < fn_count; ++fn) {
+                unsigned int id = pci_read32(bus, dev, fn, 0x00u);
+                unsigned int revclass;
+                unsigned int class_code;
+                unsigned char header;
+                unsigned short vendor = (unsigned short)id;
+                unsigned short device_id = (unsigned short)(id >> 16);
+                unsigned short command;
+
+                if (vendor == 0xffffu) {
+                    continue;
+                }
+                revclass = pci_read32(bus, dev, fn, 0x08u);
+                class_code = revclass >> 8;
+                header = pci_read8(bus, dev, fn, 0x0eu);
+                command = pci_read16(bus, dev, fn, 0x04u);
+
+                serial_write_string("PCI ");
+                pci_print_bdf(bus, dev, fn);
+                serial_write_char(' ');
+                serial_write_hex16(vendor);
+                serial_write_char(':');
+                serial_write_hex16(device_id);
+                serial_write_string(" cls=");
+                serial_write_hex32(class_code);
+                serial_write_string(" cmd=");
+                serial_write_hex16(command);
+                serial_write_string("\r\n");
+
+                pci_assign_resources(bus, dev, fn, class_code, header);
+
+                if (((class_code >> 16) & 0xffu) == 0x01u &&
+                    ((class_code >> 8) & 0xffu) == 0x01u) {
+                    storage_ide_bdf.bus = bus;
+                    storage_ide_bdf.dev = dev;
+                    storage_ide_bdf.fn = fn;
+                    storage_ide_found = 1u;
+                }
+                if (class_code == 0x0c0300u) {
+                    storage_uhci_bdf.bus = bus;
+                    storage_uhci_bdf.dev = dev;
+                    storage_uhci_bdf.fn = fn;
+                    storage_uhci_found = 1u;
+                }
+            }
+        }
+    }
+}
+
+#define IDE_STATUS_BSY 0x80u
+#define IDE_STATUS_DRDY 0x40u
+#define IDE_STATUS_DRQ 0x08u
+#define IDE_STATUS_ERR 0x01u
+
+static void ide_400ns_delay(unsigned short ctrl) {
+    (void)inb(ctrl);
+    (void)inb(ctrl);
+    (void)inb(ctrl);
+    (void)inb(ctrl);
+}
+
+static int ide_wait_not_busy(unsigned short io) {
+    unsigned int timeout = 2000000u;
+    unsigned char st;
+    do {
+        st = inb((unsigned short)(io + 7u));
+        if ((st & IDE_STATUS_BSY) == 0u) {
+            return 0;
+        }
+    } while (--timeout != 0u);
+    return -1;
+}
+
+static int ide_wait_drq(unsigned short io) {
+    unsigned int timeout = 2000000u;
+    unsigned char st;
+    do {
+        st = inb((unsigned short)(io + 7u));
+        if ((st & IDE_STATUS_ERR) != 0u) {
+            return -1;
+        }
+        if ((st & IDE_STATUS_BSY) == 0u && (st & IDE_STATUS_DRQ) != 0u) {
+            return 0;
+        }
+    } while (--timeout != 0u);
+    return -1;
+}
+
+static int ide_identify(unsigned short io, unsigned short ctrl,
+                        unsigned char drive, unsigned short* words) {
+    unsigned int i;
+    unsigned char st;
+
+    outb(ctrl, 0x02u);
+    outb((unsigned short)(io + 6u), (unsigned char)(0xa0u | (drive << 4)));
+    ide_400ns_delay(ctrl);
+    if (ide_wait_not_busy(io) != 0) {
+        return -1;
+    }
+    outb((unsigned short)(io + 2u), 0u);
+    outb((unsigned short)(io + 3u), 0u);
+    outb((unsigned short)(io + 4u), 0u);
+    outb((unsigned short)(io + 5u), 0u);
+    outb((unsigned short)(io + 7u), 0xecu);
+    st = inb((unsigned short)(io + 7u));
+    if (st == 0u || st == 0xffu) {
+        return -1;
+    }
+    if (ide_wait_not_busy(io) != 0) {
+        return -1;
+    }
+    if (inb((unsigned short)(io + 4u)) != 0u ||
+        inb((unsigned short)(io + 5u)) != 0u) {
+        return -1;
+    }
+    if (ide_wait_drq(io) != 0) {
+        return -1;
+    }
+    for (i = 0; i < 256u; ++i) {
+        words[i] = inw(io);
+    }
+    return 0;
+}
+
+static int ide_read_lba0(unsigned short io, unsigned short ctrl,
+                         unsigned char drive, unsigned char* dst) {
+    unsigned int i;
+
+    outb(ctrl, 0x02u);
+    outb((unsigned short)(io + 6u), (unsigned char)(0xe0u | (drive << 4)));
+    ide_400ns_delay(ctrl);
+    if (ide_wait_not_busy(io) != 0) {
+        return -1;
+    }
+    outb((unsigned short)(io + 2u), 1u);
+    outb((unsigned short)(io + 3u), 0u);
+    outb((unsigned short)(io + 4u), 0u);
+    outb((unsigned short)(io + 5u), 0u);
+    outb((unsigned short)(io + 7u), 0x20u);
+    if (ide_wait_drq(io) != 0) {
+        return -1;
+    }
+    for (i = 0; i < 256u; ++i) {
+        ((unsigned short*)dst)[i] = inw(io);
+    }
+    ide_400ns_delay(ctrl);
+    return 0;
+}
+
+static void ide_scan_channel(const char* name, unsigned short io,
+                             unsigned short ctrl) {
+    unsigned char drive;
+    unsigned short* id = (unsigned short*)STORAGE_ID_LINEAR;
+    unsigned char* sector = (unsigned char*)STORAGE_SECTOR_LINEAR;
+
+    for (drive = 0; drive < 2u; ++drive) {
+        unsigned int sectors;
+        serial_write_string("IDE ");
+        serial_write_string(name);
+        serial_write_char(drive == 0u ? 'M' : 'S');
+        serial_write_string(" identify...");
+        if (ide_identify(io, ctrl, drive, id) != 0) {
+            serial_write_string(" none\r\n");
+            continue;
+        }
+        sectors = ((unsigned int)id[61] << 16) | id[60];
+        serial_write_string(" ok lba28=");
+        serial_write_hex32(sectors);
+        serial_write_string("\r\n");
+        if (ide_read_lba0(io, ctrl, drive, sector) == 0) {
+            serial_dump_bytes("IDE LBA0", sector, 16u);
+        } else {
+            serial_write_string("IDE LBA0 read failed\r\n");
+        }
+    }
+}
+
+static void ide_scan(void) {
+    if (!storage_ide_found) {
+        serial_write_string("IDE: controller not found\r\n");
+        return;
+    }
+    pci_write16(storage_ide_bdf.bus, storage_ide_bdf.dev, storage_ide_bdf.fn,
+                0x04u,
+                (unsigned short)(pci_read16(storage_ide_bdf.bus,
+                                            storage_ide_bdf.dev,
+                                            storage_ide_bdf.fn, 0x04u) |
+                                 0x0005u));
+    serial_write_string("IDE scan ");
+    pci_print_bdf(storage_ide_bdf.bus, storage_ide_bdf.dev, storage_ide_bdf.fn);
+    serial_write_string("\r\n");
+    ide_scan_channel("pri", 0x01f0u, 0x03f6u);
+    ide_scan_channel("sec", 0x0170u, 0x0376u);
+}
+
+struct uhci_td {
+    volatile unsigned int link;
+    volatile unsigned int status;
+    volatile unsigned int token;
+    volatile unsigned int buffer;
+    volatile unsigned int sw[4];
+};
+
+struct uhci_qh {
+    volatile unsigned int head;
+    volatile unsigned int element;
+};
+
+struct usb_dev {
+    unsigned short io;
+    unsigned char addr;
+    unsigned char low_speed;
+    unsigned char ep0_mps;
+    unsigned char bulk_in;
+    unsigned char bulk_out;
+    unsigned short bulk_in_mps;
+    unsigned short bulk_out_mps;
+    unsigned char bulk_in_toggle;
+    unsigned char bulk_out_toggle;
+    unsigned char interface_number;
+};
+
+#define UHCI_USBCMD 0x00u
+#define UHCI_USBSTS 0x02u
+#define UHCI_USBINTR 0x04u
+#define UHCI_FRNUM 0x06u
+#define UHCI_FLBASEADD 0x08u
+#define UHCI_SOFMOD 0x0cu
+#define UHCI_PORTSC1 0x10u
+
+#define UHCI_CMD_RS 0x0001u
+#define UHCI_CMD_HCRESET 0x0002u
+#define UHCI_CMD_CF 0x0040u
+#define UHCI_CMD_MAXP 0x0080u
+
+#define UHCI_PORT_CCS 0x0001u
+#define UHCI_PORT_CSC 0x0002u
+#define UHCI_PORT_PE 0x0004u
+#define UHCI_PORT_PEC 0x0008u
+#define UHCI_PORT_LSDA 0x0100u
+#define UHCI_PORT_PR 0x0200u
+#define UHCI_PORT_CHANGE (UHCI_PORT_CSC | UHCI_PORT_PEC)
+
+#define UHCI_PTR_TERM 0x00000001u
+#define UHCI_PTR_QH 0x00000002u
+#define UHCI_PTR_DEPTH 0x00000004u
+
+#define UHCI_TD_ACTIVE 0x00800000u
+#define UHCI_TD_STALLED 0x00400000u
+#define UHCI_TD_DBE 0x00200000u
+#define UHCI_TD_BABBLE 0x00100000u
+#define UHCI_TD_NAK 0x00080000u
+#define UHCI_TD_CRC_TIMEOUT 0x00040000u
+#define UHCI_TD_BITSTUFF 0x00020000u
+#define UHCI_TD_ERR3 0x18000000u
+#define UHCI_TD_LOW_SPEED 0x04000000u
+
+#define USB_PID_OUT 0xe1u
+#define USB_PID_IN 0x69u
+#define USB_PID_SETUP 0x2du
+
+static struct uhci_td* uhci_td_base(void) {
+    return (struct uhci_td*)USB_TD_LINEAR;
+}
+
+static struct uhci_qh* uhci_qh(void) { return (struct uhci_qh*)USB_QH_LINEAR; }
+
+static unsigned int uhci_td_phys(unsigned int index) {
+    return USB_TD_LINEAR + index * sizeof(struct uhci_td);
+}
+
+static unsigned int uhci_token(unsigned char pid, unsigned char addr,
+                               unsigned char ep, unsigned char toggle,
+                               unsigned int len) {
+    unsigned int max_len = (len == 0u) ? 0x7ffu : (len - 1u);
+    return (unsigned int)pid | ((unsigned int)addr << 8) |
+           ((unsigned int)(ep & 0x0fu) << 15) |
+           ((unsigned int)(toggle & 1u) << 19) | (max_len << 21);
+}
+
+static void uhci_prepare_schedule(unsigned short io) {
+    volatile unsigned int* frame = (volatile unsigned int*)USB_FRAME_LIST_LINEAR;
+    struct uhci_qh* qh = uhci_qh();
+    unsigned int i;
+
+    for (i = 0; i < 1024u; ++i) {
+        frame[i] = USB_QH_LINEAR | UHCI_PTR_QH;
+    }
+    qh->head = UHCI_PTR_TERM;
+    qh->element = UHCI_PTR_TERM;
+    storage_memset((void*)USB_TD_LINEAR, 0u,
+                   USB_MAX_TD * sizeof(struct uhci_td));
+
+    outw((unsigned short)(io + UHCI_USBCMD), 0u);
+    outw((unsigned short)(io + UHCI_USBSTS), 0x003fu);
+    outw((unsigned short)(io + UHCI_USBINTR), 0u);
+    outw((unsigned short)(io + UHCI_FRNUM), 0u);
+    outl((unsigned short)(io + UHCI_FLBASEADD), USB_FRAME_LIST_LINEAR);
+    outb((unsigned short)(io + UHCI_SOFMOD), 0x40u);
+}
+
+static void uhci_td_setup(unsigned int index, unsigned int link,
+                          unsigned int status, unsigned int token,
+                          unsigned int buffer) {
+    struct uhci_td* td = uhci_td_base() + index;
+    td->link = link;
+    td->status = status;
+    td->token = token;
+    td->buffer = buffer;
+    td->sw[0] = td->sw[1] = td->sw[2] = td->sw[3] = 0u;
+}
+
+static int uhci_run_chain(unsigned short io, unsigned int td_count) {
+    struct uhci_td* td = uhci_td_base();
+    struct uhci_qh* qh = uhci_qh();
+    unsigned int timeout = 4000000u;
+    unsigned int i;
+
+    if (td_count == 0u || td_count > USB_MAX_TD) {
+        return -1;
+    }
+
+    qh->head = UHCI_PTR_TERM;
+    qh->element = uhci_td_phys(0);
+    cache_writeback_invalidate();
+
+    outw((unsigned short)(io + UHCI_USBSTS), 0x003fu);
+    outw((unsigned short)(io + UHCI_USBCMD),
+         UHCI_CMD_CF | UHCI_CMD_MAXP | UHCI_CMD_RS);
+
+    while (timeout-- != 0u) {
+        if ((td[td_count - 1u].status & UHCI_TD_ACTIVE) == 0u) {
+            break;
+        }
+        if ((timeout & 0x3ffu) == 0u) {
+            (void)inw((unsigned short)(io + UHCI_USBSTS));
+        }
+    }
+
+    outw((unsigned short)(io + UHCI_USBCMD), UHCI_CMD_CF | UHCI_CMD_MAXP);
+    cache_writeback_invalidate();
+
+    for (i = 0; i < td_count; ++i) {
+        unsigned int st = td[i].status;
+        if ((st & (UHCI_TD_ACTIVE | UHCI_TD_STALLED | UHCI_TD_DBE |
+                   UHCI_TD_BABBLE | UHCI_TD_CRC_TIMEOUT |
+                   UHCI_TD_BITSTUFF)) != 0u) {
+            serial_write_string("UHCI td");
+            serial_write_u32(i);
+            serial_write_string(" st=");
+            serial_write_hex32(st);
+            serial_write_string(" tok=");
+            serial_write_hex32(td[i].token);
+            serial_write_string(" us=");
+            serial_write_hex16(inw((unsigned short)(io + UHCI_USBSTS)));
+            serial_write_string("\r\n");
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static int uhci_control(struct usb_dev* dev, unsigned char req_type,
+                        unsigned char req, unsigned short value,
+                        unsigned short index, void* data, unsigned int len,
+                        unsigned char dir_in) {
+    unsigned char* setup = (unsigned char*)USB_BUF_LINEAR;
+    unsigned int td_count = 0;
+    unsigned int offset = 0;
+    unsigned char toggle = 1u;
+    unsigned int status = UHCI_TD_ACTIVE | UHCI_TD_ERR3 |
+                          (dev->low_speed ? UHCI_TD_LOW_SPEED : 0u);
+
+    setup[0] = req_type;
+    setup[1] = req;
+    put16le(setup + 2, value);
+    put16le(setup + 4, index);
+    put16le(setup + 6, (unsigned short)len);
+
+    uhci_td_setup(td_count,
+                  (len == 0u) ? (uhci_td_phys(1u) | UHCI_PTR_DEPTH)
+                               : (uhci_td_phys(1u) | UHCI_PTR_DEPTH),
+                  status, uhci_token(USB_PID_SETUP, dev->addr, 0u, 0u, 8u),
+                  USB_BUF_LINEAR);
+    ++td_count;
+
+    while (offset < len) {
+        unsigned int chunk = len - offset;
+        unsigned char pid = dir_in ? USB_PID_IN : USB_PID_OUT;
+        if (chunk > dev->ep0_mps) {
+            chunk = dev->ep0_mps;
+        }
+        if (td_count + 1u >= USB_MAX_TD) {
+            return -1;
+        }
+        uhci_td_setup(td_count, uhci_td_phys(td_count + 1u) | UHCI_PTR_DEPTH,
+                      status,
+                      uhci_token(pid, dev->addr, 0u, toggle, chunk),
+                      (unsigned int)data + offset);
+        toggle ^= 1u;
+        offset += chunk;
+        ++td_count;
+    }
+
+    uhci_td_setup(td_count, UHCI_PTR_TERM, status,
+                  uhci_token(dir_in ? USB_PID_OUT : USB_PID_IN, dev->addr, 0u,
+                             1u, 0u),
+                  0u);
+    ++td_count;
+    return uhci_run_chain(dev->io, td_count);
+}
+
+static int uhci_bulk(struct usb_dev* dev, unsigned char ep,
+                     unsigned short mps, unsigned char dir_in, void* data,
+                     unsigned int len, unsigned char* toggle_ptr) {
+    unsigned int td_count = 0;
+    unsigned int offset = 0;
+    unsigned int status = UHCI_TD_ACTIVE | UHCI_TD_ERR3 |
+                          (dev->low_speed ? UHCI_TD_LOW_SPEED : 0u);
+    unsigned char pid = dir_in ? USB_PID_IN : USB_PID_OUT;
+
+    while (offset < len) {
+        unsigned int chunk = len - offset;
+        unsigned int link;
+        if (chunk > mps) {
+            chunk = mps;
+        }
+        if (td_count >= USB_MAX_TD) {
+            return -1;
+        }
+        link = (offset + chunk < len)
+                   ? (uhci_td_phys(td_count + 1u) | UHCI_PTR_DEPTH)
+                   : UHCI_PTR_TERM;
+        uhci_td_setup(td_count, link, status,
+                      uhci_token(pid, dev->addr, ep, *toggle_ptr, chunk),
+                      (unsigned int)data + offset);
+        *toggle_ptr ^= 1u;
+        offset += chunk;
+        ++td_count;
+    }
+    return uhci_run_chain(dev->io, td_count);
+}
+
+static int uhci_reset_port(unsigned short io, unsigned char port_index,
+                           unsigned char* low_speed) {
+    unsigned short port = (unsigned short)(io + UHCI_PORTSC1 + port_index * 2u);
+    unsigned short st = inw(port);
+
+    serial_write_string("UHCI port");
+    serial_write_u32(port_index);
+    serial_write_string("=");
+    serial_write_hex16(st);
+    serial_write_string("\r\n");
+    if ((st & UHCI_PORT_CCS) == 0u) {
+        return -1;
+    }
+
+    outw(port, (unsigned short)(st | UHCI_PORT_PR | UHCI_PORT_CHANGE));
+    delay_approx_ms(50u);
+    st = inw(port);
+    outw(port, (unsigned short)((st & ~UHCI_PORT_PR) | UHCI_PORT_CHANGE));
+    delay_approx_ms(10u);
+    st = inw(port);
+    outw(port, (unsigned short)(st | UHCI_PORT_PE | UHCI_PORT_CHANGE));
+    delay_approx_ms(20u);
+    st = inw(port);
+
+    serial_write_string("UHCI port");
+    serial_write_u32(port_index);
+    serial_write_string("*=");
+    serial_write_hex16(st);
+    serial_write_string("\r\n");
+    if ((st & UHCI_PORT_PE) == 0u) {
+        return -1;
+    }
+    *low_speed = (st & UHCI_PORT_LSDA) != 0u ? 1u : 0u;
+    return 0;
+}
+
+static int uhci_controller_reset(unsigned short io) {
+    unsigned int timeout = 1000000u;
+    outw((unsigned short)(io + UHCI_USBCMD), UHCI_CMD_HCRESET);
+    while ((inw((unsigned short)(io + UHCI_USBCMD)) & UHCI_CMD_HCRESET) != 0u) {
+        if (--timeout == 0u) {
+            return -1;
+        }
+    }
+    delay_approx_ms(10u);
+    uhci_prepare_schedule(io);
+    return 0;
+}
+
+static int usb_get_descriptor(struct usb_dev* dev, unsigned char type,
+                              unsigned char index, void* data,
+                              unsigned int len) {
+    return uhci_control(dev, 0x80u, 0x06u,
+                        (unsigned short)(((unsigned short)type << 8) | index),
+                        0u, data, len, 1u);
+}
+
+static int usb_set_address(struct usb_dev* dev, unsigned char addr) {
+    if (uhci_control(dev, 0x00u, 0x05u, addr, 0u, 0, 0u, 0u) != 0) {
+        return -1;
+    }
+    delay_approx_ms(10u);
+    dev->addr = addr;
+    return 0;
+}
+
+static int usb_set_configuration(struct usb_dev* dev, unsigned char cfg) {
+    return uhci_control(dev, 0x00u, 0x09u, cfg, 0u, 0, 0u, 0u);
+}
+
+static int usb_parse_config(struct usb_dev* dev, unsigned char* cfg,
+                            unsigned int total) {
+    unsigned int off = 0;
+    unsigned char in_mass = 0;
+    unsigned char cfg_value = cfg[5];
+
+    dev->bulk_in = 0;
+    dev->bulk_out = 0;
+    dev->bulk_in_mps = 0;
+    dev->bulk_out_mps = 0;
+
+    while (off + 2u <= total) {
+        unsigned char len = cfg[off];
+        unsigned char type = cfg[off + 1u];
+        if (len < 2u || off + len > total) {
+            break;
+        }
+        if (type == 0x04u && len >= 9u) {
+            in_mass = (cfg[off + 5u] == 0x08u && cfg[off + 7u] == 0x50u)
+                          ? 1u
+                          : 0u;
+            if (in_mass) {
+                dev->interface_number = cfg[off + 2u];
+                serial_write_string("USB MSC if=");
+                serial_write_hex8(dev->interface_number);
+                serial_write_string(" sub=");
+                serial_write_hex8(cfg[off + 6u]);
+                serial_write_string("\r\n");
+            }
+        } else if (type == 0x05u && len >= 7u && in_mass) {
+            unsigned char ep = cfg[off + 2u];
+            unsigned char attr = cfg[off + 3u];
+            unsigned short mps = le16(cfg + off + 4u);
+            if ((attr & 0x03u) == 0x02u) {
+                if ((ep & 0x80u) != 0u) {
+                    dev->bulk_in = (unsigned char)(ep & 0x0fu);
+                    dev->bulk_in_mps = mps;
+                } else {
+                    dev->bulk_out = (unsigned char)(ep & 0x0fu);
+                    dev->bulk_out_mps = mps;
+                }
+            }
+        }
+        off += len;
+    }
+
+    if (dev->bulk_in == 0u || dev->bulk_out == 0u || dev->bulk_in_mps == 0u ||
+        dev->bulk_out_mps == 0u) {
+        return -1;
+    }
+
+    serial_write_string("USB bulk in=");
+    serial_write_hex8(dev->bulk_in);
+    serial_write_string(" out=");
+    serial_write_hex8(dev->bulk_out);
+    serial_write_string(" mps=");
+    serial_write_hex16(dev->bulk_in_mps);
+    serial_write_char('/');
+    serial_write_hex16(dev->bulk_out_mps);
+    serial_write_string(" cfg=");
+    serial_write_hex8(cfg_value);
+    serial_write_string("\r\n");
+
+    if (usb_set_configuration(dev, cfg_value) != 0) {
+        return -1;
+    }
+    dev->bulk_in_toggle = 0;
+    dev->bulk_out_toggle = 0;
+    delay_approx_ms(50u);
+    return 0;
+}
+
+static int usb_enumerate_device(struct usb_dev* dev) {
+    unsigned char* desc = (unsigned char*)USB_CFG_BUF_LINEAR;
+    unsigned int total;
+
+    dev->addr = 0;
+    dev->ep0_mps = 8u;
+    if (usb_get_descriptor(dev, 0x01u, 0u, desc, 8u) != 0) {
+        return -1;
+    }
+    if (desc[0] < 8u || desc[1] != 0x01u) {
+        return -1;
+    }
+    dev->ep0_mps = desc[7];
+    if (dev->ep0_mps != 8u && dev->ep0_mps != 16u && dev->ep0_mps != 32u &&
+        dev->ep0_mps != 64u) {
+        dev->ep0_mps = 8u;
+    }
+    serial_write_string("USB ep0=");
+    serial_write_u32(dev->ep0_mps);
+    serial_write_string("\r\n");
+
+    if (usb_set_address(dev, 1u) != 0) {
+        return -1;
+    }
+    if (usb_get_descriptor(dev, 0x01u, 0u, desc, 18u) != 0) {
+        return -1;
+    }
+    serial_write_string("USB dev ");
+    serial_write_hex16(le16(desc + 8u));
+    serial_write_char(':');
+    serial_write_hex16(le16(desc + 10u));
+    serial_write_string("\r\n");
+
+    if (usb_get_descriptor(dev, 0x02u, 0u, desc, 9u) != 0) {
+        return -1;
+    }
+    total = le16(desc + 2u);
+    if (total > 512u) {
+        total = 512u;
+    }
+    if (usb_get_descriptor(dev, 0x02u, 0u, desc, total) != 0) {
+        return -1;
+    }
+    return usb_parse_config(dev, desc, total);
+}
+
+static int usb_msd_command(struct usb_dev* dev, const unsigned char* cdb,
+                           unsigned int cdb_len, unsigned char dir_in,
+                           void* data, unsigned int data_len) {
+    unsigned char* cbw = (unsigned char*)USB_CBW_BUF_LINEAR;
+    unsigned char* csw = (unsigned char*)USB_CSW_BUF_LINEAR;
+    unsigned int tag = 0x440b0001u;
+    unsigned int i;
+
+    storage_memset(cbw, 0u, 31u);
+    put32le(cbw + 0u, 0x43425355u);
+    put32le(cbw + 4u, tag);
+    put32le(cbw + 8u, data_len);
+    cbw[12] = dir_in ? 0x80u : 0x00u;
+    cbw[13] = 0u;
+    cbw[14] = (unsigned char)cdb_len;
+    for (i = 0; i < cdb_len && i < 16u; ++i) {
+        cbw[15u + i] = cdb[i];
+    }
+
+    if (uhci_bulk(dev, dev->bulk_out, dev->bulk_out_mps, 0u, cbw, 31u,
+                  &dev->bulk_out_toggle) != 0) {
+        return -1;
+    }
+    if (data_len != 0u) {
+        if (dir_in) {
+            if (uhci_bulk(dev, dev->bulk_in, dev->bulk_in_mps, 1u, data,
+                          data_len, &dev->bulk_in_toggle) != 0) {
+                return -1;
+            }
+        } else {
+            if (uhci_bulk(dev, dev->bulk_out, dev->bulk_out_mps, 0u, data,
+                          data_len, &dev->bulk_out_toggle) != 0) {
+                return -1;
+            }
+        }
+    }
+    storage_memset(csw, 0u, 16u);
+    if (uhci_bulk(dev, dev->bulk_in, dev->bulk_in_mps, 1u, csw, 13u,
+                  &dev->bulk_in_toggle) != 0) {
+        return -1;
+    }
+    if (le32(csw) != 0x53425355u || le32(csw + 4u) != tag || csw[12] != 0u) {
+        if (usb_msd_quiet_status) {
+            return -1;
+        }
+        serial_write_string("USB CSW bad sig=");
+        serial_write_hex32(le32(csw));
+        serial_write_string(" tag=");
+        serial_write_hex32(le32(csw + 4u));
+        serial_write_string(" st=");
+        serial_write_hex8(csw[12]);
+        serial_write_string("\r\n");
+        return -1;
+    }
+    return 0;
+}
+
+static void usb_msd_request_sense(struct usb_dev* dev) {
+    unsigned char cdb[6];
+    unsigned char* sense = (unsigned char*)USB_CFG_BUF_LINEAR;
+
+    storage_memset(cdb, 0u, sizeof(cdb));
+    storage_memset(sense, 0u, 18u);
+    cdb[0] = 0x03u;
+    cdb[4] = 18u;
+    if (usb_msd_command(dev, cdb, 6u, 1u, sense, 18u) == 0) {
+        serial_dump_bytes("USB sense", sense, 18u);
+    }
+}
+
+static void usb_msd_read_capacity(struct usb_dev* dev) {
+    unsigned char cdb[10];
+    unsigned char* cap = (unsigned char*)USB_CFG_BUF_LINEAR;
+
+    storage_memset(cdb, 0u, sizeof(cdb));
+    storage_memset(cap, 0u, 8u);
+    cdb[0] = 0x25u;
+    if (usb_msd_command(dev, cdb, 10u, 1u, cap, 8u) == 0) {
+        unsigned int last_lba = ((unsigned int)cap[0] << 24) |
+                                ((unsigned int)cap[1] << 16) |
+                                ((unsigned int)cap[2] << 8) | cap[3];
+        unsigned int block_len = ((unsigned int)cap[4] << 24) |
+                                 ((unsigned int)cap[5] << 16) |
+                                 ((unsigned int)cap[6] << 8) | cap[7];
+        serial_write_string("USB capacity last=");
+        serial_write_hex32(last_lba);
+        serial_write_string(" blksz=");
+        serial_write_hex32(block_len);
+        serial_write_string("\r\n");
+    } else {
+        usb_msd_request_sense(dev);
+    }
+}
+
+static void usb_msd_test_unit_ready(struct usb_dev* dev) {
+    unsigned char cdb[6];
+
+    storage_memset(cdb, 0u, sizeof(cdb));
+    cdb[0] = 0x00u;
+    usb_msd_quiet_status = 1u;
+    if (usb_msd_command(dev, cdb, 6u, 0u, 0, 0u) != 0) {
+        usb_msd_quiet_status = 0u;
+        usb_msd_request_sense(dev);
+    } else {
+        usb_msd_quiet_status = 0u;
+    }
+}
+
+static int usb_msd_read_lba0(struct usb_dev* dev, unsigned char* sector) {
+    unsigned char cdb[10];
+    unsigned int attempt;
+
+    usb_msd_test_unit_ready(dev);
+    usb_msd_read_capacity(dev);
+
+    storage_memset(cdb, 0u, sizeof(cdb));
+    cdb[0] = 0x28u;
+    cdb[8] = 1u;
+    for (attempt = 0; attempt < 3u; ++attempt) {
+        if (usb_msd_command(dev, cdb, 10u, 1u, sector, 512u) == 0) {
+            return 0;
+        }
+        usb_msd_request_sense(dev);
+    }
+    return -1;
+}
+
+static void usb_scan(void) {
+    unsigned int bar4;
+    unsigned short io;
+    unsigned char port;
+
+    if (!storage_uhci_found) {
+        serial_write_string("USB: UHCI not found\r\n");
+        return;
+    }
+    pci_write16(storage_uhci_bdf.bus, storage_uhci_bdf.dev, storage_uhci_bdf.fn,
+                0x04u,
+                (unsigned short)(pci_read16(storage_uhci_bdf.bus,
+                                            storage_uhci_bdf.dev,
+                                            storage_uhci_bdf.fn, 0x04u) |
+                                 0x0005u));
+    bar4 = pci_read32(storage_uhci_bdf.bus, storage_uhci_bdf.dev,
+                      storage_uhci_bdf.fn, 0x20u);
+    io = (unsigned short)(bar4 & 0xffe0u);
+    if (io == 0u) {
+        io = (unsigned short)align_up_u32(pci_next_io, 0x20u);
+        pci_next_io = io + 0x20u;
+        pci_write32(storage_uhci_bdf.bus, storage_uhci_bdf.dev,
+                    storage_uhci_bdf.fn, 0x20u, (unsigned int)io | 1u);
+    }
+
+    serial_write_string("USB UHCI ");
+    pci_print_bdf(storage_uhci_bdf.bus, storage_uhci_bdf.dev,
+                  storage_uhci_bdf.fn);
+    serial_write_string(" io=");
+    serial_write_hex16(io);
+    serial_write_string("\r\n");
+
+    if (uhci_controller_reset(io) != 0) {
+        serial_write_string("UHCI reset failed\r\n");
+        return;
+    }
+
+    for (port = 0; port < 2u; ++port) {
+        struct usb_dev dev;
+        unsigned char low_speed = 0;
+        unsigned char* sector = (unsigned char*)USB_SECTOR_LINEAR;
+        if (uhci_reset_port(io, port, &low_speed) != 0) {
+            continue;
+        }
+        storage_memset(&dev, 0u, sizeof(dev));
+        dev.io = io;
+        dev.low_speed = low_speed;
+        if (usb_enumerate_device(&dev) != 0) {
+            serial_write_string("USB enum failed\r\n");
+            continue;
+        }
+        if (usb_msd_read_lba0(&dev, sector) == 0) {
+            serial_dump_bytes("USB LBA0", sector, 16u);
+        } else {
+            serial_write_string("USB LBA0 read failed\r\n");
+        }
+    }
+}
+
+static void storage_scan(unsigned int total_bytes) {
+    if (total_bytes < 0x00800000u) {
+        serial_write_string("Storage scan skipped: low DRAM\r\n");
+        return;
+    }
+    pci_enumerate_and_assign();
+    ide_scan();
+    usb_scan();
 }
 
 struct rm_int13_frame {
@@ -720,7 +1962,6 @@ struct rm_dap {
 #define RAM_FLOPPY_LINEAR 0x00200000u
 #define RAM_FLOPPY_CAPACITY 0x00200000u
 #define BOOT_SECTOR_LINEAR 0x00007c00u
-#define HANDOFF_FDOS_BLOB_LINEAR 0x00080040u
 
 static unsigned char* bios_floppy_image = (unsigned char*)RAM_FLOPPY_LINEAR;
 static unsigned int bios_floppy_total_sectors = 0;
@@ -1261,7 +2502,7 @@ static void bandwidth_benchmarks(unsigned int total_bytes) {
     serial_write_string(")\r\n");
 }
 
-void postcar_resume(unsigned int total_bytes) {
+void postcar_resume(unsigned int total_bytes, unsigned int fdos_blob_linear) {
     volatile unsigned int stack_cookie = 0x13579bdfu;
 
     bios_total_bytes_global = total_bytes;
@@ -1275,9 +2516,8 @@ void postcar_resume(unsigned int total_bytes) {
     serial_write_string("Usable DRAM: ");
     serial_write_u32(total_bytes >> 10);
     serial_write_string("K\r\n");
+    storage_scan(total_bytes);
     {
-        unsigned int fdos_blob_linear =
-            *(volatile unsigned int*)HANDOFF_FDOS_BLOB_LINEAR;
         serial_write_string("Expand FDOS...\r\n");
         serial_write_string("FDOS blob @ ");
         serial_write_hex32(fdos_blob_linear);
@@ -1311,12 +2551,12 @@ void postcar_resume(unsigned int total_bytes) {
     }
 }
 
-void bios32_entry(unsigned int total_bytes) { postcar_resume(total_bytes); }
+void bios32_entry_c(unsigned int total_bytes, unsigned int fdos_blob_linear) {
+    postcar_resume(total_bytes, fdos_blob_linear);
+}
 
-void bios32_qemu_entry(unsigned int total_bytes) {
+void bios32_qemu_entry(unsigned int total_bytes, unsigned int fdos_blob_linear) {
     volatile unsigned int stack_cookie = 0x2468ace0u;
-    unsigned int fdos_blob_linear =
-        *(volatile unsigned int*)HANDOFF_FDOS_BLOB_LINEAR;
 
     bios_total_bytes_global = total_bytes;
     if (fdos_blob_linear == 0u) {
@@ -1333,6 +2573,7 @@ void bios32_qemu_entry(unsigned int total_bytes) {
     serial_write_string("QEMU stack @ ");
     serial_write_hex32((unsigned int)&stack_cookie);
     serial_write_string("\r\n");
+    storage_scan(total_bytes);
     install_bios_thunks();
     *(volatile unsigned int*)(bios16_thunk_runtime_base +
                               (unsigned int)((unsigned char*)&bios16_pm_stack_top -

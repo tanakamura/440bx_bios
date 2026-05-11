@@ -47,8 +47,9 @@
 - Current stage split:
   - bootblock lives in the top `16KiB` ROM window at `0xFC000-0xFFFFF`
   - `BIOS.elf` is linked separately and copied to DRAM at `0x00100000`
-  - `BIOS.elf` reserves its first page for a 16-bit thunk area and places its 32-bit C entry at `0x00101000`
-- A future DOS/HMA-friendly memory layout may need to move the long-lived runtime image away from the HMA region.
+  - `BIOS.elf` keeps the protected-mode C service code in high DRAM and copies only the real-mode thunk/runtime tables to `0xf0000-` shadow DRAM
+  - `BIOS.elf` places its 32-bit C entry at `0x00101000`
+- The runtime no longer reserves `0x80000` or `0x9fc00` for BIOS private state; conventional-memory size reported to DOS can be `640 KiB`.
 
 ## Clocking
 

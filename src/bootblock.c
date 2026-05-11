@@ -54,7 +54,6 @@ static inline unsigned int inl(unsigned short port) {
 #define SMBHSTSTS_DEV_ERR 0x04
 #define SMBHSTSTS_BUS_ERR 0x08
 #define SMBHSTSTS_FAILED 0x10
-#define HANDOFF_FDOS_BLOB_LINEAR 0x00080040u
 #define BIOS_LOAD_LINEAR 0x00100000u
 #define BIOS_LOAD_CAPACITY 0x00080000u
 #define BIOS32_ENTRY 0x00101000u
@@ -729,13 +728,27 @@ static void print_blob_error(const char* name, int rc,
 static void copy_bios_payload(void) {
     struct blob_status status;
     blob_expand_fn expand = (blob_expand_fn)BLOB_SERVICE_LINEAR;
-    int rc = expand(rom_high_ptr(__bios_blob_start), (void*)BLOB_STAGE_LINEAR,
-                    (void*)BIOS_LOAD_LINEAR, BIOS_LOAD_CAPACITY, &status);
+    const unsigned char* blob = rom_high_ptr(__bios_blob_start);
+    unsigned int attempt;
 
-    if (rc != 0) {
+    for (attempt = 0; attempt < 8u; ++attempt) {
+        int rc = expand(blob, (void*)BLOB_STAGE_LINEAR,
+                        (void*)BIOS_LOAD_LINEAR, BIOS_LOAD_CAPACITY, &status);
+
+        if (rc == 0) {
+            __asm__ volatile("xorl %%eax, %%eax\n\tcpuid"
+                             :
+                             :
+                             : "eax", "ebx", "ecx", "edx", "memory");
+            return;
+        }
+
+        serial_write_string("BIOS verify retry ");
+        serial_write_u32(attempt + 1u);
+        serial_write_string("\r\n");
         print_blob_error("BIOS", rc, &status);
-        die_with_post(0xef);
     }
+    die_with_post(0xef);
 }
 
 static unsigned int prepare_runtime_gdt(void) {
@@ -767,7 +780,8 @@ static unsigned int prepare_runtime_gdt(void) {
 }
 
 void postcar_bootblock_resume(unsigned int total_bytes) {
-    typedef void (*bios32_entry_fn)(unsigned int total_bytes);
+    typedef void (*bios32_entry_fn)(unsigned int total_bytes,
+                                    unsigned int fdos_blob_linear);
 
     serial_write_string("bootblock post-CAR\r\n");
     bootblock_init_l2_cache();
@@ -777,9 +791,8 @@ void postcar_bootblock_resume(unsigned int total_bytes) {
     serial_write_string("Load BIOS.elf...\r\n");
     copy_bios_payload();
     serial_write_string("BIOS.elf copied\r\n");
-    *(volatile unsigned int*)HANDOFF_FDOS_BLOB_LINEAR =
-        (unsigned int)rom_high_ptr(__fdos_blob_start);
-    ((bios32_entry_fn)BIOS32_ENTRY)(total_bytes);
+    ((bios32_entry_fn)BIOS32_ENTRY)(
+        total_bytes, (unsigned int)rom_high_ptr(__fdos_blob_start));
     for (;;) {
         __asm__ volatile("hlt");
     }

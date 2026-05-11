@@ -54,6 +54,32 @@ base + 6 : SMBHSTDAT1 8bit
 - ACPI DSDT on this board exposes `USB0` at PCI address `00:07.2`.
 - Therefore the PIIX4E USB host function on this board is expected at PCI function `00:07.2`.
 - This is the legacy Intel USB host of the era, so software should expect a UHCI-style controller rather than OHCI/EHCI/XHCI.
+- UHCI class code is `0x0c0300` and its I/O base is PCI BAR4 / `USBBASE`; the register block is I/O mapped.
+- UHCI I/O offsets used by the BIOS:
+  - `+0x00` `USBCMD` 16-bit
+  - `+0x02` `USBSTS` 16-bit
+  - `+0x04` `USBINTR` 16-bit
+  - `+0x06` `FRNUM` 16-bit
+  - `+0x08` `FLBASEADD` 32-bit
+  - `+0x0c` `SOFMOD` 8-bit
+  - `+0x10` / `+0x12` root port status/control
+- UHCI frame list is 1024 dwords and must be 4KiB aligned. TDs must be 16-byte aligned. The current BIOS places UHCI descriptors/buffers in low DRAM at `0x00600000` and uses `wbinvd` around controller execution because descriptors live in write-back cached DRAM.
+- UHCI TD token uses PID values `SETUP=0x2d`, `IN=0x69`, `OUT=0xe1`; max length is encoded as `len - 1`, with `0x7ff` for zero length.
+- USB mass storage scan currently implements the Bulk-Only Transport minimum path: device/config descriptor reads, set address, set configuration, first mass-storage interface with protocol `0x50`, then CBW + SCSI READ(10) LBA 0 + CSW.
+
+## IDE
+
+- The PIIX4E IDE function is expected at PCI `00:07.1`, class code `0x0101xx`.
+- The BIOS currently uses legacy PIO ports:
+  - primary command/control: `0x1f0` / `0x3f6`
+  - secondary command/control: `0x170` / `0x376`
+- The scan path issues ATA `IDENTIFY DEVICE` (`0xec`) and, when that succeeds as ATA, reads LBA0 with READ SECTORS (`0x20`) using LBA28.
+- Bus-master IDE BAR4 is assigned/enabled during PCI resource assignment, but the current boot scan reads via PIO only.
+
+## References consulted
+
+- Intel, Universal Host Controller Interface (UHCI) Design Guide, Revision 1.1.
+- USB-IF, USB Mass Storage Class Bulk-Only Transport, Revision 1.0.
 
 ## QEMU approximation
 

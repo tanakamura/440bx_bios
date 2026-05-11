@@ -2,14 +2,13 @@ bits 16
 
 %define CODE_SEL 0x08
 %define DATA_SEL 0x10
-%define QEMU_BIOS_ENTRY 0x00101010
+%define QEMU_BIOS_ENTRY 0x00101080
 %define ROM_HIGH_DELTA 0xFFF00000
 %define BLOB_SERVICE_LINEAR 0x00180000
 %define BLOB_STAGE_LINEAR 0x00380000
 %define BLOB_STATUS_SIZE 20
 %define BIOS_LOAD_LINEAR 0x00100000
 %define BIOS_LOAD_CAPACITY 0x00080000
-%define HANDOFF_FDOS_BLOB_LINEAR 0x00080040
 
 global qemu_start
 
@@ -71,8 +70,6 @@ qemu_pm_entry:
     xor eax, eax
     cpuid
 
-    mov dword [HANDOFF_FDOS_BLOB_LINEAR], __fdos_blob_start + ROM_HIGH_DELTA
-
     sub esp, BLOB_STATUS_SIZE
     mov ebx, esp
     push ebx
@@ -86,6 +83,7 @@ qemu_pm_entry:
     test eax, eax
     jnz .hang
 
+    push dword __fdos_blob_start + ROM_HIGH_DELTA
     push dword (64 * 1024 * 1024)
     call QEMU_BIOS_ENTRY
 .hang:

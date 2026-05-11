@@ -36,11 +36,10 @@
 
 ## Current board observations
 
-- During CAR bring-up, making the ROM execution window `0xF0000-0xFFFFF` `WB` too early destabilized SMBus/SPD probing.
-- For current BIOS bring-up, keep the ROM/shadow window `0xC0000-0xFFFFF` `UC` after post-CAR as well.
-- This avoids depending on cached ROM contents for tools that need to talk to the flash device directly.
-- DRAM should be the only `WB` runtime region during normal post-CAR execution.
-- Post-CAR fixed MTRRs should make conventional RAM `0x00000-0x9ffff` `WB`. FreeDOS and BIOS thunk/runtime data use this range, and leaving it `UC` makes execution unreasonably slow.
+- During CAR bring-up, making the ROM execution window `0xF0000-0xFFFFF` `WB` too early destabilized SMBus/SPD probing. Keep the pre-DRAM/CAR path conservative.
+- After leaving CAR and jumping to `BIOS.elf` in high DRAM, the runtime may switch `0xC0000-0xFFFFF` from ROM decode to PAM shadow DRAM.
+- Post-CAR fixed MTRRs should make conventional RAM `0x00000-0x9ffff` `WB`. The shadow windows `0xc0000-0xfffff` are also `WB` after CAR; `0xa0000-0xbffff` stays `UC` for VGA/MMIO compatibility.
+- The BIOS real-mode thunk/DPT/GDT now live in `0xf0000-` shadow DRAM, so the old low-memory private areas at `0x80000`/`0x9fc00` are not reserved for BIOS runtime.
 - On this board, explicitly enabling L2 during the post-CAR transition made execution less stable, so leave L2 enable alone for now.
 
 ## Pentium II L2 observations on this machine

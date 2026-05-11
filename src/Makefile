@@ -139,7 +139,7 @@ blob_service.o: blob_service.c blob.h
 l2_service.o: l2_service.c l2_service.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
-bios16.o: bios16.asm
+bios16.o: bios16.asm post_code.inc
 	nasm -f elf32 $< -o $@
 
 qemu_start.o: qemu_start.asm

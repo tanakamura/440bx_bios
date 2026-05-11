@@ -33,6 +33,16 @@ static int bios_flat_write8(unsigned long addr, unsigned char value)
     return bios_flat_call(0x01u, addr, &value);
 }
 
+static int bios_base_kb(void)
+{
+    union REGS inregs;
+    union REGS outregs;
+
+    memset(&inregs, 0, sizeof(inregs));
+    int86(0x12, &inregs, &outregs);
+    return outregs.x.ax;
+}
+
 int main(void)
 {
     static unsigned char buf[16];
@@ -55,5 +65,10 @@ int main(void)
         return 1;
     }
     puts("TEST int60_flat OK");
+    if (bios_base_kb() != 640) {
+        puts("TEST int12_640k NG");
+        return 1;
+    }
+    puts("TEST int12_640k OK");
     return 0;
 }
