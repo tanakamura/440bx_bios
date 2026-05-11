@@ -75,6 +75,10 @@ base + 6 : SMBHSTDAT1 8bit
   - secondary command/control: `0x170` / `0x376`
 - The scan path issues ATA `IDENTIFY DEVICE` (`0xec`) and, when that succeeds as ATA, reads LBA0 with READ SECTORS (`0x20`) using LBA28.
 - Bus-master IDE BAR4 is assigned/enabled during PCI resource assignment, but the current boot scan reads via PIO only.
+- PIIX4 IDE timing registers:
+  - PCI config `0x40-0x41` is primary `IDETIM`
+  - PCI config `0x42-0x43` is secondary `IDETIM`
+  - `IDETIM` bit15 is `IDE Decode Enable`; it must be set for PCI I/O cycles targeting ATA command/control blocks to be driven onto the IDE interface. If clear, accesses can be subtractively decoded toward ISA instead and no ATA device responds at `0x1f0/0x170`.
 
 ## References consulted
 

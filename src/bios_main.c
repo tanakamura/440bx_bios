@@ -49,6 +49,8 @@ extern unsigned char bios16_default[];
 extern void bios_boot_freedos_pm32(void);
 extern unsigned int bios16_pm_stack_top;
 extern unsigned char bios16_thunk_end[];
+extern unsigned char __bss_start[];
+extern unsigned char __bss_end[];
 
 static unsigned int bios_total_bytes_global = 0;
 static const unsigned int bios16_thunk_runtime_base = 0x000f0000u;
@@ -62,6 +64,14 @@ static unsigned int bios_tick_counter = 0;
 static unsigned char bios_tick_initialized = 0;
 static unsigned short bios_tick_last_raw = 0;
 static unsigned int bios_tick_subcount = 0;
+static unsigned char bios_hdd_present = 0;
+
+static void zero_bss(void) {
+    unsigned char* p = __bss_start;
+    while (p < __bss_end) {
+        *p++ = 0u;
+    }
+}
 
 static unsigned int pci_read32(unsigned char bus, unsigned char device,
                                unsigned char function, unsigned char reg) {
@@ -902,7 +912,7 @@ static void install_bios_thunks(void) {
     *(volatile unsigned char*)0x0440u = 0x25u;
     *(volatile unsigned char*)0x0441u = 0x00u;
     *(volatile unsigned char*)0x0474u = 0x00u;
-    *(volatile unsigned char*)0x0475u = 0x00u;
+    *(volatile unsigned char*)0x0475u = bios_hdd_present ? 1u : 0u;
     *(volatile unsigned char*)0x048bu = 0x00u;
     *(volatile unsigned char*)0x048cu = 0x00u;
     *(volatile unsigned char*)0x048du = 0x00u;
@@ -939,6 +949,13 @@ static unsigned char storage_uhci_found = 0;
 static unsigned int pci_next_io = 0xd000u;
 static unsigned int pci_next_mem = 0xf0000000u;
 static unsigned char usb_msd_quiet_status = 0;
+static unsigned short bios_hdd_io = 0;
+static unsigned short bios_hdd_ctrl = 0;
+static unsigned char bios_hdd_drive = 0;
+static unsigned int bios_hdd_total_sectors = 0;
+static unsigned short bios_hdd_heads = 16;
+static unsigned short bios_hdd_spt = 63;
+static unsigned short bios_hdd_cylinders = 1;
 
 static void storage_memset(void* dst, unsigned char value, unsigned int len) {
     unsigned char* p = (unsigned char*)dst;
@@ -1228,20 +1245,22 @@ static int ide_identify(unsigned short io, unsigned short ctrl,
     return 0;
 }
 
-static int ide_read_lba0(unsigned short io, unsigned short ctrl,
-                         unsigned char drive, unsigned char* dst) {
+static int ide_read_lba28(unsigned short io, unsigned short ctrl,
+                          unsigned char drive, unsigned int lba,
+                          unsigned char* dst) {
     unsigned int i;
 
     outb(ctrl, 0x02u);
-    outb((unsigned short)(io + 6u), (unsigned char)(0xe0u | (drive << 4)));
+    outb((unsigned short)(io + 6u),
+         (unsigned char)(0xe0u | (drive << 4) | ((lba >> 24) & 0x0fu)));
     ide_400ns_delay(ctrl);
     if (ide_wait_not_busy(io) != 0) {
         return -1;
     }
     outb((unsigned short)(io + 2u), 1u);
-    outb((unsigned short)(io + 3u), 0u);
-    outb((unsigned short)(io + 4u), 0u);
-    outb((unsigned short)(io + 5u), 0u);
+    outb((unsigned short)(io + 3u), (unsigned char)lba);
+    outb((unsigned short)(io + 4u), (unsigned char)(lba >> 8));
+    outb((unsigned short)(io + 5u), (unsigned char)(lba >> 16));
     outb((unsigned short)(io + 7u), 0x20u);
     if (ide_wait_drq(io) != 0) {
         return -1;
@@ -1251,6 +1270,65 @@ static int ide_read_lba0(unsigned short io, unsigned short ctrl,
     }
     ide_400ns_delay(ctrl);
     return 0;
+}
+
+static void bios_hdd_set_geometry(unsigned int sectors) {
+    unsigned int cylinders;
+    bios_hdd_spt = 63u;
+    bios_hdd_heads = (sectors > (1024u * 16u * 63u)) ? 255u : 16u;
+    cylinders = sectors / ((unsigned int)bios_hdd_heads * bios_hdd_spt);
+    if (cylinders == 0u) {
+        cylinders = 1u;
+    }
+    if (cylinders > 1024u) {
+        cylinders = 1024u;
+    }
+    bios_hdd_cylinders = (unsigned short)cylinders;
+}
+
+static void bios_hdd_register(unsigned short io, unsigned short ctrl,
+                              unsigned char drive, unsigned int sectors) {
+    if (bios_hdd_present) {
+        return;
+    }
+    bios_hdd_present = 1u;
+    bios_hdd_io = io;
+    bios_hdd_ctrl = ctrl;
+    bios_hdd_drive = drive;
+    bios_hdd_total_sectors = sectors;
+    bios_hdd_set_geometry(sectors);
+    serial_write_string("BIOS HDD80 sectors=");
+    serial_write_hex32(sectors);
+    serial_write_string(" C/H/S=");
+    serial_write_u32(bios_hdd_cylinders);
+    serial_write_char('/');
+    serial_write_u32(bios_hdd_heads);
+    serial_write_char('/');
+    serial_write_u32(bios_hdd_spt);
+    serial_write_string("\r\n");
+}
+
+static void ide_dump_partition_summary(const unsigned char* sector) {
+    unsigned int i;
+
+    serial_write_string("IDE MBR sig=");
+    serial_write_hex8(sector[0x01feu]);
+    serial_write_hex8(sector[0x01ffu]);
+    serial_write_string("\r\n");
+    for (i = 0; i < 4u; ++i) {
+        const unsigned char* entry = sector + 0x01beu + i * 16u;
+        serial_write_string("IDE part");
+        serial_write_u32(i);
+        serial_write_string(" boot=");
+        serial_write_hex8(entry[0]);
+        serial_write_string(" type=");
+        serial_write_hex8(entry[4]);
+        serial_write_string(" start=");
+        serial_write_hex32(le32(entry + 8u));
+        serial_write_string(" size=");
+        serial_write_hex32(le32(entry + 12u));
+        serial_write_string("\r\n");
+    }
 }
 
 static void ide_scan_channel(const char* name, unsigned short io,
@@ -1264,6 +1342,10 @@ static void ide_scan_channel(const char* name, unsigned short io,
         serial_write_string("IDE ");
         serial_write_string(name);
         serial_write_char(drive == 0u ? 'M' : 'S');
+        serial_write_string(" st=");
+        serial_write_hex8(inb((unsigned short)(io + 7u)));
+        serial_write_string(" alt=");
+        serial_write_hex8(inb(ctrl));
         serial_write_string(" identify...");
         if (ide_identify(io, ctrl, drive, id) != 0) {
             serial_write_string(" none\r\n");
@@ -1273,12 +1355,54 @@ static void ide_scan_channel(const char* name, unsigned short io,
         serial_write_string(" ok lba28=");
         serial_write_hex32(sectors);
         serial_write_string("\r\n");
-        if (ide_read_lba0(io, ctrl, drive, sector) == 0) {
+        if (sectors != 0u) {
+            bios_hdd_register(io, ctrl, drive, sectors);
+        }
+        if (ide_read_lba28(io, ctrl, drive, 0u, sector) == 0) {
             serial_dump_bytes("IDE LBA0", sector, 16u);
+            if (drive == 0u && name[0] == 'p') {
+                ide_dump_partition_summary(sector);
+            }
         } else {
             serial_write_string("IDE LBA0 read failed\r\n");
         }
     }
+}
+
+static void ide_enable_piix4_legacy(void) {
+    unsigned short cmd;
+    unsigned short bmiba;
+    unsigned short primary_timing;
+    unsigned short secondary_timing;
+
+    cmd = pci_read16(storage_ide_bdf.bus, storage_ide_bdf.dev,
+                     storage_ide_bdf.fn, 0x04u);
+    pci_write16(storage_ide_bdf.bus, storage_ide_bdf.dev, storage_ide_bdf.fn,
+                0x04u, (unsigned short)(cmd | 0x0005u));
+
+    primary_timing = pci_read16(storage_ide_bdf.bus, storage_ide_bdf.dev,
+                                storage_ide_bdf.fn, 0x40u);
+    secondary_timing = pci_read16(storage_ide_bdf.bus, storage_ide_bdf.dev,
+                                  storage_ide_bdf.fn, 0x42u);
+    pci_write16(storage_ide_bdf.bus, storage_ide_bdf.dev, storage_ide_bdf.fn,
+                0x40u, (unsigned short)(primary_timing | 0x8000u));
+    pci_write16(storage_ide_bdf.bus, storage_ide_bdf.dev, storage_ide_bdf.fn,
+                0x42u, (unsigned short)(secondary_timing | 0x8000u));
+
+    bmiba = pci_read16(storage_ide_bdf.bus, storage_ide_bdf.dev,
+                       storage_ide_bdf.fn, 0x20u);
+    serial_write_string("IDE cfg cmd=");
+    serial_write_hex16(pci_read16(storage_ide_bdf.bus, storage_ide_bdf.dev,
+                                  storage_ide_bdf.fn, 0x04u));
+    serial_write_string(" bmiba=");
+    serial_write_hex16(bmiba);
+    serial_write_string(" pri=");
+    serial_write_hex16(pci_read16(storage_ide_bdf.bus, storage_ide_bdf.dev,
+                                  storage_ide_bdf.fn, 0x40u));
+    serial_write_string(" sec=");
+    serial_write_hex16(pci_read16(storage_ide_bdf.bus, storage_ide_bdf.dev,
+                                  storage_ide_bdf.fn, 0x42u));
+    serial_write_string("\r\n");
 }
 
 static void ide_scan(void) {
@@ -1286,12 +1410,7 @@ static void ide_scan(void) {
         serial_write_string("IDE: controller not found\r\n");
         return;
     }
-    pci_write16(storage_ide_bdf.bus, storage_ide_bdf.dev, storage_ide_bdf.fn,
-                0x04u,
-                (unsigned short)(pci_read16(storage_ide_bdf.bus,
-                                            storage_ide_bdf.dev,
-                                            storage_ide_bdf.fn, 0x04u) |
-                                 0x0005u));
+    ide_enable_piix4_legacy();
     serial_write_string("IDE scan ");
     pci_print_bdf(storage_ide_bdf.bus, storage_ide_bdf.dev, storage_ide_bdf.fn);
     serial_write_string("\r\n");
@@ -1954,7 +2073,19 @@ struct rm_dap {
     unsigned short seg;
     unsigned int lba_low;
     unsigned int lba_high;
-};
+} __attribute__((packed));
+
+struct rm_edd_params {
+    unsigned short size;
+    unsigned short information;
+    unsigned int cylinders;
+    unsigned int heads;
+    unsigned int sectors;
+    unsigned int total_sectors_low;
+    unsigned int total_sectors_high;
+    unsigned short bytes_per_sector;
+    unsigned int edd_config_params;
+} __attribute__((packed));
 
 #define FDOS_BLOB_LINEAR 0x00120000u
 #define TEST10_BLOB_LINEAR 0x00130000u
@@ -2036,10 +2167,192 @@ static void rm_set_zf(struct rm_int13_frame* f) { f->flags |= 0x0040u; }
 
 static void rm_clear_zf(struct rm_int13_frame* f) { f->flags &= ~0x0040u; }
 
+static int bios_hdd_read_sectors(unsigned int lba, unsigned int count,
+                                 unsigned int dest) {
+    unsigned int i;
+
+    if (!bios_hdd_present || count == 0u ||
+        lba + count > bios_hdd_total_sectors) {
+        serial_write_string("13h:r range fail total=");
+        serial_write_hex32(bios_hdd_total_sectors);
+        serial_write_string("\r\n");
+        return -1;
+    }
+    for (i = 0; i < count; ++i) {
+        if (ide_read_lba28(bios_hdd_io, bios_hdd_ctrl, bios_hdd_drive, lba + i,
+                           (unsigned char*)(dest + i * 512u)) != 0) {
+            serial_write_string("13h:r pio fail lba=");
+            serial_write_hex32(lba + i);
+            serial_write_string(" st=");
+            serial_write_hex8(inb((unsigned short)(bios_hdd_io + 7u)));
+            serial_write_string(" err=");
+            serial_write_hex8(inb((unsigned short)(bios_hdd_io + 1u)));
+            serial_write_string("\r\n");
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static void bios_int13_hdd_params(struct rm_int13_frame* f) {
+    unsigned int max_cyl = bios_hdd_cylinders - 1u;
+    unsigned int max_head = bios_hdd_heads - 1u;
+    unsigned int spt = bios_hdd_spt;
+
+    f->ax = 0u;
+    f->cx = (unsigned short)(((max_cyl & 0xffu) << 8) | spt |
+                             ((max_cyl >> 2) & 0xc0u));
+    f->dx = (unsigned short)((max_head << 8) | 0x01u);
+    rm_clear_cf(f);
+}
+
+static void bios_int13_hdd_chs_rw(struct rm_int13_frame* f,
+                                  unsigned char ah) {
+    unsigned int count = (unsigned char)f->ax;
+    unsigned int cylinder = ((unsigned int)(f->cx >> 8) |
+                             (((unsigned int)f->cx & 0x00c0u) << 2));
+    unsigned int sector = (unsigned int)(f->cx & 0x003fu);
+    unsigned int head = (unsigned int)(f->dx >> 8);
+    unsigned int lba;
+    unsigned int dest;
+
+    if (ah != 0x02u || sector == 0u || count == 0u ||
+        head >= bios_hdd_heads || cylinder >= bios_hdd_cylinders) {
+        f->ax = 0x0100u;
+        rm_set_cf(f);
+        return;
+    }
+
+    lba = ((cylinder * bios_hdd_heads) + head) * bios_hdd_spt + sector - 1u;
+    dest = rm_seg_off_to_linear(f->es, f->bx);
+    if (bios_hdd_read_sectors(lba, count, dest) != 0) {
+        f->ax = 0x0100u;
+        rm_set_cf(f);
+        return;
+    }
+    f->ax = (unsigned short)count;
+    rm_clear_cf(f);
+}
+
+static void bios_int13_hdd_ext_read(struct rm_int13_frame* f) {
+    struct rm_dap* dap =
+        (struct rm_dap*)rm_seg_off_to_linear(f->ds, f->si);
+    unsigned int dest;
+
+    if (dap->size < 0x10u || dap->lba_high != 0u || dap->count == 0u) {
+        serial_write_string("13h:42 bad dap size=");
+        serial_write_hex8(dap->size);
+        serial_write_string(" cnt=");
+        serial_write_hex16(dap->count);
+        serial_write_string(" high=");
+        serial_write_hex32(dap->lba_high);
+        serial_write_string("\r\n");
+        f->ax = 0x0100u;
+        rm_set_cf(f);
+        return;
+    }
+    dest = rm_seg_off_to_linear(dap->seg, dap->off);
+    if (bios_hdd_read_sectors(dap->lba_low, dap->count, dest) != 0) {
+        f->ax = 0x0100u;
+        rm_set_cf(f);
+        return;
+    }
+    f->ax = 0u;
+    rm_clear_cf(f);
+}
+
+static void bios_int13_hdd_ext_params(struct rm_int13_frame* f) {
+    struct rm_edd_params* p =
+        (struct rm_edd_params*)rm_seg_off_to_linear(f->ds, f->si);
+    unsigned int fill_size;
+
+    if (p->size < 0x1au) {
+        f->ax = 0x0100u;
+        rm_set_cf(f);
+        return;
+    }
+
+    fill_size = p->size;
+    if (fill_size > sizeof(*p)) {
+        fill_size = sizeof(*p);
+    }
+    storage_memset(p, 0, fill_size);
+    p->size = (unsigned short)fill_size;
+    p->information = 0x0001u;
+    p->cylinders = bios_hdd_cylinders;
+    p->heads = bios_hdd_heads;
+    p->sectors = bios_hdd_spt;
+    p->total_sectors_low = bios_hdd_total_sectors;
+    p->total_sectors_high = 0u;
+    p->bytes_per_sector = 512u;
+    if (fill_size >= sizeof(*p)) {
+        p->edd_config_params = 0u;
+    }
+    f->ax = 0u;
+    rm_clear_cf(f);
+}
+
+static void bios_int13_hdd_service(struct rm_int13_frame* f) {
+    unsigned char ah = (unsigned char)(f->ax >> 8);
+    unsigned char dl = (unsigned char)f->dx;
+
+    if (dl != 0x80u || !bios_hdd_present) {
+        f->ax = 0x0100u;
+        rm_set_cf(f);
+        return;
+    }
+
+    switch (ah) {
+        case 0x00u:
+            f->ax &= 0x00ffu;
+            rm_clear_cf(f);
+            return;
+        case 0x08u:
+            bios_int13_hdd_params(f);
+            return;
+        case 0x15u:
+            f->ax = (unsigned short)((0x03u << 8) | (f->ax & 0x00ffu));
+            f->cx = (unsigned short)(bios_hdd_total_sectors >> 16);
+            f->dx = (unsigned short)bios_hdd_total_sectors;
+            rm_clear_cf(f);
+            return;
+        case 0x02u:
+        case 0x03u:
+            bios_int13_hdd_chs_rw(f, ah);
+            return;
+        case 0x41u:
+            if (f->bx != 0x55aau) {
+                f->ax = 0x0100u;
+                rm_set_cf(f);
+                return;
+            }
+            f->bx = 0xaa55u;
+            f->cx = 0x0001u;
+            f->ax = 0x3000u;
+            rm_clear_cf(f);
+            return;
+        case 0x42u:
+            bios_int13_hdd_ext_read(f);
+            return;
+        case 0x48u:
+            bios_int13_hdd_ext_params(f);
+            return;
+        default:
+            f->ax = 0x0100u;
+            rm_set_cf(f);
+            return;
+    }
+}
+
 static void bios_int13_service(struct rm_int13_frame* f) {
     unsigned char ah = (unsigned char)(f->ax >> 8);
     unsigned char al = (unsigned char)(f->ax & 0xffu);
     unsigned char dl = (unsigned char)(f->dx & 0xffu);
+
+    if (dl >= 0x80u) {
+        bios_int13_hdd_service(f);
+        return;
+    }
 
     if (bios_floppy_total_sectors == 0) {
         serial_write_string("13:noimg\r\n");
@@ -2552,12 +2865,14 @@ void postcar_resume(unsigned int total_bytes, unsigned int fdos_blob_linear) {
 }
 
 void bios32_entry_c(unsigned int total_bytes, unsigned int fdos_blob_linear) {
+    zero_bss();
     postcar_resume(total_bytes, fdos_blob_linear);
 }
 
 void bios32_qemu_entry(unsigned int total_bytes, unsigned int fdos_blob_linear) {
     volatile unsigned int stack_cookie = 0x2468ace0u;
 
+    zero_bss();
     bios_total_bytes_global = total_bytes;
     if (fdos_blob_linear == 0u) {
         fdos_blob_linear = FDOS_BLOB_LINEAR;
