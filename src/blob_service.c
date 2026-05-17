@@ -11,11 +11,31 @@ static inline unsigned char inb(unsigned short port) {
     __asm__ volatile("inb %1, %0" : "=a"(value) : "Nd"(port));
     return value;
 }
+static inline void outl(unsigned short port, unsigned int value) {
+    __asm__ volatile("outl %0, %1" : : "a"(value), "Nd"(port));
+}
+static inline unsigned int inl(unsigned short port) {
+    unsigned int value;
+    __asm__ volatile("inl %1, %0" : "=a"(value) : "Nd"(port));
+    return value;
+}
 
 static void serial_write_char(char c) {
     while ((inb(0x03f8 + 5) & 0x20) == 0) {
     }
     outb(0x03f8, (unsigned char)c);
+}
+
+static BLOBSVC void blob_check_maintenance_key(void) {
+    unsigned char ch;
+
+    if ((inb(0x03f8 + 5) & 0x01u) == 0) {
+        return;
+    }
+    ch = inb(0x03f8);
+    if (ch == 'm' || ch == 'M') {
+        ((volatile unsigned int*)BOOT_AUX_LINEAR)[BOOT_AUX_MAINTENANCE] = 1u;
+    }
 }
 
 static BLOBSVC void blob_status_set(struct blob_status* status, int code,
@@ -225,9 +245,13 @@ BLOBSVC_ENTRY int blob_expand_service(const void* blob_ptr, void* stage_ptr,
 
         src = data + block->compressed_off;
         out = dst + block->uncompressed_off;
+        blob_check_maintenance_key();
         for (retry = 0; retry < 64u; ++retry) {
             unsigned int j;
             for (j = 0; j < block->compressed_size; ++j) {
+                if ((j & 0xffu) == 0u) {
+                    blob_check_maintenance_key();
+                }
                 if (retry == 0u) {
                     stage[j] = ((volatile const unsigned char*)src)[j];
                 } else {
@@ -257,6 +281,7 @@ BLOBSVC_ENTRY int blob_expand_service(const void* blob_ptr, void* stage_ptr,
             }
         }
         serial_write_char('.');
+        blob_check_maintenance_key();
         if ((i & 0xf) == 0) {
             serial_write_char('\r');
             serial_write_char('\n');
@@ -293,4 +318,113 @@ BLOBSVC_ENTRY int blob_expand_service(const void* blob_ptr, void* stage_ptr,
 
     blob_status_set(status, BLOB_STATUS_OK, 0, 0, 0, hdr->uncompressed_size);
     return 0;
+}
+
+#define IA32_MTRR_FIX4K_E0000 0x26cu
+#define IA32_MTRR_FIX4K_E8000 0x26du
+#define IA32_MTRR_FIX4K_F0000 0x26eu
+#define IA32_MTRR_FIX4K_F8000 0x26fu
+#define IA32_MTRR_DEF_TYPE 0x2ffu
+#define MTRR_DEF_TYPE_E 0x00000800u
+
+static BLOBSVC_INLINE unsigned int blob_pci_addr(unsigned char bus,
+                                                 unsigned char dev,
+                                                 unsigned char fn,
+                                                 unsigned char reg) {
+    return 0x80000000u | ((unsigned int)bus << 16) |
+           ((unsigned int)dev << 11) | ((unsigned int)fn << 8) |
+           (reg & 0xfcu);
+}
+
+static BLOBSVC void blob_pci_write8(unsigned char bus, unsigned char dev,
+                                    unsigned char fn, unsigned char reg,
+                                    unsigned char value) {
+    outl(0x0cf8u, blob_pci_addr(bus, dev, fn, reg));
+    outb((unsigned short)(0x0cfcu + (reg & 3u)), value);
+}
+
+static BLOBSVC_INLINE void blob_wrmsr64(unsigned int msr, unsigned int lo,
+                                        unsigned int hi) {
+    __asm__ volatile("wrmsr" : : "c"(msr), "a"(lo), "d"(hi));
+}
+
+static BLOBSVC_INLINE unsigned long long blob_rdmsr64(unsigned int msr) {
+    unsigned int lo;
+    unsigned int hi;
+    __asm__ volatile("rdmsr" : "=a"(lo), "=d"(hi) : "c"(msr));
+    return ((unsigned long long)hi << 32) | lo;
+}
+
+static BLOBSVC void blob_enable_ef_shadow(void) {
+    unsigned long long def_type = blob_rdmsr64(IA32_MTRR_DEF_TYPE);
+    unsigned int def_lo = (unsigned int)def_type;
+    unsigned int def_hi = (unsigned int)(def_type >> 32);
+
+    __asm__ volatile("movl %%cr0, %%eax\n\t"
+                     "orl $0x40000000, %%eax\n\t"
+                     "andl $0xdfffffff, %%eax\n\t"
+                     "movl %%eax, %%cr0\n\t"
+                     "wbinvd"
+                     :
+                     :
+                     : "eax", "memory");
+
+    blob_pci_write8(0, 0, 0, 0x5eu, 0x33u);
+    blob_pci_write8(0, 0, 0, 0x5fu, 0x33u);
+    blob_pci_write8(0, 0, 0, 0x59u, 0x30u);
+
+    blob_wrmsr64(IA32_MTRR_DEF_TYPE, def_lo & ~MTRR_DEF_TYPE_E, def_hi);
+    blob_wrmsr64(IA32_MTRR_FIX4K_E0000, 0x06060606u, 0x06060606u);
+    blob_wrmsr64(IA32_MTRR_FIX4K_E8000, 0x06060606u, 0x06060606u);
+    blob_wrmsr64(IA32_MTRR_FIX4K_F0000, 0x06060606u, 0x06060606u);
+    blob_wrmsr64(IA32_MTRR_FIX4K_F8000, 0x06060606u, 0x06060606u);
+    blob_wrmsr64(IA32_MTRR_DEF_TYPE, def_lo, def_hi);
+
+    __asm__ volatile("wbinvd\n\t"
+                     "movl %%cr0, %%eax\n\t"
+                     "andl $0x9fffffff, %%eax\n\t"
+                     "movl %%eax, %%cr0\n\t"
+                     "xorl %%eax, %%eax\n\t"
+                     "cpuid"
+                     :
+                     :
+                     : "eax", "ebx", "ecx", "edx", "memory");
+}
+
+BLOBSVC void blob_shadow_load_and_enter(const void* blob, void* stage,
+                                        void* dst,
+                                        unsigned int dst_capacity,
+                                        struct blob_status* status,
+                                        unsigned int total_bytes,
+                                        unsigned int fdos_blob_linear,
+                                        unsigned int bios_entry) {
+    typedef void (*bios_entry_fn)(unsigned int, unsigned int);
+    volatile unsigned int* p;
+    volatile unsigned int* end;
+    int rc;
+
+    blob_enable_ef_shadow();
+
+    p = (volatile unsigned int*)dst;
+    end = (volatile unsigned int*)((unsigned int)dst + dst_capacity);
+    while (p < end) {
+        *p++ = 0u;
+    }
+
+    rc = blob_expand_service(blob, stage, dst, dst_capacity, status);
+    if (rc != 0) {
+        outb(0x0080u, 0xefu);
+        for (;;) {
+            __asm__ volatile("hlt");
+        }
+    }
+
+    __asm__ volatile("xorl %%eax, %%eax\n\tcpuid"
+                     :
+                     :
+                     : "eax", "ebx", "ecx", "edx", "memory");
+    ((bios_entry_fn)bios_entry)(total_bytes, fdos_blob_linear);
+    for (;;) {
+        __asm__ volatile("hlt");
+    }
 }

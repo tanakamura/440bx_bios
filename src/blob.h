@@ -11,6 +11,24 @@
 #define BLOB_STAGE_LINEAR 0x00380000u
 #define BLOB_STAGE_CAPACITY 8192u
 
+#define BOOT_AUX_LINEAR 0x0007f000u
+#define BOOT_AUX_DSDT_BLOB 0u
+#define BOOT_AUX_MAINTENANCE 1u
+#define BOOT_AUX_STAGE3_BLOB 2u
+#define BOOT_AUX_SHADOW_READY 3u
+#define BOOT_AUX_VBIOS_BLOB 4u
+#define BOOT_AUX_TEST_ELF_BLOB 5u
+#define BOOT_AUX_WORDS 6u
+
+#define STAGE2_LOAD_LINEAR 0x00080000u
+#define STAGE2_LOAD_CAPACITY 0x00010000u
+#define STAGE2_ENTRY 0x00080000u
+
+#define BIOS_LOAD_LINEAR 0x000F0000u
+#define BIOS_LOAD_CAPACITY 0x00010000u
+#define BIOS32_ENTRY 0x000F0000u
+#define BIOS32_QEMU_ENTRY 0x000F0080u
+
 #define BLOB_STATUS_OK 0
 #define BLOB_ERR_MAGIC -1
 #define BLOB_ERR_VERSION -2
@@ -54,5 +72,11 @@ struct blob_status {
 typedef int (*blob_expand_fn)(const void* blob, void* stage, void* dst,
                               unsigned int dst_capacity,
                               struct blob_status* status);
+typedef void (*blob_shadow_entry_fn)(const void* blob, void* stage, void* dst,
+                                     unsigned int dst_capacity,
+                                     struct blob_status* status,
+                                     unsigned int total_bytes,
+                                     unsigned int aux_blob_linear,
+                                     unsigned int bios_entry);
 
 #endif

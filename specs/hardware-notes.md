@@ -37,25 +37,63 @@
 - 今の CAR 実験では、固定 MTRR `IA32_MTRR_FIX4K_F8000` の `0xFE000-0xFFFFF` 側を `WB` にして、ROM 窓の上端近くに一時 stack を置く方針を試す。
 - これは Intel SDM の MTRR / cache mode の記述に基づく最小実験で、Pentium II 実機で stack と `call` が通るかを実測で確認する。
 
+## Timer / interrupt notes
+
+- DOS programs such as FreeDOS `VDELAY.COM` wait for the BIOS tick count at
+  `0040:006c` to advance. Updating the tick only on BIOS service calls is not
+  enough once DOS programs run without calling back into BIOS.
+- The BIOS installs a real-mode IRQ0 / `INT 08h` handler that increments the
+  BDA tick count, sets the midnight flag at `0040:0070`, calls `INT 1Ch`, and
+  sends EOI to the master 8259 PIC.
+- Before booting DOS, the BIOS programs the PIT channel 0 to the standard
+  `18.2 Hz` divisor and unmasks only IRQ0 on the 8259 PIC.
+- On QEMU's i440fx/P6-like setup, IRQ0 did not reach real mode while the local
+  APIC remained enabled without virtual-wire setup. The current BIOS disables
+  the local APIC via `IA32_APIC_BASE.EN` before handing control to DOS, so the
+  legacy 8259 `INTR` path works.
+
 ## Planned stage split
 
 - The current plan is to split the ROM into:
   - a `16 KiB` bootblock in the reset-visible top window
   - a larger BIOS payload stored in the rest of the ROM
-- For bring-up, the BIOS payload will be copied/decompressed into DRAM at `0x00100000`.
-- This `0x00100000` choice is a temporary staging address for bring-up, not the final long-term BIOS/DOS-compatible runtime placement.
 - Current stage split:
   - bootblock lives in the top `16KiB` ROM window at `0xFC000-0xFFFFF`
-  - `BIOS.elf` is linked separately and copied to DRAM at `0x00100000`
-  - `BIOS.elf` keeps the protected-mode C service code in high DRAM and copies only the real-mode thunk/runtime tables to `0xf0000-` shadow DRAM
-  - `BIOS.elf` places its 32-bit C entry at `0x00101000`
+  - `BIOS.elf` is linked separately and copied/decompressed to shadow DRAM at `0xe0000-0xfffff`
+  - `BIOS.elf` keeps the protected-mode C service code in `0xe0000-0xeffff`
+  - `BIOS.elf` keeps the real-mode thunk/runtime tables in `0xf0000-`
+  - `BIOS.elf` places its 32-bit C entry at `0x000e0000`
 - The runtime no longer reserves `0x80000` or `0x9fc00` for BIOS private state; conventional-memory size reported to DOS can be `640 KiB`.
+
+## Current BIOS memory map policy
+
+- Conventional memory `0x00000-0x9fbff` is reported usable.
+- `0x9fc00-0xfffff` is reserved for EBDA-compatible holes, VGA/option ROM area, BIOS protected-mode runtime at `0xe0000-0xeffff`, and the BIOS real-mode thunk at `0xf0000-`.
+- `0x00100000` through `detected_dram_end - 1MiB` is reported usable by `INT 15h E820h`, `AH=88h`, and `E801h`.
+- The top `1MiB` of detected DRAM is reserved for BIOS protected-mode stack and IDE/USB scratch buffers used by BIOS services after boot.
+- RAM floppy staging has been removed; boot media should be supplied by IDE/USB storage.
 
 ## Clocking
 
 - このボードでは FSB / CPU clock を一番遅い設定にすると、CPU の最小実行は通っても PCI config access や chipset 周辺が不安定になる可能性がある。
 - `00:00.0` の `8086/7190` が見え始めたのは、FSB / CPU clock を CPU 想定の条件へ戻した後だった。
 - PCI / SMBus / chipset 調査中は、極端に遅い clock 設定を避けて、Pentium II と P2B98-XV の想定条件で試す。
+
+## P2B98-XV maintenance inputs
+
+- ASUS P2B98-XV manual lists only two board jumpers in the jumper section:
+  `CLRTC` and `INT`.
+- `CLRTC` shorts the RTC/CMOS clear solder points. This is useful as an
+  emergency recovery signal, but it destroys CMOS/NVRAM contents and is not a
+  good normal maintenance-mode selector.
+- `INT` is the onboard VGA interrupt selection jumper. It changes VGA interrupt
+  routing and should not be repurposed as a maintenance-mode selector unless a
+  software-visible bit is experimentally found.
+- The front-panel connector area includes a 2-pin `SMI` lead. This is the best
+  hardware candidate for a maintenance switch, but it should first be tested by
+  polling PIIX4E PM/GPE/GPIO status registers. Do not enable SMI delivery until
+  an SMM handler exists.
+- Manual reference: ASUS P2B98-XV User's Manual `p2b98xv-200.pdf`.
 
 ## Observed SDRAM SPD
 

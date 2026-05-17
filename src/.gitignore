@@ -11,4 +11,6 @@ start
 *.img
 romtest
 *.bin
+*.aml
+*.asl
 __pycache__/

@@ -1,5 +1,6 @@
 #include "blob.h"
 #include "l2_service.h"
+#include "service_table.h"
 
 extern unsigned char __stage2_bss_start[];
 extern unsigned char __stage2_bss_end[];
@@ -212,10 +213,22 @@ __attribute__((section(".stage2.entry"), used)) void stage2_entry(
     unsigned int total_bytes, unsigned int aux_linear) {
     typedef void (*bios_entry_fn)(unsigned int, unsigned int);
     volatile unsigned int* aux = (volatile unsigned int*)aux_linear;
+    struct shared_service_table* service =
+        shared_service_from_total(total_bytes);
+    struct shared_boot_context* boot_ctx = shared_boot_context(service);
+    struct shared_payload_entry* stage3_payload =
+        shared_payload_find(service, SHARED_PAYLOAD_ID_STAGE3);
     const void* stage3_blob = (const void*)aux[BOOT_AUX_STAGE3_BLOB];
     blob_expand_fn expand = (blob_expand_fn)BLOB_SERVICE_LINEAR;
     struct blob_status status;
     int rc;
+
+    if (service != 0 && service->blob_expand != 0u) {
+        expand = (blob_expand_fn)service->blob_expand;
+    }
+    if (stage3_payload != 0) {
+        stage3_blob = (const void*)stage3_payload->blob_ptr;
+    }
 
     zero_stage2_bss();
     serial_write_string("stage2 @ 00080000\r\n");
@@ -226,6 +239,9 @@ __attribute__((section(".stage2.entry"), used)) void stage2_entry(
     clear_option_rom_shadow_window();
     clear_stage3_window();
     aux[BOOT_AUX_SHADOW_READY] = 1u;
+    if (boot_ctx != 0) {
+        boot_ctx->flags |= SHARED_BOOT_FLAG_SHADOW_READY;
+    }
 
     serial_write_string("Load stage3 @ 000f0000...\r\n");
     rc = expand(stage3_blob, (void*)BLOB_STAGE_LINEAR, (void*)BIOS_LOAD_LINEAR,

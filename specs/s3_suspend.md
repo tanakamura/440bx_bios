@@ -23,6 +23,9 @@ DRAM 内容を壊すと復帰できないので、実装前にここを読む。
 
 - 最短経路は AML/FADT を BIOS 側で生成または patch して、OS に
   native ACPI として S3 を実行させること。
+- AML interpreter / namespace evaluator は自作しない。ROM test blob には
+  uACPI をリンクし、BIOS が作った ACPI table を uACPI で読ませて
+  `_PTS`, `_WAK`, sleep-state helper などを検証する。
 - SMM は作ってよい。ただし S3 の最小実装には必須ではない。
   まず SMM なしで `PM1_CNT.SCI_EN` を BIOS が直接立て、
   OS が `PM1_CNT.SLP_TYP + SLP_EN` を書いて suspend できる形を狙う。
@@ -169,6 +172,8 @@ serial 入力なしで ROM 内蔵 ELF test blob を自動起動する。BIOS は
 ACPI table を作り、Linux handoff 直前と同じ PM/ACPI/boot params
 状態を作ってから ELF entry を呼ぶ。test blob bit は実行前に BIOS が clear
 する one-shot trigger として扱う。
+この test blob は uACPI を使い、現時点では RSDP から table/namespace を
+load / initialize して `\_PTS(3)` を実行する。
 
 ### Maintenance Commands
 

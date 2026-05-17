@@ -1,5 +1,6 @@
 #include "post_code.h"
 #include "blob.h"
+#include "service_table.h"
 
 static inline void outb(unsigned short port, unsigned char value) {
     __asm__ volatile("outb %0, %1" : : "a"(value), "Nd"(port));
@@ -69,6 +70,9 @@ extern unsigned char __test_elf_blob_start[];
 extern unsigned char __test_elf_blob_end[];
 extern unsigned char __blob_service_start[];
 extern unsigned char __blob_service_end[];
+extern int blob_expand_service(const void* blob, void* stage, void* dst,
+                               unsigned int dst_capacity,
+                               struct blob_status* status);
 
 static void serial_write_char(char c) {
     while ((inb(0x03f8 + 5) & 0x20) == 0) {
@@ -561,9 +565,99 @@ static void install_blob_service(void) {
                      : "eax", "ebx", "ecx", "edx", "memory");
 }
 
+static void payload_add(struct shared_payload_manifest* manifest,
+                        unsigned int id, unsigned int type, unsigned int flags,
+                        const unsigned char* start,
+                        const unsigned char* end) {
+    struct shared_payload_entry* entry;
+
+    if (manifest->entry_count >= SHARED_PAYLOAD_MAX) {
+        die_with_post(0xee);
+    }
+    entry = &manifest->entries[manifest->entry_count++];
+    entry->id = id;
+    entry->type = type;
+    entry->flags = flags;
+    entry->blob_ptr = (unsigned int)start;
+    entry->blob_size = (unsigned int)(end - start);
+}
+
+static void install_shared_service_table(unsigned int total_bytes,
+                                         unsigned int stack_top) {
+    unsigned int table_linear = stack_top;
+    unsigned int ptr_slot = shared_table_pointer_slot(total_bytes);
+    struct shared_service_table* table =
+        (struct shared_service_table*)table_linear;
+    struct shared_payload_manifest* manifest;
+    struct shared_boot_context* ctx;
+    unsigned char* heap_base;
+    unsigned int i;
+
+    for (i = 0; i < 4096u; ++i) {
+        ((volatile unsigned char*)table_linear)[i] = 0u;
+    }
+
+    manifest = (struct shared_payload_manifest*)shared_align_up(
+        table_linear + sizeof(*table), 16u);
+    ctx = (struct shared_boot_context*)shared_align_up(
+        (unsigned int)(manifest + 1), 16u);
+    heap_base = (unsigned char*)shared_align_up((unsigned int)(ctx + 1), 16u);
+
+    table->magic = SHARED_SERVICE_MAGIC;
+    table->version = SHARED_SERVICE_VERSION;
+    table->size = sizeof(*table);
+    table->total_dram_bytes = total_bytes;
+    table->service_base = BLOB_SERVICE_LINEAR;
+    table->service_size =
+        (unsigned int)(__blob_service_end - __blob_service_start);
+    table->table_linear = table_linear;
+    table->table_size = 4096u;
+    table->stack_top = stack_top;
+    table->heap_base = (unsigned int)heap_base;
+    table->heap_free_list = 0u;
+    table->heap_limit = ptr_slot;
+    table->boot_context_ptr = (unsigned int)ctx;
+    table->payload_manifest_ptr = (unsigned int)manifest;
+    table->blob_expand =
+        BLOB_SERVICE_LINEAR +
+        ((unsigned int)blob_expand_service - (unsigned int)__blob_service_start);
+
+    manifest->magic = SHARED_PAYLOAD_MAGIC;
+    manifest->version = SHARED_PAYLOAD_VERSION;
+    manifest->entry_count = 0u;
+    payload_add(manifest, SHARED_PAYLOAD_ID_STAGE2, SHARED_PAYLOAD_TYPE_BLZ4,
+                0u, rom_high_ptr(__stage2_blob_start),
+                rom_high_ptr(__stage2_blob_end));
+    payload_add(manifest, SHARED_PAYLOAD_ID_STAGE3, SHARED_PAYLOAD_TYPE_BLZ4,
+                0u, rom_high_ptr(__bios_blob_start),
+                rom_high_ptr(__bios_blob_end));
+    payload_add(manifest, SHARED_PAYLOAD_ID_DSDT, SHARED_PAYLOAD_TYPE_BLZ4, 0u,
+                rom_high_ptr(__dsdt_blob_start), rom_high_ptr(__dsdt_blob_end));
+    payload_add(manifest, SHARED_PAYLOAD_ID_VGABIOS, SHARED_PAYLOAD_TYPE_BLZ4,
+                0u, rom_high_ptr(__vgabios_blob_start),
+                rom_high_ptr(__vgabios_blob_end));
+    payload_add(manifest, SHARED_PAYLOAD_ID_TEST_ELF, SHARED_PAYLOAD_TYPE_BLZ4,
+                0u, rom_high_ptr(__test_elf_blob_start),
+                rom_high_ptr(__test_elf_blob_end));
+
+    ctx->magic = SHARED_BOOT_CONTEXT_MAGIC;
+    ctx->version = SHARED_BOOT_CONTEXT_VERSION;
+    ctx->size = sizeof(*ctx);
+    ctx->total_dram_bytes = total_bytes;
+    ctx->flags = SHARED_BOOT_FLAG_PLATFORM_P2B98_XV;
+    ctx->platform_id = SHARED_BOOT_FLAG_PLATFORM_P2B98_XV;
+    ctx->acpi_input_ptr = (unsigned int)rom_high_ptr(__dsdt_blob_start);
+    ctx->acpi_input_size =
+        (unsigned int)(__dsdt_blob_end - __dsdt_blob_start);
+
+    *(volatile unsigned int*)ptr_slot = (unsigned int)table;
+}
+
 static void enter_stage2(unsigned int total_bytes) {
     typedef void (*stage2_entry_fn)(unsigned int, unsigned int);
     struct blob_status status;
+    struct shared_service_table* service =
+        shared_service_from_total(total_bytes);
     blob_expand_fn expand = (blob_expand_fn)BLOB_SERVICE_LINEAR;
     const unsigned char* blob = rom_high_ptr(__stage2_blob_start);
     unsigned int stage3_blob_linear = (unsigned int)rom_high_ptr(__bios_blob_start);
@@ -573,7 +667,16 @@ static void enter_stage2(unsigned int total_bytes) {
     unsigned int test_elf_blob_linear =
         (unsigned int)rom_high_ptr(__test_elf_blob_start);
     volatile unsigned int* aux = (volatile unsigned int*)BOOT_AUX_LINEAR;
+    struct shared_payload_entry* stage2_payload;
     int rc;
+
+    if (service != 0 && service->blob_expand != 0u) {
+        expand = (blob_expand_fn)service->blob_expand;
+        stage2_payload = shared_payload_find(service, SHARED_PAYLOAD_ID_STAGE2);
+        if (stage2_payload != 0) {
+            blob = (const unsigned char*)stage2_payload->blob_ptr;
+        }
+    }
 
     aux[BOOT_AUX_DSDT_BLOB] = dsdt_blob_linear;
     aux[BOOT_AUX_MAINTENANCE] = 0u;
@@ -631,10 +734,14 @@ static unsigned int prepare_runtime_gdt(void) {
 }
 
 void postcar_bootblock_resume(unsigned int total_bytes) {
+    unsigned int stack_top = dram_stack_top(total_bytes);
+
     serial_write_string("bootblock post-CAR\r\n");
     serial_write_string("Install blobsvc...\r\n");
     install_blob_service();
     serial_write_string("blobsvc ok\r\n");
+    install_shared_service_table(total_bytes, stack_top);
+    serial_write_string("svctab ok\r\n");
     serial_write_string("Load stage2 @ 00080000...\r\n");
     enter_stage2(total_bytes);
     for (;;) {

@@ -62,32 +62,16 @@ def main() -> int:
             "TEST SUMMARY OK",
         ],
     )
-    flat_ok = run_case(
-        "custombios-flat",
-        [
-            "qemu-system-i386",
-            "-m", "32m",
-            "-bios", str(ROOT / "qemu_flat_test_bios.bin"),
-            "-M", "pc",
-            "-serial", "stdio",
-            "-monitor", "none",
-            "-nographic",
-            "-no-reboot",
-            "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
-        ],
-        [
-            "FLATTEST START",
-            "TEST int60_flat OK",
-        ],
-    )
     with tempfile.TemporaryDirectory(prefix="440bx-storage-") as tmpdir:
         tmp = Path(tmpdir)
         ide_img = tmp / "ide.img"
-        usb_img = tmp / "usb.img"
-        shutil.copyfile(ROOT / "stdtest.img", ide_img)
-        shutil.copyfile(ROOT / "stdtest.img", usb_img)
-        storage_ok = run_case(
-            "custombios-storage",
+        linuxprobe_img = tmp / "linuxprobe.img"
+        linuxprobe_raw_img = tmp / "linuxprobe_raw.img"
+        shutil.copyfile(ROOT / "usbmbr.img", ide_img)
+        shutil.copyfile(ROOT / "linuxprobe.img", linuxprobe_img)
+        shutil.copyfile(ROOT / "linuxprobe_raw.img", linuxprobe_raw_img)
+        ideboot_ok = run_case(
+            "custombios-idembr",
             [
                 "qemu-system-i386",
                 "-m", "32m",
@@ -99,17 +83,85 @@ def main() -> int:
                 "-no-reboot",
                 "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
                 "-drive", f"if=ide,format=raw,file={ide_img}",
-                "-device", "piix4-usb-uhci,id=uhci",
-                "-drive", f"if=none,id=usbdisk,format=raw,file={usb_img}",
-                "-device", "usb-storage,drive=usbdisk,bus=uhci.0",
             ],
             [
                 "IDE LBA0 @",
-                "USB LBA0 @",
-                "TEST int60_flat OK",
+                "BIOS HDD80 IDE",
+                "USBMBR",
+                "TIMEROK",
+                "INT60OK",
+                "E820OK",
             ],
         )
-    return 0 if std_ok and flat_ok and storage_ok else 1
+        linuxprobe_ok = run_case(
+            "custombios-linuxprobe",
+            [
+                "qemu-system-i386",
+                "-m", "32m",
+                "-bios", str(ROOT / "qemu_flat_test_bios.bin"),
+                "-M", "pc",
+                "-serial", "stdio",
+                "-monitor", "none",
+                "-nographic",
+                "-no-reboot",
+                "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
+                "-drive", f"if=ide,format=raw,file={linuxprobe_img}",
+            ],
+            [
+                "Linux part1 start=",
+                "Linux initrd @",
+                "Boot Linux entry=00100000",
+                "LINUXPROBE",
+            ],
+        )
+        linuxprobe_raw_ok = run_case(
+            "custombios-linuxprobe-raw",
+            [
+                "qemu-system-i386",
+                "-m", "32m",
+                "-bios", str(ROOT / "qemu_flat_test_bios.bin"),
+                "-M", "pc",
+                "-serial", "stdio",
+                "-monitor", "none",
+                "-nographic",
+                "-no-reboot",
+                "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
+                "-drive", f"if=ide,format=raw,file={linuxprobe_raw_img}",
+            ],
+            [
+                "Linux disk start=00000000",
+                "Linux initrd: none",
+                "Boot Linux entry=00100000",
+                "LINUXPROBE",
+            ],
+        )
+        usbmbr_ok = run_case(
+            "custombios-usbmbr",
+            [
+                "qemu-system-i386",
+                "-m", "32m",
+                "-bios", str(ROOT / "qemu_flat_test_bios.bin"),
+                "-M", "pc",
+                "-serial", "stdio",
+                "-monitor", "none",
+                "-nographic",
+                "-no-reboot",
+                "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
+                "-device", "piix4-usb-uhci,id=uhci",
+                "-drive", f"if=none,id=usbmbr,format=raw,file={ROOT / 'usbmbr.img'}",
+                "-device", "usb-storage,drive=usbmbr,bus=uhci.0",
+            ],
+            [
+                "BIOS HDD80 USB",
+                "QEMU boot drive=80",
+                "USBMBR",
+                "TIMEROK",
+                "INT60OK",
+                "E820OK",
+            ],
+        )
+    return 0 if (std_ok and ideboot_ok and linuxprobe_ok and
+                 linuxprobe_raw_ok and usbmbr_ok) else 1
 
 
 if __name__ == "__main__":

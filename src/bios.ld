@@ -3,26 +3,21 @@ ENTRY(postcar_resume)
 
 SECTIONS
 {
-    . = 0x00100000;
-
-    .thunk16 :
-    {
-        *(.thunk16)
-    }
-
-    . = 0x00101000;
+    . = 0x000F0000;
 
     .entry :
     {
         *(.entry)
     }
 
-    . = 0x00101080;
+    . = 0x000F0080;
 
     .qentry :
     {
         *(.qentry)
     }
+
+    . = ALIGN(16);
 
     .text :
     {
@@ -49,6 +44,17 @@ SECTIONS
         *(COMMON)
     }
     __bss_end = .;
+
+    ASSERT(. <= 0x000FE000, "BIOS 32-bit body overlaps FE000 thunk area")
+
+    . = 0x000FE000;
+
+    .thunk16 :
+    {
+        *(.thunk16)
+    }
+
+    ASSERT(. <= 0x00100000, "BIOS image exceeds E0000-FFFFF")
 
     /DISCARD/ :
     {
