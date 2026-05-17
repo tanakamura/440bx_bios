@@ -3,14 +3,14 @@ ENTRY(postcar_resume)
 
 SECTIONS
 {
-    . = 0x000F0000;
+    . = 0x00200000;
 
     .entry :
     {
         *(.entry)
     }
 
-    . = 0x000F0080;
+    . = 0x00200080;
 
     .qentry :
     {
@@ -37,6 +37,11 @@ SECTIONS
         *(.data.*)
     }
 
+    .thunk16 :
+    {
+        *(.thunk16)
+    }
+
     __bss_start = .;
     .bss :
     {
@@ -45,16 +50,7 @@ SECTIONS
     }
     __bss_end = .;
 
-    ASSERT(. <= 0x000FE000, "BIOS 32-bit body overlaps FE000 thunk area")
-
-    . = 0x000FE000;
-
-    .thunk16 :
-    {
-        *(.thunk16)
-    }
-
-    ASSERT(. <= 0x00100000, "BIOS image exceeds E0000-FFFFF")
+    ASSERT(. <= 0x00240000, "stage3 image exceeds high DRAM stage3 window")
 
     /DISCARD/ :
     {

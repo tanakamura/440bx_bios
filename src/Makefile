@@ -200,8 +200,8 @@ start: start.elf
 start.elf: start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o dsdt_blob.o vgabios_blob.o test_elf_blob.o p2b98_xv/stage1/start.ld
 	$(LD) -m elf_i386 -T p2b98_xv/stage1/start.ld -Map start.map -o $@ start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o dsdt_blob.o vgabios_blob.o test_elf_blob.o
 
-bios.elf: bios16.o bios_main.o bios_serial.o bios_pci.o bios_storage.o bios.ld
-	$(LD) -m elf_i386 -T bios.ld -Map bios.map -o $@ bios16.o bios_main.o bios_serial.o bios_pci.o bios_storage.o
+bios.elf: bios16.o bios_main.o bios_serial.o bios_pci.o bios_storage.o legacy_floppy.o bios.ld
+	$(LD) -m elf_i386 -T bios.ld -Map bios.map -o $@ bios16.o bios_main.o bios_serial.o bios_pci.o bios_storage.o legacy_floppy.o
 
 stage2.elf: stage2.o l2_service.o p2b98_xv/stage2/stage2.ld
 	$(LD) -m elf_i386 -T p2b98_xv/stage2/stage2.ld -Map stage2.map -o $@ stage2.o l2_service.o
@@ -260,13 +260,13 @@ l2_service.o: p2b98_xv/stage2/l2_service.c p2b98_xv/stage2/l2_service.h
 qemu_stage2.elf: qemu_stage2.o qemu/stage2/stage2.ld
 	$(LD) -m elf_i386 -T qemu/stage2/stage2.ld -Map qemu_stage2.map -o $@ qemu_stage2.o
 
-bios16.o: bios16.asm post_code.inc
+bios16.o: app/legacy/bios16.asm post_code.inc
 	nasm $(NASMFLAGS) -f elf32 $< -o $@
 
 qemu_start.o: qemu/stage1/qemu_start.asm
 	nasm $(NASMFLAGS) -f elf32 $< -o $@
 
-bios_main.o: bios_main.c post_code.h blob.h bios_io.h bios_nvram.h bios_pci.h bios_serial.h bios_storage.h
+bios_main.o: bios_main.c post_code.h blob.h bios_io.h bios_nvram.h bios_pci.h bios_serial.h bios_storage.h app/legacy/legacy_floppy.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 bios_serial.o: bios_serial.c bios_io.h bios_serial.h
@@ -276,6 +276,9 @@ bios_pci.o: bios_pci.c bios_io.h bios_pci.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 bios_storage.o: bios_storage.c post_code.h bios_io.h bios_pci.h bios_serial.h bios_storage.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+legacy_floppy.o: app/legacy/legacy_floppy.c bios_serial.h app/legacy/legacy_floppy.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 romtest: romtest.asm

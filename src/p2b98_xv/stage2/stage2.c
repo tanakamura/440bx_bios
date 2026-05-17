@@ -163,9 +163,9 @@ static void enable_shadow_ram_and_wb(void) {
     serial_write_string("MTRR shadow C-F WB\r\n");
 }
 
-static void clear_option_rom_shadow_window(void) {
+static void clear_app_shadow_window(void) {
     volatile unsigned int* p = (volatile unsigned int*)0x000c0000u;
-    volatile unsigned int* end = (volatile unsigned int*)0x000f0000u;
+    volatile unsigned int* end = (volatile unsigned int*)0x000fe000u;
 
     while (p < end) {
         *p++ = 0u;
@@ -236,14 +236,14 @@ __attribute__((section(".stage2.entry"), used)) void stage2_entry(
 
     serial_write_string("Stage2 PAM/MTRR...\r\n");
     enable_shadow_ram_and_wb();
-    clear_option_rom_shadow_window();
+    clear_app_shadow_window();
     clear_stage3_window();
     aux[BOOT_AUX_SHADOW_READY] = 1u;
     if (boot_ctx != 0) {
         boot_ctx->flags |= SHARED_BOOT_FLAG_SHADOW_READY;
     }
 
-    serial_write_string("Load stage3 @ 000f0000...\r\n");
+    serial_write_string("Load stage3 @ 00200000...\r\n");
     rc = expand(stage3_blob, (void*)BLOB_STAGE_LINEAR, (void*)BIOS_LOAD_LINEAR,
                 BIOS_LOAD_CAPACITY, &status);
     if (rc != 0) {

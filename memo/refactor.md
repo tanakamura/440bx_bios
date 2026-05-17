@@ -177,6 +177,7 @@ stage2 が使う DSDT などの board 固有 ACPI 入力はここでは別扱い
 移行中の状態:
 
 - legacy profile は optional payload を link せず、必要な test media だけ ROM free area へ後差しする。
+- `app/legacy/bios16.asm` と `app/legacy/legacy_floppy.*` は legacy 側へ移動済み。ただし `bios_rm_service` 本体はまだ `bios_main.c` に残っており、stage3 から直接呼ばれている。
 - selftest profile は現状まだ `test_elf_blob` に依存している。build matrix の「selftest の app 用 payload なし」を実装するには、先に `selftest_app` を stage3 から切り出す必要がある。
 
 ## メモリマップ
@@ -450,6 +451,23 @@ app ABI:
 - INT 15h E820/ACPI
 - INT 16h keyboard
 - INT 1Ah RTC/tick
+
+legacy app 切り出し方針:
+
+- 標準 BIOS との比較は media transport ではなく INT 13h service level で合わせる。標準 BIOS は `-fda testfd.img`、自作 BIOS は `FDS0 in ROM free area` でよい。
+- `FDS0` は custom BIOS に test floppy を渡す transport であり、test floppy の中身は BIOS INT 13h/10h だけを使う。test の期待値は stage3 の log ではなく boot sector が出す `SQ` などの guest-visible 結果に寄せる。
+- legacy app は `bios16.asm` と `bios_rm_service` を持つ。stage3 は legacy app をロードして entry を呼ぶだけにする。
+- storage は `lib/storage` 相当として共有し、legacy app から直接使う。難所は storage driver ではなく、現在 `bios_main.c` に混在している BDA 初期化、INT 10h/11h/12h/13h/15h/16h/1Ah、tick、keyboard、boot drive、`0x7c00` への real-mode jump を legacy app 側へ分離すること。
+- `bios16.asm` の thunk は runtime では `0x000FE000` にコピーして使う。app ELF 内の `bios16_thunk_start` はコピー元であり、`bios16_thunk_runtime_base` とは分けて考える。
+- legacy app は `0x000F0000` に配置する。したがって先に stage3 を `0x00200000` へ移して `0x000F0000-0x000FFFFF` を app slot として空ける。
+
+移行中の残依存:
+
+- `app/legacy/bios16.asm` から呼ぶ `bios_rm_service` はまだ `bios_main.c` 内にある。
+- `install_bios_thunks()` と BDA 初期化はまだ stage3 entry が実行している。最終的には legacy app entry が実行する。
+- INT13 HDD path は `bios_storage` の global state を直接参照する。legacy app 独立後は、legacy app が storage scan するか、shared service table 経由の block device service にする。
+- INT15 E820 は stage3 の memory map helper を直接使う。legacy app へ移すには E820 provider を boot context/service として渡す。
+- RTC/tick/keyboard/serial console は低位 I/O だけで完結するので legacy app 側へ移せるが、現状は `bios_main.c` の static state にまとまっている。
 
 ### linux_loader
 
