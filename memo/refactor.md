@@ -135,6 +135,45 @@ tools/
     xrecv.c
 ```
 
+## build matrix
+
+ROM image は motherboard と app profile の組み合わせで作る。
+
+motherboard:
+
+- `qemu`
+- `p2b98_xv`
+
+app profile:
+
+- `legacy`
+- `selftest`
+- `linux`
+
+したがって作る BIOS binary は 6 種類。
+
+```
+qemu      / legacy
+qemu      / selftest
+qemu      / linux
+p2b98_xv  / legacy
+p2b98_xv  / selftest
+p2b98_xv  / linux
+```
+
+stage2 が使う DSDT などの board 固有 ACPI 入力はここでは別扱いにする。ROM payload area に入れる app 用 blob は以下。
+
+| motherboard | app      | app 用 payload |
+|-------------|----------|----------------|
+| qemu        | legacy   | none。必要なら `test_floppy` |
+| p2b98_xv    | legacy   | none。必要なら `test_floppy` |
+| qemu        | selftest | none |
+| p2b98_xv    | selftest | none |
+| qemu        | linux    | `vgabios` |
+| p2b98_xv    | linux    | `vgabios` |
+
+`test_floppy` は legacy test 用の差し替え可能 payload。通常の legacy ROM には不要。
+
 ## メモリマップ
 
 整理後の目標メモリマップ。
@@ -321,7 +360,7 @@ blob_size
 slot_size
 ```
 
-`id` は `stage2`, `stage3`, `legacy_app`, `linux_loader_app`, `vgabios`, `dsdt`, `test_elf`, `test_floppy` など。`blob_ptr` は BLZ4 blob か app blob を指す。app blob のロードアドレスは app blob 先頭の `load_addr` を使う。
+`id` は `stage2`, `stage3`, `legacy_app`, `linux_loader_app`, `selftest_app`, `vgabios`, `dsdt`, `test_floppy` など。`blob_ptr` は BLZ4 blob か app blob を指す。app blob のロードアドレスは app blob 先頭の `load_addr` を使う。
 
 `slot_size` は ROM 上でその payload に予約した最大サイズ。テスト時は `blob_size <= slot_size` の範囲で payload を書き換えてよい。BLZ4 内に CRC があるので、directory 側に payload CRC は持たせない。directory 自体には header checksum を持たせる。
 
@@ -334,8 +373,8 @@ legacy BIOS service のテスト用に `test_floppy` payload を予約する。
 - test runner は ROM file の `test_floppy` slot だけを書き換え、directory の `blob_size` と header checksum を更新する。
 - stage3/legacy は `test_floppy` payload があれば、展開して INT 13h の floppy image として使う。
 - 小さい regression floppy は通常 ROM の空き slot に入れる。
-- `vgabios` や `test_elf` は legacy app に含まれているわけではない。同じ ROM payload area に並ぶ別 payload。
-- FreeDOS など大きい floppy image を使う場合は、`legacy-test` ROM profile で通常は不要な payload を ROM image から省き、その空いた payload area を `test_floppy` slot に割り当てる。
+- `vgabios` や `selftest_app` は legacy app に含まれているわけではない。同じ ROM payload area に並ぶ別 payload。
+- FreeDOS など大きい floppy image を使う場合は、legacy ROM に `test_floppy` slot を大きく取り、そこへ差し替える。
 
 ## app blob format
 
@@ -471,8 +510,10 @@ payload blob の場所は boot context ではなく、shared service table の `
 - `src/qemu_stage2.bin`: QEMU stage2
 - `src/stage3.bin`: high DRAM stage3
 - `src/legacy_app.bin`: legacy app
+- `src/selftest_app.bin`: selftest app
 - `src/linux_loader_app.bin`: Linux loader app
-- `src/test_elf_blob.bin`: selftest blob
+- `src/vgabios_blob.bin`: Linux profile 用 VGA BIOS payload
+- `src/test_floppy_blob.bin`: legacy test 用差し替え payload
 
 内部名は整理後に変更してよいが、外部から使う `make -C src start qemu_bios.bin test` は壊さない。互換のため、移行中は `bios.bin` を `stage3.bin` の alias として残してよい。
 
