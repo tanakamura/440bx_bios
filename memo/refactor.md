@@ -334,7 +334,8 @@ legacy BIOS service のテスト用に `test_floppy` payload を予約する。
 - test runner は ROM file の `test_floppy` slot だけを書き換え、directory の `blob_size` と header checksum を更新する。
 - stage3/legacy は `test_floppy` payload があれば、展開して INT 13h の floppy image として使う。
 - 小さい regression floppy は通常 ROM の空き slot に入れる。
-- FreeDOS など大きい floppy image を使う場合は、`legacy-test` ROM profile で `vgabios` や `test_elf` を外して `test_floppy` slot を大きく取る。
+- `vgabios` や `test_elf` は legacy app に含まれているわけではない。同じ ROM payload area に並ぶ別 payload。
+- FreeDOS など大きい floppy image を使う場合は、`legacy-test` ROM profile で通常は不要な payload を ROM image から省き、その空いた payload area を `test_floppy` slot に割り当てる。
 
 ## app blob format
 
