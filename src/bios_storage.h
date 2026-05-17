@@ -1,0 +1,25 @@
+#ifndef BIOS_STORAGE_H
+#define BIOS_STORAGE_H
+
+struct bios_hdd_geometry {
+    unsigned int total_sectors;
+    unsigned short cylinders;
+    unsigned short heads;
+    unsigned short sectors_per_track;
+};
+
+#define BIOS_HDD_KIND_NONE 0u
+#define BIOS_HDD_KIND_IDE 1u
+#define BIOS_HDD_KIND_USB 2u
+
+void storage_scan(unsigned int total_bytes);
+void storage_set_scratch_base(unsigned int base);
+unsigned char bios_hdd_is_present(void);
+unsigned char bios_hdd_current_kind(void);
+unsigned char bios_hdd_select_kind(unsigned char kind);
+void bios_hdd_get_geometry(struct bios_hdd_geometry* geometry);
+int bios_hdd_read_sectors(unsigned int lba, unsigned int count,
+                          unsigned int dest);
+int bios_hdd_load_mbr_boot_sector(unsigned int dest);
+
+#endif
