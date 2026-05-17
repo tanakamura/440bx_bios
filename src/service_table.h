@@ -32,6 +32,7 @@ struct shared_payload_entry {
     unsigned int flags;
     unsigned int blob_ptr;
     unsigned int blob_size;
+    unsigned int slot_size;
 };
 
 struct shared_payload_manifest {

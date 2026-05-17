@@ -159,6 +159,16 @@ high alias  0xFFFC0000-0xFFFFFFFF
 reset       0xFFFFFFF0
 ```
 
+ROM file offset / low alias:
+
+```
+0x00000-0x01fff  0x000c0000-0x000c1fff  ROM header + payload directory
+0x02000-0x3bfff  0x000c2000-0x000fbfff  payload area
+0x3c000-0x3ffff  0x000fc000-0x000fffff  stage1 reset/bootblock
+```
+
+stage1 は ROM header の payload directory を読み、shared service table 上の payload manifest を作る。stage2 以降は ROM linker symbol を直接参照しない。
+
 stage1 は reset vector から始まり、DRAM 初期化前は RAM/stack/call/push/pop 禁止を維持する。DRAM 初期化後に CAR から DRAM stack へ移り、shared service を DRAM 末尾へ設置し、stage2 を DRAM に展開する。
 
 ## stage lifetime
@@ -289,7 +299,7 @@ panic
 
 ## payload manifest
 
-stage1 は ROM 内 payload の linker symbol を使って payload manifest を作る。stage2 以降は ROM linker symbol を直接参照せず、payload manifest 経由で payload を探す。
+build 時は linker が ROM header + payload directory を作る。stage1 は ROM header の payload directory を読み、DRAM 上の shared service table へ payload manifest としてコピーする。stage2 以降は ROM linker symbol を直接参照せず、payload manifest 経由で payload を探す。
 
 最低限:
 
@@ -308,9 +318,23 @@ type
 flags
 blob_ptr
 blob_size
+slot_size
 ```
 
-`id` は `stage2`, `stage3`, `legacy_app`, `linux_loader_app`, `vgabios`, `dsdt`, `test_elf` など。`blob_ptr` は BLZ4 blob か app blob を指す。app blob のロードアドレスは app blob 先頭の `load_addr` を使う。
+`id` は `stage2`, `stage3`, `legacy_app`, `linux_loader_app`, `vgabios`, `dsdt`, `test_elf`, `test_floppy` など。`blob_ptr` は BLZ4 blob か app blob を指す。app blob のロードアドレスは app blob 先頭の `load_addr` を使う。
+
+`slot_size` は ROM 上でその payload に予約した最大サイズ。テスト時は `blob_size <= slot_size` の範囲で payload を書き換えてよい。BLZ4 内に CRC があるので、directory 側に payload CRC は持たせない。directory 自体には header checksum を持たせる。
+
+### legacy test media
+
+legacy BIOS service のテスト用に `test_floppy` payload を予約する。
+
+- `test_floppy` は BLZ4 blob として持つ。
+- `test_floppy` は ROM 上の固定 slot に置く。
+- test runner は ROM file の `test_floppy` slot だけを書き換え、directory の `blob_size` と header checksum を更新する。
+- stage3/legacy は `test_floppy` payload があれば、展開して INT 13h の floppy image として使う。
+- 小さい regression floppy は通常 ROM の空き slot に入れる。
+- FreeDOS など大きい floppy image を使う場合は、`legacy-test` ROM profile で `vgabios` や `test_elf` を外して `test_floppy` slot を大きく取る。
 
 ## app blob format
 

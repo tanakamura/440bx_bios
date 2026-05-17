@@ -580,6 +580,7 @@ static void payload_add(struct shared_payload_manifest* manifest,
     entry->flags = flags;
     entry->blob_ptr = (unsigned int)start;
     entry->blob_size = (unsigned int)(end - start);
+    entry->slot_size = entry->blob_size;
 }
 
 static void install_shared_service_table(unsigned int total_bytes,

@@ -220,13 +220,13 @@ qemu_flat_test_start.elf: qemu_start.o blob_service.o qemu_stage2_blob.o bios_bl
 start_asm.o: p2b98_xv/stage1/start.asm post_code.inc
 	nasm $(NASMFLAGS) -f elf32 $< -o $@
 
-bootblock.o: p2b98_xv/stage1/bootblock.c post_code.h blob.h bios_nvram.h
+bootblock.o: p2b98_xv/stage1/bootblock.c post_code.h blob.h service_table.h bios_nvram.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-stage2.o: p2b98_xv/stage2/stage2.c blob.h p2b98_xv/stage2/l2_service.h
+stage2.o: p2b98_xv/stage2/stage2.c blob.h service_table.h p2b98_xv/stage2/l2_service.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-qemu_stage2.o: qemu/stage2/stage2.c blob.h
+qemu_stage2.o: qemu/stage2/stage2.c blob.h service_table.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 blob_service.o: blob_service.c blob.h
