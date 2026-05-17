@@ -65,6 +65,11 @@ SECTIONS
         __blob_service_end = .;
     }
 
+    . = ALIGN(16);
+    __rom_free_first = .;
+    __rom_free_end = 0x000FC000;
+    ASSERT(__rom_free_first <= __rom_free_end, "ROM payloads overlap free area")
+
     . = 0x000FC000;
 
     .startdata :
@@ -121,6 +126,16 @@ SECTIONS
     .reset :
     {
         *(.reset)
+    }
+
+    ASSERT(. <= 0x000FFFF8, "reset vector overlaps ROM free descriptor")
+
+    . = 0x000FFFF8;
+
+    .rom_free_descriptor :
+    {
+        LONG(__rom_free_first + 0xFFF00000)
+        LONG(__rom_free_end + 0xFFF00000)
     }
 
     /DISCARD/ :

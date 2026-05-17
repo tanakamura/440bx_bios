@@ -78,6 +78,9 @@ static unsigned short bios_tick_last_raw = 0;
 static unsigned int bios_tick_subcount = 0;
 static unsigned char bios_timer_irq_enabled = 0;
 static unsigned char bios_boot_drive = 0x80u;
+static unsigned int bios_test_floppy_rom_linear = 0;
+static unsigned int bios_test_floppy_sectors = 0;
+static unsigned short bios_test_floppy_runs = 0;
 
 #define BIOS_MTRR_SAVE_MAX 8u
 struct bios_mtrr_saved_state {
@@ -90,6 +93,7 @@ struct bios_mtrr_saved_state {
 static struct bios_mtrr_saved_state bios_memtest_mtrr_saved;
 
 static unsigned int tsc_low(void);
+static int test_floppy_present(void);
 
 static void zero_bss(void) {
     unsigned char* p = __bss_start;
@@ -1492,7 +1496,8 @@ static void install_bios_thunks(void) {
         dpt[i] = floppy_dpt[i];
     }
     serialize_instruction_stream();
-    *(volatile unsigned short*)0x0410u = 0x0000u;
+    *(volatile unsigned short*)0x0410u =
+        test_floppy_present() ? 0x0001u : 0x0000u;
     *(volatile unsigned short*)0x0413u = bios_dos_base_mem_kb;
     *(volatile unsigned short*)0x040eu = bios_ebda_segment;
     bios_kbd_init();
@@ -1574,6 +1579,14 @@ struct rm_edd_params {
 #define BIOS_MEMTEST_START 0x00100000u
 #define BIOS_MEMTEST_MARK_STEP 0x00100000u
 #define BLOB_SERVICE_RESERVED_SIZE 0x00001000u
+#define ROM_FREE_DESCRIPTOR_LINEAR 0xfffffff8u
+#define TEST_FLOPPY_MAGIC 0x30445346u
+#define TEST_FLOPPY_HEADER_SIZE 32u
+#define TEST_FLOPPY_RUN_SIZE 8u
+#define TEST_FLOPPY_SECTOR_SIZE 512u
+#define TEST_FLOPPY_SPT 18u
+#define TEST_FLOPPY_HEADS 2u
+#define TEST_FLOPPY_MAX_SECTORS 2880u
 #define E820_TYPE_USABLE 1u
 #define E820_TYPE_RESERVED 2u
 #define E820_SMAP 0x534d4150u
@@ -1589,6 +1602,164 @@ static void rm_set_cf(struct rm_int13_frame* f) { f->flags |= 0x0001u; }
 
 static void rm_clear_cf(struct rm_int13_frame* f) { f->flags &= 0xfffeu; }
 
+static unsigned char bios_rom_u8(unsigned int linear) {
+    return *(volatile unsigned char*)linear;
+}
+
+static unsigned short bios_rom_u16(unsigned int linear) {
+    return (unsigned short)((unsigned short)bios_rom_u8(linear) |
+                            ((unsigned short)bios_rom_u8(linear + 1u) << 8));
+}
+
+static unsigned int bios_rom_u32(unsigned int linear) {
+    return (unsigned int)bios_rom_u16(linear) |
+           ((unsigned int)bios_rom_u16(linear + 2u) << 16);
+}
+
+static int test_floppy_range_valid(unsigned int base, unsigned int end,
+                                   unsigned int off, unsigned int len) {
+    unsigned int size = end - base;
+
+    if (off > size || len > size - off) {
+        return 0;
+    }
+    return 1;
+}
+
+static void test_floppy_probe(void) {
+    unsigned int base = bios_rom_u32(ROM_FREE_DESCRIPTOR_LINEAR);
+    unsigned int end = bios_rom_u32(ROM_FREE_DESCRIPTOR_LINEAR + 4u);
+    unsigned int free_size;
+    unsigned int crc_block;
+    unsigned int crc_count;
+    unsigned int crc_table_off;
+    unsigned int data_off;
+    unsigned int i;
+
+    bios_test_floppy_rom_linear = 0;
+    bios_test_floppy_sectors = 0;
+    bios_test_floppy_runs = 0;
+
+    if (base >= end || end > ROM_FREE_DESCRIPTOR_LINEAR ||
+        base < 0xfff00000u || bios_rom_u32(base) != TEST_FLOPPY_MAGIC) {
+        return;
+    }
+
+    free_size = end - base;
+    bios_test_floppy_runs = bios_rom_u16(base + 4u);
+    bios_test_floppy_sectors = bios_rom_u32(base + 8u);
+    crc_block = bios_rom_u32(base + 12u);
+    crc_count = bios_rom_u32(base + 16u);
+    crc_table_off = bios_rom_u32(base + 20u);
+    data_off = bios_rom_u32(base + 24u);
+
+    if (bios_test_floppy_runs > 1024u ||
+        bios_test_floppy_sectors < TEST_FLOPPY_HEADS * TEST_FLOPPY_SPT ||
+        bios_test_floppy_sectors > TEST_FLOPPY_MAX_SECTORS ||
+        crc_block == 0u ||
+        !test_floppy_range_valid(base, end, 0u, TEST_FLOPPY_HEADER_SIZE) ||
+        !test_floppy_range_valid(base, end, TEST_FLOPPY_HEADER_SIZE,
+                                 (unsigned int)bios_test_floppy_runs *
+                                     TEST_FLOPPY_RUN_SIZE) ||
+        !test_floppy_range_valid(base, end, crc_table_off, crc_count * 4u) ||
+        data_off > free_size) {
+        bios_test_floppy_runs = 0;
+        bios_test_floppy_sectors = 0;
+        return;
+    }
+
+    for (i = 0; i < bios_test_floppy_runs; ++i) {
+        unsigned int run = base + TEST_FLOPPY_HEADER_SIZE +
+                           i * TEST_FLOPPY_RUN_SIZE;
+        unsigned int lba = bios_rom_u16(run);
+        unsigned int count = bios_rom_u16(run + 2u);
+        unsigned int payload_off = bios_rom_u32(run + 4u);
+        unsigned int payload_len = count * TEST_FLOPPY_SECTOR_SIZE;
+
+        if (count == 0u || lba > bios_test_floppy_sectors ||
+            count > bios_test_floppy_sectors - lba ||
+            payload_off < data_off ||
+            !test_floppy_range_valid(base, end, payload_off, payload_len)) {
+            bios_test_floppy_runs = 0;
+            bios_test_floppy_sectors = 0;
+            return;
+        }
+    }
+
+    bios_test_floppy_rom_linear = base;
+    serial_write_string("Test floppy @ ");
+    serial_write_hex32(base);
+    serial_write_string("-");
+    serial_write_hex32(end);
+    serial_write_string(" sectors=");
+    serial_write_u32(bios_test_floppy_sectors);
+    serial_write_string(" runs=");
+    serial_write_u32(bios_test_floppy_runs);
+    serial_write_string("\r\n");
+}
+
+static int test_floppy_present(void) {
+    return bios_test_floppy_rom_linear != 0u;
+}
+
+static int test_floppy_copy_sector(unsigned int lba, unsigned int dest) {
+    unsigned int i;
+    unsigned int n;
+
+    for (n = 0; n < TEST_FLOPPY_SECTOR_SIZE; ++n) {
+        *(volatile unsigned char*)(dest + n) = 0u;
+    }
+
+    for (i = 0; i < bios_test_floppy_runs; ++i) {
+        unsigned int run = bios_test_floppy_rom_linear + TEST_FLOPPY_HEADER_SIZE +
+                           i * TEST_FLOPPY_RUN_SIZE;
+        unsigned int run_lba = bios_rom_u16(run);
+        unsigned int count = bios_rom_u16(run + 2u);
+        unsigned int payload_off = bios_rom_u32(run + 4u);
+        unsigned int src;
+
+        if (lba < run_lba || lba >= run_lba + count) {
+            continue;
+        }
+        src = bios_test_floppy_rom_linear + payload_off +
+              (lba - run_lba) * TEST_FLOPPY_SECTOR_SIZE;
+        for (n = 0; n < TEST_FLOPPY_SECTOR_SIZE; ++n) {
+            *(volatile unsigned char*)(dest + n) = bios_rom_u8(src + n);
+        }
+        return 0;
+    }
+    return 0;
+}
+
+static int test_floppy_read_sectors(unsigned int lba, unsigned int count,
+                                    unsigned int dest) {
+    unsigned int i;
+
+    if (!test_floppy_present() || count == 0u ||
+        lba > bios_test_floppy_sectors ||
+        count > bios_test_floppy_sectors - lba) {
+        return -1;
+    }
+    for (i = 0; i < count; ++i) {
+        if (test_floppy_copy_sector(
+                lba + i, dest + i * TEST_FLOPPY_SECTOR_SIZE) != 0) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static int prepare_boot_sector_test_floppy(void) {
+    if (!test_floppy_present() ||
+        test_floppy_read_sectors(0u, 1u, BOOT_SECTOR_LINEAR) != 0 ||
+        *(volatile unsigned short*)(BOOT_SECTOR_LINEAR + 510u) != 0xaa55u) {
+        return -1;
+    }
+    bios_boot_drive = 0x00u;
+    serial_write_string("Booting test floppy\r\n");
+    return 0;
+}
+
 static int prepare_boot_sector_current(void) {
     if (bios_hdd_load_mbr_boot_sector(BOOT_SECTOR_LINEAR) == 0) {
         bios_boot_drive = 0x80u;
@@ -1599,6 +1770,9 @@ static int prepare_boot_sector_current(void) {
 }
 
 static void prepare_boot_sector(void) {
+    if (prepare_boot_sector_test_floppy() == 0) {
+        return;
+    }
     if (bios_boot_priority == BIOS_NVRAM_BOOT_PRIORITY_IDE) {
         if (bios_hdd_select_kind(BIOS_HDD_KIND_IDE) != 0u &&
             prepare_boot_sector_current() == 0) {
@@ -3247,6 +3421,94 @@ static void bios_int15_e820(struct rm_int13_frame* f) {
     rm_clear_cf(f);
 }
 
+static void bios_int13_floppy_params(struct rm_int13_frame* f) {
+    unsigned int max_cyl =
+        (bios_test_floppy_sectors /
+         (TEST_FLOPPY_HEADS * TEST_FLOPPY_SPT)) -
+        1u;
+    unsigned int dpt_linear = bios_floppy_dpt_linear;
+
+    if (max_cyl > 79u) {
+        max_cyl = 79u;
+    }
+    f->ax = 0u;
+    f->bx = (unsigned short)((f->bx & 0xff00u) | 0x04u);
+    f->cx = (unsigned short)(((max_cyl & 0xffu) << 8) | TEST_FLOPPY_SPT |
+                             ((max_cyl >> 2) & 0xc0u));
+    f->dx = (unsigned short)(((TEST_FLOPPY_HEADS - 1u) << 8) | 0x01u);
+    f->es = (unsigned short)(dpt_linear >> 4);
+    f->di = (unsigned short)(dpt_linear & 0x0fu);
+    rm_clear_cf(f);
+}
+
+static void bios_int13_floppy_chs_read(struct rm_int13_frame* f) {
+    unsigned int count = (unsigned char)f->ax;
+    unsigned int cylinder =
+        ((unsigned int)(f->cx >> 8) | (((unsigned int)f->cx & 0x00c0u) << 2));
+    unsigned int sector = (unsigned int)(f->cx & 0x003fu);
+    unsigned int head = (unsigned int)(f->dx >> 8);
+    unsigned int lba;
+    unsigned int dest;
+
+    if (sector == 0u || sector > TEST_FLOPPY_SPT || count == 0u ||
+        head >= TEST_FLOPPY_HEADS) {
+        f->ax = 0x0100u;
+        rm_set_cf(f);
+        return;
+    }
+
+    lba = ((cylinder * TEST_FLOPPY_HEADS) + head) * TEST_FLOPPY_SPT +
+          sector - 1u;
+    dest = rm_seg_off_to_linear(f->es, f->bx);
+    if (test_floppy_read_sectors(lba, count, dest) != 0) {
+        f->ax = 0x0100u;
+        rm_set_cf(f);
+        return;
+    }
+    f->ax = (unsigned short)count;
+    rm_clear_cf(f);
+}
+
+static void bios_int13_floppy_service(struct rm_int13_frame* f) {
+    unsigned char ah = (unsigned char)(f->ax >> 8);
+
+    if (!test_floppy_present() || (unsigned char)f->dx != 0u) {
+        f->ax = 0x0100u;
+        rm_set_cf(f);
+        return;
+    }
+
+    switch (ah) {
+        case 0x00u:
+            f->ax &= 0x00ffu;
+            rm_clear_cf(f);
+            return;
+        case 0x02u:
+            bios_int13_floppy_chs_read(f);
+            return;
+        case 0x03u:
+            f->ax = 0x0300u;
+            rm_set_cf(f);
+            return;
+        case 0x04u:
+        case 0x16u:
+            f->ax &= 0x00ffu;
+            rm_clear_cf(f);
+            return;
+        case 0x08u:
+            bios_int13_floppy_params(f);
+            return;
+        case 0x15u:
+            f->ax = (unsigned short)((0x02u << 8) | (f->ax & 0x00ffu));
+            rm_clear_cf(f);
+            return;
+        default:
+            f->ax = 0x0100u;
+            rm_set_cf(f);
+            return;
+    }
+}
+
 static void bios_int13_hdd_params(struct rm_int13_frame* f) {
     struct bios_hdd_geometry geometry;
     unsigned int max_cyl;
@@ -3416,8 +3678,7 @@ static void bios_int13_service(struct rm_int13_frame* f) {
         return;
     }
 
-    f->ax = 0x0100u;
-    rm_set_cf(f);
+    bios_int13_floppy_service(f);
 }
 
 void bios_rm_service(unsigned int vector, struct rm_int13_frame* f) {
@@ -3456,7 +3717,7 @@ void bios_rm_service(unsigned int vector, struct rm_int13_frame* f) {
             }
             return;
         case 0x11:
-            f->ax = 0x0000u;
+            f->ax = *(volatile unsigned short*)0x0410u;
             return;
         case 0x12:
             f->ax = bios_dos_base_mem_kb;
@@ -3781,6 +4042,7 @@ void postcar_resume(unsigned int total_bytes, unsigned int aux_blob_linear) {
     bios_qemu_mode = 0u;
     storage_set_scratch_base(bios_top_reserved_base());
     nvram_load_settings();
+    test_floppy_probe();
     outb(0x80, POST_DRAM_STACK);
     serial_write_string("BIOS.elf @ 000f0000\r\n");
     serial_write_string("post-CAR ok\r\n");
@@ -3856,6 +4118,7 @@ void bios32_qemu_entry(unsigned int total_bytes, unsigned int aux_blob_linear) {
     bios_qemu_mode = 1u;
     storage_set_scratch_base(bios_top_reserved_base());
     nvram_load_settings();
+    test_floppy_probe();
     serial_write_string("QEMU BIOS.elf @ 000f0000\r\n");
     serial_write_string("QEMU stack @ ");
     serial_write_hex32((unsigned int)&stack_cookie);

@@ -22,17 +22,23 @@ def main() -> int:
             0xB9, 0x02, 0x00,        # mov cx,0002
             0x31, 0xD2,              # xor dx,dx
             0xCD, 0x13,              # int 13
-            0x72, 0x0F,              # jc fail
+            0x72, 0x16,              # jc fail
             0xB0, 0x53,              # mov al,'S'
             0xB4, 0x0E,              # mov ah,0e
             0xCD, 0x10,              # int 10
             0xA0, 0x00, 0x80,        # mov al,[8000]
             0xB4, 0x0E,              # mov ah,0e
             0xCD, 0x10,              # int 10
+            0xBA, 0xF4, 0x00,        # mov dx,00f4
+            0xB8, 0x2A, 0x00,        # mov ax,002a
+            0xEF,                    # out dx,ax
             0xEB, 0xFE,              # jmp $
             0xB0, 0x21,              # mov al,'!'
             0xB4, 0x0E,              # mov ah,0e
             0xCD, 0x10,              # int 10
+            0xBA, 0xF4, 0x00,        # mov dx,00f4
+            0xB8, 0x2B, 0x00,        # mov ax,002b
+            0xEF,                    # out dx,ax
             0xEB, 0xFE,              # jmp $
         ]
     )

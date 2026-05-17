@@ -160,8 +160,29 @@ def main() -> int:
                 "E820OK",
             ],
         )
+        legacy_floppy_ok = run_case(
+            "custombios-legacy-floppy",
+            [
+                "qemu-system-i386",
+                "-m", "32m",
+                "-bios", str(ROOT / "qemu_legacy_test_bios.bin"),
+                "-M", "pc",
+                "-serial", "stdio",
+                "-monitor", "none",
+                "-nographic",
+                "-no-reboot",
+                "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
+            ],
+            [
+                "Test floppy @",
+                "Booting test floppy",
+                "QEMU boot drive=00",
+                "SQ",
+            ],
+        )
     return 0 if (std_ok and ideboot_ok and linuxprobe_ok and
-                 linuxprobe_raw_ok and usbmbr_ok) else 1
+                 linuxprobe_raw_ok and usbmbr_ok and
+                 legacy_floppy_ok) else 1
 
 
 if __name__ == "__main__":

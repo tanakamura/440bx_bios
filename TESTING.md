@@ -99,6 +99,8 @@ ROM には `src/s3test.c` から作る ELF test blob を入れる。
 - QEMU で再現できる問題は、先に `make test` を通してから実機へ持っていく
 - 実機専用の問題でも、QEMU で見える範囲の退行が無いことを先に確認する
 - 自作 BIOS の QEMU テストは RAM floppy に依存しない。必要な boot media は IDE/USB disk として付ける
+- legacy floppy boot の差し替え確認は `make -C src test` に含める。単体では `make -C src qemu_legacy_test_bios.bin` で image を作る。この target は ROM 末尾の free descriptor を読んで `test_floppy_blob.bin` (`FDS0` sparse floppy) を `rom_free_first` に埋める
+- `qemu_legacy_test_bios.bin` を `-bios` に指定して disk なしで起動すると、内蔵 test floppy の boot sector が `SQ` を出す。これは boot sector が sector 1 を INT 13h で読めたことを示す
 
 ## 現在のギャップ
 

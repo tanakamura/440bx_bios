@@ -158,6 +158,9 @@ testfd_sparse.o: testfd_sparse.bin
 		--rename-section .data=.testfd,alloc,load,readonly,data,contents \
 		$< $@
 
+test_floppy_blob.bin: testfd.img gen_fdos_sparse.py
+	python3 gen_fdos_sparse.py testfd.img test_floppy_blob.bin
+
 bios.bin: bios.elf
 	$(OBJCOPY) -O binary $< $@
 
@@ -210,12 +213,31 @@ qemu_bios.bin: qemu_start.elf
 qemu_start.elf: qemu_start.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o qemu/stage1/qemu.ld
 	$(LD) -m elf_i386 -T qemu/stage1/qemu.ld -Map qemu.map -o $@ qemu_start.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o
 
+qemu_legacy_bios.bin: qemu_legacy_start.elf
+	$(OBJCOPY) -O binary $< $@
+	truncate -s 262144 $@
+
+qemu_legacy_start.elf: qemu_start.o blob_service.o qemu_stage2_blob.o bios_blob.o qemu/stage1/qemu.ld
+	$(LD) -m elf_i386 -T qemu/stage1/qemu.ld -Map qemu_legacy.map -o $@ qemu_start.o blob_service.o qemu_stage2_blob.o bios_blob.o
+
 qemu_flat_test_bios.bin: qemu_flat_test_start.elf
 	$(OBJCOPY) -O binary $< $@
 	truncate -s 262144 $@
 
 qemu_flat_test_start.elf: qemu_start.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o qemu/stage1/qemu.ld
 	$(LD) -m elf_i386 -T qemu/stage1/qemu.ld -Map qemu_flat_test.map -o $@ qemu_start.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o
+
+qemu_legacy_test_bios.bin: qemu_legacy_bios.bin test_floppy_blob.bin patch_rom_free.py
+	cp qemu_legacy_bios.bin $@
+	python3 patch_rom_free.py $@ test_floppy_blob.bin
+
+start_legacy: start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o p2b98_xv/stage1/start.ld
+	$(LD) -m elf_i386 -T p2b98_xv/stage1/start.ld -Map start_legacy.map -o start_legacy.elf start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o
+	$(OBJCOPY) -O binary --pad-to 0x100000 --gap-fill 0x90 start_legacy.elf $@
+
+start_legacy_test: start_legacy test_floppy_blob.bin patch_rom_free.py
+	cp start_legacy $@
+	python3 patch_rom_free.py $@ test_floppy_blob.bin
 
 start_asm.o: p2b98_xv/stage1/start.asm post_code.inc
 	nasm $(NASMFLAGS) -f elf32 $< -o $@
@@ -259,10 +281,10 @@ bios_storage.o: bios_storage.c post_code.h bios_io.h bios_pci.h bios_serial.h bi
 romtest: romtest.asm
 	nasm -f bin $< -o $@
 
-test: stdtest.img usbmbr.img linuxprobe.img linuxprobe_raw.img qemu_flat_test_bios.bin
+test: stdtest.img usbmbr.img linuxprobe.img linuxprobe_raw.img qemu_flat_test_bios.bin qemu_legacy_test_bios.bin
 	python3 run_qemu_tests.py
 
 clean:
-	rm -f start start.elf linuxprobe.elf *.map *.o *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc
+	rm -f start start_legacy start_legacy_test start.elf start_legacy.elf linuxprobe.elf *.map *.o *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc
 
 install-all: install-xrecv-exe install-mem-dmp-exe install-flashutil-exe

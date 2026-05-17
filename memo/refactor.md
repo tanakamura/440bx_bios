@@ -174,6 +174,11 @@ stage2 が使う DSDT などの board 固有 ACPI 入力はここでは別扱い
 
 `test_floppy` は legacy test 用の差し替え可能 payload。通常の legacy ROM には不要。
 
+移行中の状態:
+
+- legacy profile は optional payload を link せず、必要な test media だけ ROM free area へ後差しする。
+- selftest profile は現状まだ `test_elf_blob` に依存している。build matrix の「selftest の app 用 payload なし」を実装するには、先に `selftest_app` を stage3 から切り出す必要がある。
+
 ## メモリマップ
 
 整理後の目標メモリマップ。
@@ -368,10 +373,13 @@ slot_size
 
 legacy BIOS service のテスト用に `test_floppy` payload を予約する。
 
-- `test_floppy` は BLZ4 blob として持つ。
-- `test_floppy` は ROM 上の固定 slot に置く。
-- test runner は ROM file の `test_floppy` slot だけを書き換え、directory の `blob_size` と header checksum を更新する。
-- stage3/legacy は `test_floppy` payload があれば、展開して INT 13h の floppy image として使う。
+- ROM 末尾 `0xfffffff8-0xffffffff` の 8 byte に `rom_free_first`, `rom_free_end` を置く。
+- `rom_free_first/end` は CPU から見える top-alias linear address で持つ。
+- `test_floppy` は `rom_free_first` に差し込む。
+- `test_floppy` は `FDS0` sparse floppy format とする。先頭 magic が `FDS0` なら有効。
+- stage3/legacy は `rom_free_first` の `FDS0` magic を見つけたら、INT 13h floppy image として起動する。
+- floppy image は RAM に全展開しない。INT 13h read のたびに `FDS0` run table を見て ROM から sector 単位で読む。run にない sector は zero-fill。
+- test runner や手動差し替えツールは ROM 末尾 descriptor を読んで、`blob_size <= rom_free_end - rom_free_first` の範囲で `test_floppy` だけを書き換える。
 - 小さい regression floppy は通常 ROM の空き slot に入れる。
 - `vgabios` や `selftest_app` は legacy app に含まれているわけではない。同じ ROM payload area に並ぶ別 payload。
 - FreeDOS など大きい floppy image を使う場合は、legacy ROM に `test_floppy` slot を大きく取り、そこへ差し替える。
