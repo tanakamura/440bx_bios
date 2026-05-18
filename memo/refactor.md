@@ -178,7 +178,7 @@ stage2 が使う DSDT などの board 固有 ACPI 入力はここでは別扱い
 
 - legacy profile は optional payload を link せず、必要な test media だけ ROM free area へ後差しする。
 - `app/legacy/bios16.asm` と legacy service の一部は `app/legacy/` へ移動済み。現状は `legacy_floppy`, BDA 初期化, INT 10h/11h/12h/13h/15h/16h/17h/1Ah/60h が legacy 側 module になっている。
-- `bios_rm_service` はまだ `bios_main.c` に残る dispatcher で、stage3 から直接呼ばれている。legacy app を完全独立させるには dispatcher と thunk install も legacy app entry 側へ移す。
+- `bios_rm_service` dispatcher と thunk/IVT/DPT 設置は `app/legacy/` へ移動済み。現状は同一 ELF に link し、stage3 が `legacy_service_init()` で context を渡している。
 - E820/memory map は `bios_memory.*`、RTC は `bios_rtc.*` へ分離済み。ただし shared service table 経由ではなく、まだ同一 ELF に直接 link している。
 - selftest profile は現状まだ `test_elf_blob` に依存している。build matrix の「selftest の app 用 payload なし」を実装するには、先に `selftest_app` を stage3 から切り出す必要がある。
 
@@ -465,9 +465,9 @@ legacy app 切り出し方針:
 
 移行中の残依存:
 
-- `app/legacy/bios16.asm` から呼ぶ `bios_rm_service` はまだ `bios_main.c` 内にある。
-- `bios_rm_service` の dispatcher は main に残る。INT 10h/11h/12h/13h/15h/16h/17h/1Ah/60h は legacy module へ委譲済みだが、INT 19h boot path はまだ main 側に残っている。
-- `install_bios_thunks()` と PIT/tick 初期化はまだ stage3 entry が実行している。BDA 初期化の中身は `legacy_bda_init()` へ移動済み。最終的には legacy app entry が thunk/BDA/PIT をまとめて設置する。
+- `app/legacy/bios16.asm` から呼ぶ `bios_rm_service` は `app/legacy/legacy_service.c` 側に移動済み。ただし同一 ELF 内 symbol 参照であり、app blob として独立 link しているわけではない。
+- thunk/IVT/DPT 設置は `legacy_thunk.*` に移動済み。stage3 はまだ `install_bios_shadow` callback と PIT/tick 初期化 callback を渡している。
+- INT19 boot sector 選択は `legacy_boot.*` に移動済み。ただし FreeDOS へ落ちる protected-mode-to-real-mode jump は `bios16.asm` の `bios_boot_freedos_pm32` symbol を同一 ELF 参照している。
 - INT13 HDD path は `bios_storage` の global state を直接参照する。legacy app 独立後は、legacy app が storage scan するか、shared service table 経由の block device service にする。
 - INT15 E820 は `bios_memory.*` へ分離済み。ただし legacy app 独立後は E820 provider を boot context/service として渡す必要がある。
 - RTC read/write は `bios_rtc.*`、INT 1Ah 本体は `legacy_time.*` へ分離済み。tick counter の更新元と PIT interrupt setup はまだ main 側 state に依存している。

@@ -6,42 +6,19 @@
 #include "bios_serial.h"
 #include "bios_storage.h"
 #include "blob.h"
-#include "app/legacy/legacy_bda.h"
-#include "app/legacy/legacy_debug.h"
+#include "app/legacy/legacy_boot.h"
 #include "app/legacy/legacy_floppy.h"
-#include "app/legacy/legacy_int13.h"
-#include "app/legacy/legacy_int15.h"
-#include "app/legacy/legacy_keyboard.h"
-#include "app/legacy/legacy_misc.h"
-#include "app/legacy/legacy_time.h"
-#include "app/legacy/legacy_video.h"
+#include "app/legacy/legacy_service.h"
+#include "app/legacy/legacy_thunk.h"
 #include "post_code.h"
 
 void bios32_entry_c(unsigned int total_bytes, unsigned int aux_blob_linear);
 __attribute__((section(".qentry"))) void bios32_qemu_entry(
     unsigned int total_bytes, unsigned int aux_blob_linear);
-extern unsigned char bios16_thunk_start[];
-extern unsigned char bios16_int08[];
-extern unsigned char bios16_int10[];
-extern unsigned char bios16_int11[];
-extern unsigned char bios16_int12[];
-extern unsigned char bios16_int13[];
-extern unsigned char bios16_int15[];
-extern unsigned char bios16_int16[];
-extern unsigned char bios16_int17[];
-extern unsigned char bios16_int19[];
-extern unsigned char bios16_int1a[];
-extern unsigned char bios16_int60[];
-extern unsigned char bios16_default[];
-extern unsigned char bios16_iret[];
 extern void bios_boot_freedos_pm32(void);
 extern void bios_call_vgabios_init_pm32(void);
 extern unsigned int bios_call_vbe_mode_info_pm32(unsigned int mode);
 extern unsigned int bios_call_vbe_set_mode_pm32(unsigned int mode);
-extern unsigned int bios16_pm_stack_top;
-extern unsigned char bios16_boot_drive[];
-extern unsigned char bios16_vbe_mode_info[];
-extern unsigned char bios16_thunk_end[];
 extern unsigned char __bss_start[];
 extern unsigned char __bss_end[];
 
@@ -76,7 +53,6 @@ static unsigned char bios_linux_vmlinux_partition = 0;
 static unsigned char bios_enable_memtest = 0;
 static unsigned char bios_run_test_blob = 0;
 static char bios_linux_cmdline_suffix[BIOS_NVRAM_CMDLINE_MAX];
-static const unsigned int bios16_thunk_runtime_base = 0x000fe000u;
 static const unsigned int bios_runtime_gdt_linear = 0x000ff800u;
 static const unsigned short bios_ebda_segment = 0x0000u;
 static const unsigned short bios_dos_base_mem_kb = 640u;
@@ -660,13 +636,6 @@ static void cache_enable_after_mtrr_update(void) {
         : "eax", "memory");
 }
 
-static void serialize_instruction_stream(void) {
-    __asm__ volatile("xorl %%eax, %%eax\n\tcpuid"
-                     :
-                     :
-                     : "eax", "ebx", "ecx", "edx", "memory");
-}
-
 static void enable_shadow_wb_mtrrs(void) {
     unsigned long long def_type = rdmsr64(IA32_MTRR_DEF_TYPE);
     unsigned int def_lo = (unsigned int)def_type;
@@ -867,175 +836,43 @@ static void init_vgabios_for_linux(void) {
     serial_write_string("VBIOS init returned\r\n");
 }
 
-static void install_ivt_vector(unsigned char vector, unsigned int linear) {
-    volatile unsigned short* ivt = (volatile unsigned short*)0x00000000u;
-    unsigned short offset;
-    unsigned short segment;
-
-    if (linear >= 0x000ffff0u && linear <= 0x0010ffefu) {
-        segment = 0xffffu;
-        offset = (unsigned short)(linear - 0x000ffff0u);
-    } else {
-        segment = (unsigned short)(linear >> 4);
-        offset = (unsigned short)(linear & 0x000fu);
-    }
-
-    ivt[(unsigned int)vector * 2u + 0u] = offset;
-    ivt[(unsigned int)vector * 2u + 1u] = segment;
-}
-
-static void install_thunk_vector(unsigned char vector, unsigned int linear) {
-    volatile unsigned short* ivt = (volatile unsigned short*)0x00000000u;
-    unsigned short segment = (unsigned short)(bios16_thunk_runtime_base >> 4);
-    unsigned short offset =
-        (unsigned short)(linear - bios16_thunk_runtime_base);
-
-    ivt[(unsigned int)vector * 2u + 0u] = offset;
-    ivt[(unsigned int)vector * 2u + 1u] = segment;
-}
-
-static void install_bios_thunks(void) {
-    static const unsigned char floppy_dpt[11] = {
-        0xaf, 0x02, 0x25, 0x02, 0x12, 0x1b, 0xff, 0x6c, 0xf6, 0x0f, 0x08,
-    };
-    volatile unsigned char* thunk =
-        (volatile unsigned char*)bios16_thunk_runtime_base;
-    unsigned int thunk_size =
-        (unsigned int)(bios16_thunk_end - bios16_thunk_start);
-    unsigned int dpt_linear =
-        bios16_thunk_runtime_base + ((thunk_size + 15u) & ~15u);
-    volatile unsigned char* dpt = (volatile unsigned char*)dpt_linear;
-    unsigned int thunk_off;
-    unsigned int i;
-    unsigned int default_linear =
-        bios16_thunk_runtime_base +
-        (unsigned int)(bios16_default - bios16_thunk_start);
-
-    install_bios_shadow();
-
-    for (thunk_off = 0; thunk_off < thunk_size; ++thunk_off) {
-        thunk[thunk_off] = bios16_thunk_start[thunk_off];
-    }
-
-    for (i = 0; i < 256u; ++i) {
-        install_ivt_vector((unsigned char)i, default_linear);
-    }
-
-    install_thunk_vector(0x10,
-                         bios16_thunk_runtime_base +
-                             (unsigned int)(bios16_int10 - bios16_thunk_start));
-    install_thunk_vector(0x08,
-                         bios16_thunk_runtime_base +
-                             (unsigned int)(bios16_int08 - bios16_thunk_start));
-    install_thunk_vector(0x11,
-                         bios16_thunk_runtime_base +
-                             (unsigned int)(bios16_int11 - bios16_thunk_start));
-    install_thunk_vector(0x12,
-                         bios16_thunk_runtime_base +
-                             (unsigned int)(bios16_int12 - bios16_thunk_start));
-    install_thunk_vector(0x13,
-                         bios16_thunk_runtime_base +
-                             (unsigned int)(bios16_int13 - bios16_thunk_start));
-    install_thunk_vector(0x15,
-                         bios16_thunk_runtime_base +
-                             (unsigned int)(bios16_int15 - bios16_thunk_start));
-    install_thunk_vector(0x16,
-                         bios16_thunk_runtime_base +
-                             (unsigned int)(bios16_int16 - bios16_thunk_start));
-    install_thunk_vector(0x17,
-                         bios16_thunk_runtime_base +
-                             (unsigned int)(bios16_int17 - bios16_thunk_start));
-    install_thunk_vector(0x19,
-                         bios16_thunk_runtime_base +
-                             (unsigned int)(bios16_int19 - bios16_thunk_start));
-    install_thunk_vector(0x1a,
-                         bios16_thunk_runtime_base +
-                             (unsigned int)(bios16_int1a - bios16_thunk_start));
-    install_thunk_vector(0x60,
-                         bios16_thunk_runtime_base +
-                             (unsigned int)(bios16_int60 - bios16_thunk_start));
-    install_thunk_vector(0x1c,
-                         bios16_thunk_runtime_base +
-                             (unsigned int)(bios16_iret - bios16_thunk_start));
-    bios_floppy_dpt_linear = dpt_linear;
-    install_ivt_vector(0x1e, dpt_linear);
-    install_thunk_vector(0x40,
-                         bios16_thunk_runtime_base +
-                             (unsigned int)(bios16_int13 - bios16_thunk_start));
-    for (i = 0; i < sizeof(floppy_dpt); ++i) {
-        dpt[i] = floppy_dpt[i];
-    }
-    serialize_instruction_stream();
-    legacy_bda_init(legacy_floppy_present(), bios_hdd_is_present(),
-                    bios_dos_base_mem_kb, bios_ebda_segment);
+static void bios_init_legacy_pit(void) {
     bios_init_pit();
     bios_init_pic_for_timer();
 }
 
-#define BOOT_SECTOR_LINEAR 0x00007c00u
+static void nvram_record_boot_success(unsigned char kind);
+
+static void install_bios_thunks(void) {
+    struct legacy_service_context context;
+
+    bios_floppy_dpt_linear = legacy_install_bios_thunks(
+        legacy_floppy_present(), bios_hdd_is_present(), bios_dos_base_mem_kb,
+        bios_ebda_segment, install_bios_shadow, 0);
+
+    context.total_bytes = bios_total_bytes_global;
+    context.floppy_dpt_linear = bios_floppy_dpt_linear;
+    context.tick_counter = &bios_tick_counter;
+    context.base_mem_kb = bios_dos_base_mem_kb;
+    context.boot_priority = bios_boot_priority;
+    context.record_boot_success = nvram_record_boot_success;
+    context.update_ticks = bios_update_tick_counter;
+    context.boot_pm32 = bios_boot_freedos_pm32;
+    legacy_service_init(&context);
+    bios_init_legacy_pit();
+}
+
 #define BIOS_MEMTEST_START 0x00100000u
 #define BIOS_MEMTEST_MARK_STEP 0x00100000u
 #define BLOB_SERVICE_RESERVED_SIZE 0x00001000u
 
-static void nvram_record_boot_success(unsigned char kind);
-
-static void rm_set_cf(struct rm_int13_frame* f) { f->flags |= 0x0001u; }
-
-static int prepare_boot_sector_test_floppy(void) {
-    if (!legacy_floppy_present() ||
-        legacy_floppy_read_sectors(0u, 1u, BOOT_SECTOR_LINEAR) != 0 ||
-        *(volatile unsigned short*)(BOOT_SECTOR_LINEAR + 510u) != 0xaa55u) {
-        return -1;
-    }
-    bios_boot_drive = 0x00u;
-    serial_write_string("Booting test floppy\r\n");
-    return 0;
-}
-
-static int prepare_boot_sector_current(void) {
-    if (bios_hdd_load_mbr_boot_sector(BOOT_SECTOR_LINEAR) == 0) {
-        bios_boot_drive = 0x80u;
-        nvram_record_boot_success(bios_hdd_current_kind());
-        return 0;
-    }
-    return -1;
-}
-
 static void prepare_boot_sector(void) {
-    if (prepare_boot_sector_test_floppy() == 0) {
-        return;
-    }
-    if (bios_boot_priority == BIOS_NVRAM_BOOT_PRIORITY_IDE) {
-        if (bios_hdd_select_kind(BIOS_HDD_KIND_IDE) != 0u &&
-            prepare_boot_sector_current() == 0) {
-            return;
-        }
-    } else if (bios_boot_priority == BIOS_NVRAM_BOOT_PRIORITY_USB) {
-        if (bios_hdd_select_kind(BIOS_HDD_KIND_USB) != 0u &&
-            prepare_boot_sector_current() == 0) {
-            return;
-        }
-    } else {
-        if (bios_hdd_select_kind(BIOS_HDD_KIND_IDE) != 0u &&
-            prepare_boot_sector_current() == 0) {
-            return;
-        }
-        if (bios_hdd_select_kind(BIOS_HDD_KIND_USB) != 0u &&
-            prepare_boot_sector_current() == 0) {
-            return;
-        }
-    }
-    serial_write_string("No bootable HDD MBR\r\n");
-    for (;;) {
-        __asm__ volatile("hlt");
-    }
+    bios_boot_drive = legacy_prepare_boot_sector(
+        bios_boot_priority, nvram_record_boot_success);
 }
 
 static void install_boot_drive(void) {
-    *(volatile unsigned char*)(bios16_thunk_runtime_base +
-                               (unsigned int)(bios16_boot_drive -
-                                              bios16_thunk_start)) =
-        bios_boot_drive;
+    legacy_install_boot_drive(bios_boot_drive);
 }
 
 static void bios_memset(void* dst, unsigned char value, unsigned int len) {
@@ -1065,10 +902,7 @@ static unsigned int bios_pm_stack_top(void) {
 }
 
 static void install_pm_stack_top(void) {
-    *(volatile unsigned int*)(bios16_thunk_runtime_base +
-                              (unsigned int)((unsigned char*)&bios16_pm_stack_top -
-                                             bios16_thunk_start)) =
-        bios_pm_stack_top();
+    legacy_install_pm_stack_top(bios_pm_stack_top());
 }
 
 static unsigned int bios_extended_usable_end(void) {
@@ -1765,9 +1599,7 @@ static void linux_put32(unsigned char* p, unsigned int value) {
 }
 
 static unsigned char* vbe_mode_info(void) {
-    return (unsigned char*)(bios16_thunk_runtime_base +
-                            (unsigned int)(bios16_vbe_mode_info -
-                                           bios16_thunk_start));
+    return legacy_vbe_mode_info_buffer();
 }
 
 static unsigned short vbe_info16(unsigned int off) {
@@ -2545,59 +2377,6 @@ static int try_boot_linux(void) {
     return 0;
 }
 
-void bios_rm_service(unsigned int vector, struct rm_int13_frame* f) {
-    bios_update_tick_counter();
-    if (0 && vector != 0x16 && vector != 0x10) {
-        serial_write_string("[");
-        serial_write_hex32(bios_tick_counter);
-        serial_write_string("] ");
-        serial_write_string("bios_rm_service=");
-        serial_write_hex8(vector & 0xffu);
-        serial_write_string(", ah=");
-        serial_write_hex8(f->ax >> 8);
-        serial_write_string("\r\n");
-    }
-    switch (vector & 0xffu) {
-        case 0x10:
-            legacy_int10_service(f);
-            return;
-        case 0x11:
-            legacy_int11_service(f);
-            return;
-        case 0x12:
-            legacy_int12_service(f, bios_dos_base_mem_kb);
-            return;
-        case 0x13:
-        case 0x40:
-            legacy_int13_service(f, bios_floppy_dpt_linear);
-            return;
-        case 0x15:
-            legacy_int15_service(f, bios_total_bytes_global);
-            return;
-        case 0x16:
-            legacy_int16_service(f);
-            return;
-        case 0x17:
-            legacy_int17_service(f);
-            return;
-        case 0x19:
-            prepare_boot_sector();
-            install_boot_drive();
-            bios_boot_freedos_pm32();
-            return;
-        case 0x1a:
-            legacy_int1a_service(f, &bios_tick_counter);
-            return;
-        case 0x60:
-            legacy_int60_service(f);
-            return;
-        default:
-            f->ax = (unsigned short)((0x86u << 8) | (f->ax & 0x00ffu));
-            rm_set_cf(f);
-            return;
-    }
-}
-
 static unsigned int tsc_low(void) {
     unsigned int value;
     __asm__ volatile("rdtsc" : "=a"(value) : : "edx");
@@ -2739,7 +2518,7 @@ void postcar_resume(unsigned int total_bytes, unsigned int aux_blob_linear) {
     install_pm_stack_top();
     install_vgabios_shadow();
     serial_write_string("IVT thunks installed @ ");
-    serial_write_hex32(bios16_thunk_runtime_base);
+    serial_write_hex32(LEGACY_THUNK_RUNTIME_BASE);
     serial_write_string("\r\n");
     if (try_boot_linux()) {
         for (;;) {
