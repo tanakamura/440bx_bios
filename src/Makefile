@@ -210,22 +210,22 @@ qemu_bios.bin: qemu_start.elf
 	$(OBJCOPY) -O binary $< $@
 	truncate -s 262144 $@
 
-qemu_start.elf: qemu_start.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o qemu/stage1/qemu.ld
-	$(LD) -m elf_i386 -T qemu/stage1/qemu.ld -Map qemu.map -o $@ qemu_start.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o
+qemu_start.elf: qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o qemu/stage1/qemu.ld
+	$(LD) -m elf_i386 -T qemu/stage1/qemu.ld -Map qemu.map -o $@ qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o
 
 qemu_legacy_bios.bin: qemu_legacy_start.elf
 	$(OBJCOPY) -O binary $< $@
 	truncate -s 262144 $@
 
-qemu_legacy_start.elf: qemu_start.o blob_service.o qemu_stage2_blob.o bios_blob.o qemu/stage1/qemu.ld
-	$(LD) -m elf_i386 -T qemu/stage1/qemu.ld -Map qemu_legacy.map -o $@ qemu_start.o blob_service.o qemu_stage2_blob.o bios_blob.o
+qemu_legacy_start.elf: qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o qemu/stage1/qemu.ld
+	$(LD) -m elf_i386 -T qemu/stage1/qemu.ld -Map qemu_legacy.map -o $@ qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o
 
 qemu_flat_test_bios.bin: qemu_flat_test_start.elf
 	$(OBJCOPY) -O binary $< $@
 	truncate -s 262144 $@
 
-qemu_flat_test_start.elf: qemu_start.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o qemu/stage1/qemu.ld
-	$(LD) -m elf_i386 -T qemu/stage1/qemu.ld -Map qemu_flat_test.map -o $@ qemu_start.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o
+qemu_flat_test_start.elf: qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o qemu/stage1/qemu.ld
+	$(LD) -m elf_i386 -T qemu/stage1/qemu.ld -Map qemu_flat_test.map -o $@ qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o
 
 qemu_legacy_test_bios.bin: qemu_legacy_bios.bin test_floppy_blob.bin patch_rom_free.py
 	cp qemu_legacy_bios.bin $@
@@ -266,7 +266,10 @@ bios16.o: app/legacy/bios16.asm post_code.inc
 qemu_start.o: qemu/stage1/qemu_start.asm
 	nasm $(NASMFLAGS) -f elf32 $< -o $@
 
-bios_main.o: bios_main.c post_code.h blob.h bios_io.h bios_memory.h bios_nvram.h bios_pci.h bios_rtc.h bios_serial.h bios_storage.h app/legacy/legacy_boot.h app/legacy/legacy_floppy.h app/legacy/legacy_service.h app/legacy/legacy_thunk.h app/legacy/legacy_timer.h
+qemu_stage1.o: qemu/stage1/qemu_stage1.c blob.h service_table.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+bios_main.o: bios_main.c post_code.h blob.h service_table.h bios_io.h bios_memory.h bios_nvram.h bios_pci.h bios_rtc.h bios_serial.h bios_storage.h app/legacy/legacy_boot.h app/legacy/legacy_floppy.h app/legacy/legacy_service.h app/legacy/legacy_thunk.h app/legacy/legacy_timer.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 bios_memory.o: bios_memory.c bios_memory.h

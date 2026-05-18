@@ -164,6 +164,14 @@ static const unsigned char* rom_high_ptr(const unsigned char* ptr) {
     return (const unsigned char*)((unsigned int)ptr + ROM_HIGH_DELTA);
 }
 
+static unsigned int rom_payload_linear(const unsigned char* start,
+                                       const unsigned char* end) {
+    if (start == end) {
+        return 0u;
+    }
+    return (unsigned int)rom_high_ptr(start);
+}
+
 static unsigned char rom_read_stable_u8(const unsigned char* ptr) {
     volatile const unsigned char* p = (volatile const unsigned char*)ptr;
     unsigned char a = p[0];
@@ -571,6 +579,9 @@ static void payload_add(struct shared_payload_manifest* manifest,
                         const unsigned char* end) {
     struct shared_payload_entry* entry;
 
+    if (start == end) {
+        return;
+    }
     if (manifest->entry_count >= SHARED_PAYLOAD_MAX) {
         die_with_post(0xee);
     }
@@ -661,12 +672,14 @@ static void enter_stage2(unsigned int total_bytes) {
         shared_service_from_total(total_bytes);
     blob_expand_fn expand = (blob_expand_fn)BLOB_SERVICE_LINEAR;
     const unsigned char* blob = rom_high_ptr(__stage2_blob_start);
-    unsigned int stage3_blob_linear = (unsigned int)rom_high_ptr(__bios_blob_start);
-    unsigned int dsdt_blob_linear = (unsigned int)rom_high_ptr(__dsdt_blob_start);
+    unsigned int stage3_blob_linear =
+        rom_payload_linear(__bios_blob_start, __bios_blob_end);
+    unsigned int dsdt_blob_linear =
+        rom_payload_linear(__dsdt_blob_start, __dsdt_blob_end);
     unsigned int vgabios_blob_linear =
-        (unsigned int)rom_high_ptr(__vgabios_blob_start);
+        rom_payload_linear(__vgabios_blob_start, __vgabios_blob_end);
     unsigned int test_elf_blob_linear =
-        (unsigned int)rom_high_ptr(__test_elf_blob_start);
+        rom_payload_linear(__test_elf_blob_start, __test_elf_blob_end);
     volatile unsigned int* aux = (volatile unsigned int*)BOOT_AUX_LINEAR;
     struct shared_payload_entry* stage2_payload;
     int rc;

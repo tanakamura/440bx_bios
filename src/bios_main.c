@@ -6,6 +6,7 @@
 #include "bios_serial.h"
 #include "bios_storage.h"
 #include "blob.h"
+#include "service_table.h"
 #include "app/legacy/legacy_boot.h"
 #include "app/legacy/legacy_floppy.h"
 #include "app/legacy/legacy_service.h"
@@ -27,6 +28,7 @@ static unsigned int bios_total_bytes_global = 0;
 static unsigned int bios_dsdt_blob_linear_global = 0;
 static unsigned int bios_vgabios_blob_linear_global = 0;
 static unsigned int bios_test_elf_blob_linear_global = 0;
+static struct shared_service_table* bios_shared_service_global = 0;
 static unsigned char bios_vgabios_shadow_ready = 0;
 static unsigned char bios_vgabios_initialized = 0;
 static unsigned char bios_vbe_lfb_ready = 0;
@@ -663,8 +665,16 @@ static void install_bios_shadow(void) {
     install_runtime_gdt();
 }
 
+static blob_expand_fn bios_blob_expand_fn(void) {
+    if (bios_shared_service_global != 0 &&
+        bios_shared_service_global->blob_expand != 0u) {
+        return (blob_expand_fn)bios_shared_service_global->blob_expand;
+    }
+    return (blob_expand_fn)BLOB_SERVICE_LINEAR;
+}
+
 static void install_vgabios_shadow(void) {
-    blob_expand_fn expand = (blob_expand_fn)BLOB_SERVICE_LINEAR;
+    blob_expand_fn expand = bios_blob_expand_fn();
     struct blob_status status;
     unsigned int size;
     unsigned int i;
@@ -817,6 +827,14 @@ static void bios_memtest_progress(unsigned int addr, unsigned int* next_mark) {
 }
 
 static unsigned int bios_memtest_skip_end(unsigned int addr) {
+    if (bios_shared_service_global != 0 &&
+        bios_shared_service_global->service_base != 0u &&
+        addr >= bios_shared_service_global->service_base &&
+        addr < bios_shared_service_global->service_base +
+                   bios_shared_service_global->service_size) {
+        return bios_shared_service_global->service_base +
+               bios_shared_service_global->service_size;
+    }
     if (addr >= BLOB_SERVICE_LINEAR &&
         addr < BLOB_SERVICE_LINEAR + BLOB_SERVICE_RESERVED_SIZE) {
         return BLOB_SERVICE_LINEAR + BLOB_SERVICE_RESERVED_SIZE;
@@ -1117,7 +1135,7 @@ static int acpi_install_real_dsdt_blob(void) {
     unsigned int base = acpi_table_base();
     unsigned int cap = acpi_table_capacity();
     unsigned int dsdt = base + 0x1000u;
-    blob_expand_fn expand = (blob_expand_fn)BLOB_SERVICE_LINEAR;
+    blob_expand_fn expand = bios_blob_expand_fn();
     struct blob_status status;
     int rc;
 
@@ -2024,7 +2042,7 @@ static int test_elf_load_image(unsigned char* elf, unsigned int image_size,
 static void run_test_elf_blob(void) {
     typedef unsigned int (*test_elf_entry_fn)(unsigned int, unsigned int,
                                              unsigned int, unsigned int);
-    blob_expand_fn expand = (blob_expand_fn)BLOB_SERVICE_LINEAR;
+    blob_expand_fn expand = bios_blob_expand_fn();
     struct blob_status status;
     unsigned char* image = (unsigned char*)TEST_ELF_IMAGE_LINEAR;
     unsigned int entry_phys = 0u;
@@ -2356,25 +2374,84 @@ static void bandwidth_benchmarks(unsigned int total_bytes) {
     serial_write_string(")\r\n");
 }
 
+static unsigned int bios_payload_blob_ptr(unsigned int payload_id) {
+    struct shared_payload_entry* payload =
+        shared_payload_find(bios_shared_service_global, payload_id);
+
+    if (payload == 0) {
+        return 0u;
+    }
+    return payload->blob_ptr;
+}
+
+static void bios_load_stage_context(unsigned int total_bytes,
+                                    unsigned int aux_blob_linear,
+                                    unsigned char qemu_mode) {
+    struct shared_boot_context* boot_ctx;
+    const unsigned int* aux = (const unsigned int*)aux_blob_linear;
+    unsigned int blob;
+
+    bios_total_bytes_global = total_bytes;
+    bios_qemu_mode = qemu_mode;
+    bios_shared_service_global = shared_service_from_total(total_bytes);
+    bios_dsdt_blob_linear_global = 0u;
+    bios_vgabios_blob_linear_global = 0u;
+    bios_test_elf_blob_linear_global = 0u;
+    bios_maintenance_requested = 0u;
+    bios_shadow_ready = 0u;
+
+    boot_ctx = shared_boot_context(bios_shared_service_global);
+    if (boot_ctx != 0) {
+        if ((boot_ctx->flags & SHARED_BOOT_FLAG_MAINTENANCE_REQUESTED) != 0u) {
+            bios_maintenance_requested = 1u;
+        }
+        if ((boot_ctx->flags & SHARED_BOOT_FLAG_SHADOW_READY) != 0u) {
+            bios_shadow_ready = 1u;
+        }
+        if ((boot_ctx->flags & SHARED_BOOT_FLAG_PLATFORM_QEMU) != 0u) {
+            bios_qemu_mode = 1u;
+        }
+        if ((boot_ctx->flags & SHARED_BOOT_FLAG_PLATFORM_P2B98_XV) != 0u) {
+            bios_qemu_mode = 0u;
+        }
+    }
+
+    blob = bios_payload_blob_ptr(SHARED_PAYLOAD_ID_DSDT);
+    if (blob != 0u) {
+        bios_dsdt_blob_linear_global = blob;
+    }
+    blob = bios_payload_blob_ptr(SHARED_PAYLOAD_ID_VGABIOS);
+    if (blob != 0u) {
+        bios_vgabios_blob_linear_global = blob;
+    }
+    blob = bios_payload_blob_ptr(SHARED_PAYLOAD_ID_TEST_ELF);
+    if (blob != 0u) {
+        bios_test_elf_blob_linear_global = blob;
+    }
+
+    if (aux_blob_linear != 0u) {
+        if (bios_dsdt_blob_linear_global == 0u) {
+            bios_dsdt_blob_linear_global = aux[BOOT_AUX_DSDT_BLOB];
+        }
+        if (bios_vgabios_blob_linear_global == 0u) {
+            bios_vgabios_blob_linear_global = aux[BOOT_AUX_VBIOS_BLOB];
+        }
+        if (bios_test_elf_blob_linear_global == 0u) {
+            bios_test_elf_blob_linear_global = aux[BOOT_AUX_TEST_ELF_BLOB];
+        }
+        if (aux[BOOT_AUX_MAINTENANCE] != 0u) {
+            bios_maintenance_requested = 1u;
+        }
+        if (aux[BOOT_AUX_SHADOW_READY] != 0u) {
+            bios_shadow_ready = 1u;
+        }
+    }
+}
+
 void postcar_resume(unsigned int total_bytes, unsigned int aux_blob_linear) {
     volatile unsigned int stack_cookie = 0x13579bdfu;
 
-    bios_total_bytes_global = total_bytes;
-    if (aux_blob_linear != 0u) {
-        const unsigned int* aux = (const unsigned int*)aux_blob_linear;
-        bios_dsdt_blob_linear_global = aux[BOOT_AUX_DSDT_BLOB];
-        bios_vgabios_blob_linear_global = aux[BOOT_AUX_VBIOS_BLOB];
-        bios_test_elf_blob_linear_global = aux[BOOT_AUX_TEST_ELF_BLOB];
-        bios_maintenance_requested = aux[BOOT_AUX_MAINTENANCE] != 0u ? 1u : 0u;
-        bios_shadow_ready = aux[BOOT_AUX_SHADOW_READY] != 0u ? 1u : 0u;
-    } else {
-        bios_dsdt_blob_linear_global = 0u;
-        bios_vgabios_blob_linear_global = 0u;
-        bios_test_elf_blob_linear_global = 0u;
-        bios_maintenance_requested = 0u;
-        bios_shadow_ready = 0u;
-    }
-    bios_qemu_mode = 0u;
+    bios_load_stage_context(total_bytes, aux_blob_linear, 0u);
     storage_set_scratch_base(bios_top_reserved_base());
     nvram_load_settings();
     legacy_floppy_probe();
@@ -2435,22 +2512,7 @@ void bios32_qemu_entry(unsigned int total_bytes, unsigned int aux_blob_linear) {
     volatile unsigned int stack_cookie = 0x2468ace0u;
 
     zero_bss();
-    bios_total_bytes_global = total_bytes;
-    if (aux_blob_linear != 0u) {
-        const unsigned int* aux = (const unsigned int*)aux_blob_linear;
-        bios_dsdt_blob_linear_global = aux[BOOT_AUX_DSDT_BLOB];
-        bios_vgabios_blob_linear_global = aux[BOOT_AUX_VBIOS_BLOB];
-        bios_test_elf_blob_linear_global = aux[BOOT_AUX_TEST_ELF_BLOB];
-        bios_maintenance_requested = aux[BOOT_AUX_MAINTENANCE] != 0u ? 1u : 0u;
-        bios_shadow_ready = aux[BOOT_AUX_SHADOW_READY] != 0u ? 1u : 0u;
-    } else {
-        bios_dsdt_blob_linear_global = 0u;
-        bios_vgabios_blob_linear_global = 0u;
-        bios_test_elf_blob_linear_global = 0u;
-        bios_maintenance_requested = 0u;
-        bios_shadow_ready = 0u;
-    }
-    bios_qemu_mode = 1u;
+    bios_load_stage_context(total_bytes, aux_blob_linear, 1u);
     storage_set_scratch_base(bios_top_reserved_base());
     nvram_load_settings();
     legacy_floppy_probe();

@@ -17,9 +17,11 @@ global qemu_start
 extern __bios_blob_start
 extern __stage2_blob_start
 extern __test_elf_blob_start
+extern __test_elf_blob_end
 extern __blob_service_start
 extern __blob_service_end
 extern blob_shadow_load_and_enter
+extern qemu_install_shared_service_table
 
 section .start progbits alloc exec nowrite align=16
 qemu_start:
@@ -73,12 +75,23 @@ qemu_pm_entry:
     xor eax, eax
     cpuid
 
+    push dword QEMU_TOTAL_BYTES - 0x1000
+    push dword QEMU_TOTAL_BYTES
+    call qemu_install_shared_service_table
+    add esp, 8
+
     mov dword [BOOT_AUX_LINEAR + 0], 0
     mov dword [BOOT_AUX_LINEAR + 4], 0
     mov dword [BOOT_AUX_LINEAR + 8], __bios_blob_start + ROM_HIGH_DELTA
     mov dword [BOOT_AUX_LINEAR + 12], 0
     mov dword [BOOT_AUX_LINEAR + 16], 0
-    mov dword [BOOT_AUX_LINEAR + 20], __test_elf_blob_start + ROM_HIGH_DELTA
+    mov eax, __test_elf_blob_start + ROM_HIGH_DELTA
+    mov ebx, __test_elf_blob_end + ROM_HIGH_DELTA
+    cmp eax, ebx
+    jne .store_test_elf_aux
+    xor eax, eax
+.store_test_elf_aux:
+    mov dword [BOOT_AUX_LINEAR + 20], eax
 
     sub esp, BLOB_STATUS_SIZE
     mov ebx, esp
