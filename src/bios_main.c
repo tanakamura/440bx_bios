@@ -1,10 +1,20 @@
 #include "bios_io.h"
+#include "bios_memory.h"
 #include "bios_nvram.h"
 #include "bios_pci.h"
+#include "bios_rtc.h"
 #include "bios_serial.h"
 #include "bios_storage.h"
 #include "blob.h"
+#include "app/legacy/legacy_bda.h"
+#include "app/legacy/legacy_debug.h"
 #include "app/legacy/legacy_floppy.h"
+#include "app/legacy/legacy_int13.h"
+#include "app/legacy/legacy_int15.h"
+#include "app/legacy/legacy_keyboard.h"
+#include "app/legacy/legacy_misc.h"
+#include "app/legacy/legacy_time.h"
+#include "app/legacy/legacy_video.h"
 #include "post_code.h"
 
 void bios32_entry_c(unsigned int total_bytes, unsigned int aux_blob_linear);
@@ -71,8 +81,6 @@ static const unsigned int bios_runtime_gdt_linear = 0x000ff800u;
 static const unsigned short bios_ebda_segment = 0x0000u;
 static const unsigned short bios_dos_base_mem_kb = 640u;
 static unsigned int bios_floppy_dpt_linear = 0x00000500u;
-static unsigned char bios_kbd_pending_valid = 0;
-static unsigned short bios_kbd_pending_ax = 0;
 static unsigned int bios_tick_counter = 0;
 static unsigned char bios_tick_initialized = 0;
 static unsigned short bios_tick_last_raw = 0;
@@ -130,51 +138,6 @@ static void wrmsr64(unsigned int msr, unsigned int lo, unsigned int hi) {
 
 #define BDA_TICK_COUNT 0x046cu
 #define BDA_MIDNIGHT_FLAG 0x0470u
-#define CMOS_SECONDS 0x00u
-#define CMOS_MINUTES 0x02u
-#define CMOS_HOURS 0x04u
-#define CMOS_DAY 0x07u
-#define CMOS_MONTH 0x08u
-#define CMOS_YEAR 0x09u
-#define CMOS_STATUS_A 0x0au
-#define CMOS_STATUS_B 0x0bu
-#define CMOS_STATUS_C 0x0cu
-#define CMOS_STATUS_D 0x0du
-#define RTC_REGA_32KHZ_RATE6 0x26u
-#define RTC_REGB_SET 0x80u
-#define RTC_REGB_24H_BCD 0x02u
-
-static unsigned char cmos_read(unsigned char index) {
-    outb(0x0070u, (unsigned char)(index | 0x80u));
-    return inb(0x0071u);
-}
-
-static void __attribute__((unused)) rtc_dump_raw(const char* tag) {
-    serial_write_string("RTC ");
-    serial_write_string(tag);
-    serial_write_string(" A=");
-    serial_write_hex8(cmos_read(CMOS_STATUS_A));
-    serial_write_string(" B=");
-    serial_write_hex8(cmos_read(CMOS_STATUS_B));
-    serial_write_string(" S=");
-    serial_write_hex8(cmos_read(CMOS_SECONDS));
-    serial_write_string(" M=");
-    serial_write_hex8(cmos_read(CMOS_MINUTES));
-    serial_write_string(" H=");
-    serial_write_hex8(cmos_read(CMOS_HOURS));
-    serial_write_string(" D=");
-    serial_write_hex8(cmos_read(CMOS_DAY));
-    serial_write_string(" N=");
-    serial_write_hex8(cmos_read(CMOS_MONTH));
-    serial_write_string(" Y=");
-    serial_write_hex8(cmos_read(CMOS_YEAR));
-    serial_write_string("\r\n");
-}
-
-static void cmos_write(unsigned char index, unsigned char value) {
-    outb(0x0070u, (unsigned char)(index | 0x80u));
-    outb(0x0071u, value);
-}
 
 #define PIIX4_ISA_DEV 7u
 #define PIIX4_ISA_FN 0u
@@ -224,112 +187,6 @@ static void nvram_write32(unsigned char index, unsigned int value) {
     nvram_write((unsigned char)(index + 1u), (unsigned char)(value >> 8));
     nvram_write((unsigned char)(index + 2u), (unsigned char)(value >> 16));
     nvram_write((unsigned char)(index + 3u), (unsigned char)(value >> 24));
-}
-
-static unsigned char bin_to_bcd(unsigned char value) {
-    return (unsigned char)(((value / 10u) << 4) | (value % 10u));
-}
-
-static unsigned char bcd_to_bin(unsigned char value) {
-    return (unsigned char)(((value >> 4) * 10u) + (value & 0x0fu));
-}
-
-static unsigned char rtc_decode(unsigned char value, unsigned char status_b) {
-    if ((status_b & 0x04u) != 0u) {
-        return value;
-    }
-    if ((value & 0x0fu) > 9u || ((value >> 4) & 0x0fu) > 9u) {
-        return 0xffu;
-    }
-    return bcd_to_bin(value);
-}
-
-static unsigned char rtc_decode_hour(unsigned char hour,
-                                     unsigned char status_b) {
-    unsigned char hour_bin =
-        rtc_decode((unsigned char)(hour & 0x7fu), status_b);
-    if (hour_bin == 0xffu) {
-        return 0xffu;
-    }
-    if ((status_b & 0x02u) == 0u) {
-        unsigned char pm = (unsigned char)(hour & 0x80u);
-        if (hour_bin == 12u) {
-            hour_bin = 0u;
-        }
-        if (pm != 0u && hour_bin < 12u) {
-            hour_bin = (unsigned char)(hour_bin + 12u);
-        }
-    }
-    return hour_bin;
-}
-
-static int rtc_raw_datetime_valid(unsigned char status_b, unsigned char sec,
-                                  unsigned char min, unsigned char hour,
-                                  unsigned char day, unsigned char mon,
-                                  unsigned char year) {
-    unsigned char sec_bin = rtc_decode(sec, status_b);
-    unsigned char min_bin = rtc_decode(min, status_b);
-    unsigned char hour_bin = rtc_decode_hour(hour, status_b);
-    unsigned char day_bin = rtc_decode(day, status_b);
-    unsigned char mon_bin = rtc_decode(mon, status_b);
-    unsigned char year_bin = rtc_decode(year, status_b);
-
-    return sec_bin <= 59u && min_bin <= 59u && hour_bin <= 23u &&
-           day_bin >= 1u && day_bin <= 31u && mon_bin >= 1u && mon_bin <= 12u &&
-           year_bin <= 99u;
-}
-
-static void rtc_write_datetime_bcd(unsigned char sec, unsigned char min,
-                                   unsigned char hour, unsigned char day,
-                                   unsigned char mon, unsigned char year) {
-    cmos_write(CMOS_SECONDS, sec);
-    cmos_write(CMOS_MINUTES, min);
-    cmos_write(CMOS_HOURS, hour);
-    cmos_write(CMOS_DAY, day);
-    cmos_write(CMOS_MONTH, mon);
-    cmos_write(CMOS_YEAR, year);
-}
-
-static void rtc_prepare_for_linux(void) {
-    unsigned char status_b;
-    unsigned char sec;
-    unsigned char min;
-    unsigned char hour;
-    unsigned char day;
-    unsigned char mon;
-    unsigned char year;
-    unsigned char valid;
-
-    (void)nvram_enable_extended_cmos();
-
-    status_b = cmos_read(CMOS_STATUS_B);
-    cmos_write(CMOS_STATUS_B, (unsigned char)(status_b | RTC_REGB_SET));
-    sec = cmos_read(CMOS_SECONDS);
-    min = cmos_read(CMOS_MINUTES);
-    hour = cmos_read(CMOS_HOURS);
-    day = cmos_read(CMOS_DAY);
-    mon = cmos_read(CMOS_MONTH);
-    year = cmos_read(CMOS_YEAR);
-    valid = (unsigned char)rtc_raw_datetime_valid(status_b, sec, min, hour, day,
-                                                  mon, year);
-
-    cmos_write(CMOS_STATUS_A, RTC_REGA_32KHZ_RATE6);
-    if (valid != 0u) {
-        rtc_write_datetime_bcd(bin_to_bcd(rtc_decode(sec, status_b)),
-                               bin_to_bcd(rtc_decode(min, status_b)),
-                               bin_to_bcd(rtc_decode_hour(hour, status_b)),
-                               bin_to_bcd(rtc_decode(day, status_b)),
-                               bin_to_bcd(rtc_decode(mon, status_b)),
-                               bin_to_bcd(rtc_decode(year, status_b)));
-    } else {
-        rtc_write_datetime_bcd(0x00u, 0x00u, 0x00u, 0x01u, 0x01u, 0x26u);
-    }
-    cmos_write(CMOS_STATUS_B, RTC_REGB_24H_BCD);
-    (void)cmos_read(CMOS_STATUS_C);
-    (void)cmos_read(CMOS_STATUS_D);
-
-    serial_write_string("RTC Linux sane ");
-    serial_write_string(valid != 0u ? "keep\r\n" : "default\r\n");
 }
 
 static void nvram_init_defaults(void) {
@@ -454,166 +311,6 @@ static void nvram_save_cmdline_suffix(const char* text) {
     }
 }
 
-static unsigned char rtc_force_sane_mode(void) {
-    unsigned char status_b = cmos_read(CMOS_STATUS_B);
-    unsigned char sane_status_b = (unsigned char)((status_b & 0x79u) | 0x02u);
-    if (sane_status_b != status_b) {
-        cmos_write(CMOS_STATUS_B, sane_status_b);
-    }
-    return sane_status_b;
-}
-
-static unsigned char rtc_begin_set(void) {
-    unsigned char sane_status_b = rtc_force_sane_mode();
-    cmos_write(CMOS_STATUS_B, (unsigned char)(sane_status_b | 0x80u));
-    return sane_status_b;
-}
-
-static void rtc_end_set(unsigned char sane_status_b) {
-    cmos_write(CMOS_STATUS_B, sane_status_b);
-}
-
-static int rtc_wait_ready(void) {
-    unsigned int timeout = 100000u;
-    while (timeout-- != 0u) {
-        if ((cmos_read(CMOS_STATUS_A) & 0x80u) == 0) {
-            return 0;
-        }
-    }
-    return -1;
-}
-
-static int rtc_read_time_bcd(unsigned char* hour_bcd, unsigned char* min_bcd,
-                             unsigned char* sec_bcd) {
-    unsigned char status_b;
-    unsigned char hour;
-    unsigned char min;
-    unsigned char sec;
-    unsigned char hour_bin;
-    unsigned char min_bin;
-    unsigned char sec_bin;
-
-    if (rtc_wait_ready() != 0) {
-        return -1;
-    }
-    status_b = rtc_force_sane_mode();
-    sec = cmos_read(CMOS_SECONDS);
-    min = cmos_read(CMOS_MINUTES);
-    hour = cmos_read(CMOS_HOURS);
-
-    if ((status_b & 0x04u) != 0) {
-        sec_bin = sec;
-        min_bin = min;
-        hour_bin = (unsigned char)(hour & 0x7fu);
-    } else {
-        sec_bin = bcd_to_bin(sec);
-        min_bin = bcd_to_bin(min);
-        hour_bin = bcd_to_bin((unsigned char)(hour & 0x7fu));
-    }
-
-    if ((status_b & 0x02u) == 0) {
-        unsigned char pm = (unsigned char)(hour & 0x80u);
-        if (hour_bin == 12u) {
-            hour_bin = 0u;
-        }
-        if (pm != 0u) {
-            hour_bin = (unsigned char)(hour_bin + 12u);
-        }
-    }
-
-    if (sec_bin > 59u || min_bin > 59u || hour_bin > 23u) {
-        return -1;
-    }
-
-    *sec_bcd = bin_to_bcd(sec_bin);
-    *min_bcd = bin_to_bcd(min_bin);
-    *hour_bcd = bin_to_bcd(hour_bin);
-    return 0;
-}
-
-static int rtc_read_date_bcd(unsigned char* year_bcd, unsigned char* mon_bcd,
-                             unsigned char* day_bcd) {
-    unsigned char status_b;
-    unsigned char day;
-    unsigned char mon;
-    unsigned char year;
-    unsigned char day_bin;
-    unsigned char mon_bin;
-    unsigned char year_bin;
-
-    if (rtc_wait_ready() != 0) {
-        return -1;
-    }
-    status_b = rtc_force_sane_mode();
-    day = cmos_read(CMOS_DAY);
-    mon = cmos_read(CMOS_MONTH);
-    year = cmos_read(CMOS_YEAR);
-
-    if ((status_b & 0x04u) != 0) {
-        day_bin = day;
-        mon_bin = mon;
-        year_bin = year;
-    } else {
-        day_bin = bcd_to_bin(day);
-        mon_bin = bcd_to_bin(mon);
-        year_bin = bcd_to_bin(year);
-    }
-
-    if (day_bin < 1u || day_bin > 31u || mon_bin < 1u || mon_bin > 12u) {
-        return -1;
-    }
-
-    *day_bcd = bin_to_bcd(day_bin);
-    *mon_bcd = bin_to_bcd(mon_bin);
-    *year_bcd = bin_to_bcd(year_bin);
-    return 0;
-}
-
-static int rtc_set_time_bcd(unsigned char hour_bcd, unsigned char min_bcd,
-                            unsigned char sec_bcd) {
-    unsigned char sane_status_b;
-    unsigned char hour_bin = bcd_to_bin((unsigned char)(hour_bcd & 0x7fu));
-    unsigned char min_bin = bcd_to_bin(min_bcd);
-    unsigned char sec_bin = bcd_to_bin(sec_bcd);
-
-    if (hour_bin > 23u || min_bin > 59u || sec_bin > 59u) {
-        return -1;
-    }
-
-    if (rtc_wait_ready() != 0) {
-        return -1;
-    }
-
-    sane_status_b = rtc_begin_set();
-    cmos_write(CMOS_SECONDS, sec_bcd);
-    cmos_write(CMOS_MINUTES, min_bcd);
-    cmos_write(CMOS_HOURS, (unsigned char)(hour_bcd & 0x7fu));
-    rtc_end_set(sane_status_b);
-    return 0;
-}
-
-static int rtc_set_date_bcd(unsigned char year_bcd, unsigned char mon_bcd,
-                            unsigned char day_bcd) {
-    unsigned char mon_bin = bcd_to_bin(mon_bcd);
-    unsigned char day_bin = bcd_to_bin(day_bcd);
-    unsigned char sane_status_b;
-
-    if (mon_bin < 1u || mon_bin > 12u || day_bin < 1u || day_bin > 31u) {
-        return -1;
-    }
-
-    if (rtc_wait_ready() != 0) {
-        return -1;
-    }
-
-    sane_status_b = rtc_begin_set();
-    cmos_write(CMOS_DAY, day_bcd);
-    cmos_write(CMOS_MONTH, mon_bcd);
-    cmos_write(CMOS_YEAR, year_bcd);
-    rtc_end_set(sane_status_b);
-    return 0;
-}
-
 static unsigned short pit_read_counter0(void) {
     unsigned char lo;
     unsigned char hi;
@@ -707,230 +404,6 @@ static void bios_update_tick_counter(void) {
         }
     }
     *(volatile unsigned int*)BDA_TICK_COUNT = bios_tick_counter;
-}
-
-#define BDA_KBD_FLAGS1 0x0417u
-#define BDA_KBD_FLAGS2 0x0418u
-#define BDA_KBD_HEAD 0x041au
-#define BDA_KBD_TAIL 0x041cu
-#define BDA_KBD_BUF_START 0x0480u
-#define BDA_KBD_BUF_END 0x0482u
-#define BDA_KBD_BUF_BASE 0x041eu
-#define BDA_KBD_BUF_LIMIT 0x003eu
-#define BDA_VIDEO_MODE 0x0449u
-#define BDA_VIDEO_COLS 0x044au
-#define BDA_VIDEO_PAGE_SIZE 0x044cu
-#define BDA_VIDEO_PAGE_OFFSET 0x044eu
-#define BDA_CURSOR_POS 0x0450u
-#define BDA_CURSOR_SHAPE 0x0460u
-#define BDA_ACTIVE_PAGE 0x0462u
-#define BDA_VIDEO_CRTC_PORT 0x0463u
-#define BDA_VIDEO_MODE_CONTROL 0x0465u
-#define BDA_VIDEO_PALETTE 0x0466u
-#define BDA_VIDEO_ROWS_MINUS1 0x0484u
-#define BDA_VIDEO_CHAR_HEIGHT 0x0485u
-#define BDA_VIDEO_CTL 0x0487u
-#define BDA_VIDEO_SWITCHES 0x0488u
-#define BDA_VIDEO_DCC_INDEX 0x048au
-
-static unsigned char bios_ascii_scan_code(unsigned char ch) {
-    if (ch >= '1' && ch <= '9') {
-        return (unsigned char)(0x02u + (ch - '1'));
-    }
-    if (ch == '0') {
-        return 0x0bu;
-    }
-    if (ch >= 'a' && ch <= 'z') {
-        static const unsigned char table[26] = {
-            0x1eu, 0x30u, 0x2eu, 0x20u, 0x12u, 0x21u, 0x22u, 0x23u, 0x17u,
-            0x24u, 0x25u, 0x26u, 0x32u, 0x31u, 0x18u, 0x19u, 0x10u, 0x13u,
-            0x1fu, 0x14u, 0x16u, 0x2fu, 0x11u, 0x2du, 0x15u, 0x2cu,
-        };
-        return table[ch - 'a'];
-    }
-    if (ch >= 'A' && ch <= 'Z') {
-        return bios_ascii_scan_code((unsigned char)(ch - 'A' + 'a'));
-    }
-    switch (ch) {
-        case '-':
-        case '_':
-            return 0x0cu;
-        case '=':
-        case '+':
-            return 0x0du;
-        case '[':
-        case '{':
-            return 0x1au;
-        case ']':
-        case '}':
-            return 0x1bu;
-        case ';':
-        case ':':
-            return 0x27u;
-        case '\'':
-        case '"':
-            return 0x28u;
-        case '`':
-        case '~':
-            return 0x29u;
-        case '\\':
-        case '|':
-            return 0x2bu;
-        case ',':
-        case '<':
-            return 0x33u;
-        case '.':
-        case '>':
-            return 0x34u;
-        case '/':
-        case '?':
-            return 0x35u;
-        case ' ':
-            return 0x39u;
-        case '\t':
-            return 0x0fu;
-        default:
-            return 0x00u;
-    }
-}
-
-static unsigned short bios_translate_serial_key(unsigned char ch) {
-    if (ch == '\r' || ch == '\n') {
-        return 0x1c0du;
-    }
-    if (ch == 0x08u || ch == 0x7fu) {
-        return 0x0e08u;
-    }
-    if (ch == 0x1bu) {
-        return 0x011bu;
-    }
-    return (unsigned short)(((unsigned short)bios_ascii_scan_code(ch) << 8) |
-                            ch);
-}
-
-static unsigned short* bios_cursor_slot(unsigned char page) {
-    return (unsigned short*)(BDA_CURSOR_POS +
-                             ((unsigned short)(page & 7u) * 2u));
-}
-
-static void bios_video_init(void) {
-    unsigned int i;
-    *(volatile unsigned char*)BDA_VIDEO_MODE = 0x03u;
-    *(volatile unsigned short*)BDA_VIDEO_COLS = 80u;
-    *(volatile unsigned short*)BDA_VIDEO_PAGE_SIZE = 0x1000u;
-    *(volatile unsigned short*)BDA_VIDEO_PAGE_OFFSET = 0x0000u;
-    *(volatile unsigned short*)BDA_CURSOR_SHAPE = 0x0607u;
-    *(volatile unsigned char*)BDA_ACTIVE_PAGE = 0x00u;
-    *(volatile unsigned short*)BDA_VIDEO_CRTC_PORT = 0x03d4u;
-    *(volatile unsigned char*)BDA_VIDEO_MODE_CONTROL = 0x09u;
-    *(volatile unsigned char*)BDA_VIDEO_PALETTE = 0x00u;
-    *(volatile unsigned char*)BDA_VIDEO_ROWS_MINUS1 = 24u;
-    *(volatile unsigned char*)BDA_VIDEO_CHAR_HEIGHT = 16u;
-    *(volatile unsigned char*)BDA_VIDEO_CTL = 0x00u;
-    *(volatile unsigned char*)BDA_VIDEO_SWITCHES = 0x00u;
-    *(volatile unsigned char*)BDA_VIDEO_DCC_INDEX = 0x08u;
-    for (i = 0; i < 8u; ++i) {
-        *bios_cursor_slot((unsigned char)i) = 0x0000u;
-    }
-}
-
-static unsigned short bios_get_cursor(unsigned char page) {
-    return *bios_cursor_slot(page);
-}
-
-static void bios_set_cursor(unsigned char page, unsigned char row,
-                            unsigned char col) {
-    *bios_cursor_slot(page) =
-        (unsigned short)(((unsigned short)row << 8) | col);
-}
-
-static void bios_tty_advance(unsigned char ch) {
-    unsigned char page = *(volatile unsigned char*)BDA_ACTIVE_PAGE;
-    unsigned short cur = bios_get_cursor(page);
-    unsigned char row = (unsigned char)(cur >> 8);
-    unsigned char col = (unsigned char)cur;
-
-    if (ch == '\r') {
-        col = 0;
-    } else if (ch == '\n') {
-        if (row < 24u) {
-            ++row;
-        }
-    } else if (ch == '\b') {
-        if (col > 0) {
-            --col;
-        }
-    } else {
-        ++col;
-        if (col >= 80u) {
-            col = 0;
-            if (row < 24u) {
-                ++row;
-            }
-        }
-    }
-    bios_set_cursor(page, row, col);
-}
-
-static void bios_kbd_init(void) {
-    *(volatile unsigned char*)BDA_KBD_FLAGS1 = 0x00u;
-    *(volatile unsigned char*)BDA_KBD_FLAGS2 = 0x00u;
-    *(volatile unsigned short*)BDA_KBD_HEAD = 0x001eu;
-    *(volatile unsigned short*)BDA_KBD_TAIL = 0x001eu;
-    *(volatile unsigned short*)BDA_KBD_BUF_START = 0x001eu;
-    *(volatile unsigned short*)BDA_KBD_BUF_END = 0x003eu;
-}
-
-static int bios_kbd_buf_nonempty(void) {
-    return *(volatile unsigned short*)BDA_KBD_HEAD !=
-           *(volatile unsigned short*)BDA_KBD_TAIL;
-}
-
-static int bios_kbd_enqueue(unsigned short ax) {
-    unsigned short head = *(volatile unsigned short*)BDA_KBD_HEAD;
-    unsigned short tail = *(volatile unsigned short*)BDA_KBD_TAIL;
-    unsigned short next = (unsigned short)(tail + 2u);
-    if (next >= BDA_KBD_BUF_LIMIT) {
-        next = 0x001eu;
-    }
-    if (next == head) {
-        return 0;
-    }
-    *(volatile unsigned short*)(BDA_KBD_BUF_BASE + tail - 0x001eu) = ax;
-    *(volatile unsigned short*)BDA_KBD_TAIL = next;
-    return 1;
-}
-
-static unsigned short bios_kbd_dequeue(void) {
-    unsigned short head = *(volatile unsigned short*)BDA_KBD_HEAD;
-    unsigned short value =
-        *(volatile unsigned short*)(BDA_KBD_BUF_BASE + head - 0x001eu);
-    head = (unsigned short)(head + 2u);
-    if (head >= BDA_KBD_BUF_LIMIT) {
-        head = 0x001eu;
-    }
-    *(volatile unsigned short*)BDA_KBD_HEAD = head;
-    return value;
-}
-
-static int bios_try_fill_keybuf(void) {
-    unsigned char ch;
-
-    if (bios_kbd_buf_nonempty()) {
-        return 1;
-    }
-    if ((inb(0x03fd) & 0x01u) == 0) {
-        return 0;
-    }
-    ch = inb(0x03f8);
-    bios_kbd_pending_ax = bios_translate_serial_key(ch);
-    bios_kbd_pending_valid =
-        (unsigned char)bios_kbd_enqueue(bios_kbd_pending_ax);
-    if (bios_kbd_pending_valid == 0) {
-        return 0;
-    }
-    bios_kbd_pending_valid = 0;
-    return 1;
 }
 
 static unsigned char serial_read_char_blocking(void) {
@@ -1493,103 +966,20 @@ static void install_bios_thunks(void) {
         dpt[i] = floppy_dpt[i];
     }
     serialize_instruction_stream();
-    *(volatile unsigned short*)0x0410u =
-        legacy_floppy_present() ? 0x0001u : 0x0000u;
-    *(volatile unsigned short*)0x0413u = bios_dos_base_mem_kb;
-    *(volatile unsigned short*)0x040eu = bios_ebda_segment;
-    bios_kbd_init();
-    bios_video_init();
-    *(volatile unsigned char*)0x043eu = 0x01u;
-    *(volatile unsigned char*)0x043fu = 0x00u;
-    *(volatile unsigned char*)0x0440u = 0x25u;
-    *(volatile unsigned char*)0x0441u = 0x00u;
-    *(volatile unsigned char*)0x0474u = 0x00u;
-    *(volatile unsigned char*)0x0475u = bios_hdd_is_present() ? 1u : 0u;
-    *(volatile unsigned char*)0x048bu = 0x00u;
-    *(volatile unsigned char*)0x048cu = 0x00u;
-    *(volatile unsigned char*)0x048du = 0x00u;
-    *(volatile unsigned char*)0x048eu = 0x00u;
-    *(volatile unsigned char*)0x048fu = 0x07u;
-    *(volatile unsigned char*)0x0490u = 0x17u;
-    *(volatile unsigned char*)0x0491u = 0x00u;
-    *(volatile unsigned char*)0x0492u = 0x00u;
+    legacy_bda_init(legacy_floppy_present(), bios_hdd_is_present(),
+                    bios_dos_base_mem_kb, bios_ebda_segment);
     bios_init_pit();
     bios_init_pic_for_timer();
 }
 
-struct rm_int13_frame {
-    unsigned short ax;
-    unsigned short bx;
-    unsigned short cx;
-    unsigned short dx;
-    unsigned short si;
-    unsigned short di;
-    unsigned short es;
-    unsigned short ds;
-    unsigned short bp;
-    unsigned short ip;
-    unsigned short cs;
-    unsigned short flags;
-    unsigned int eax32;
-    unsigned int ebx32;
-    unsigned int ecx32;
-    unsigned int edx32;
-    unsigned int esi32;
-    unsigned int edi32;
-    unsigned int ebp32;
-    unsigned short fs;
-    unsigned short gs;
-} __attribute__((packed));
-
-struct e820_entry {
-    unsigned int base_low;
-    unsigned int base_high;
-    unsigned int length_low;
-    unsigned int length_high;
-    unsigned int type;
-} __attribute__((packed));
-
-struct rm_dap {
-    unsigned char size;
-    unsigned char reserved;
-    unsigned short count;
-    unsigned short off;
-    unsigned short seg;
-    unsigned int lba_low;
-    unsigned int lba_high;
-} __attribute__((packed));
-
-struct rm_edd_params {
-    unsigned short size;
-    unsigned short information;
-    unsigned int cylinders;
-    unsigned int heads;
-    unsigned int sectors;
-    unsigned int total_sectors_low;
-    unsigned int total_sectors_high;
-    unsigned short bytes_per_sector;
-    unsigned int edd_config_params;
-} __attribute__((packed));
-
 #define BOOT_SECTOR_LINEAR 0x00007c00u
-#define BIOS_TOP_RESERVED_SIZE 0x00100000u
 #define BIOS_MEMTEST_START 0x00100000u
 #define BIOS_MEMTEST_MARK_STEP 0x00100000u
 #define BLOB_SERVICE_RESERVED_SIZE 0x00001000u
-#define E820_TYPE_USABLE 1u
-#define E820_TYPE_RESERVED 2u
-#define E820_SMAP 0x534d4150u
 
 static void nvram_record_boot_success(unsigned char kind);
 
-static unsigned int rm_seg_off_to_linear(unsigned short seg,
-                                         unsigned short off) {
-    return ((unsigned int)seg << 4) + off;
-}
-
 static void rm_set_cf(struct rm_int13_frame* f) { f->flags |= 0x0001u; }
-
-static void rm_clear_cf(struct rm_int13_frame* f) { f->flags &= 0xfffeu; }
 
 static int prepare_boot_sector_test_floppy(void) {
     if (!legacy_floppy_present() ||
@@ -1648,30 +1038,6 @@ static void install_boot_drive(void) {
         bios_boot_drive;
 }
 
-static void rm_set_zf(struct rm_int13_frame* f) { f->flags |= 0x0040u; }
-
-static void rm_clear_zf(struct rm_int13_frame* f) { f->flags &= ~0x0040u; }
-
-static void rm_return_eax32(struct rm_int13_frame* f, unsigned int value) {
-    f->eax32 = value;
-    f->ax = (unsigned short)value;
-}
-
-static void rm_return_ebx32(struct rm_int13_frame* f, unsigned int value) {
-    f->ebx32 = value;
-    f->bx = (unsigned short)value;
-}
-
-static void rm_return_ecx32(struct rm_int13_frame* f, unsigned int value) {
-    f->ecx32 = value;
-    f->cx = (unsigned short)value;
-}
-
-static void rm_return_edx32(struct rm_int13_frame* f, unsigned int value) {
-    f->edx32 = value;
-    f->dx = (unsigned short)value;
-}
-
 static void bios_memset(void* dst, unsigned char value, unsigned int len) {
     unsigned char* p = (unsigned char*)dst;
     while (len-- != 0u) {
@@ -1688,13 +1054,7 @@ static void bios_memcpy(void* dst, const void* src, unsigned int len) {
 }
 
 static unsigned int bios_top_reserved_base(void) {
-    if (bios_total_bytes_global <= 0x00100000u) {
-        return bios_total_bytes_global;
-    }
-    if (bios_total_bytes_global <= 0x00200000u) {
-        return 0x00100000u;
-    }
-    return (bios_total_bytes_global - BIOS_TOP_RESERVED_SIZE) & ~0xfffu;
+    return bios_memory_top_reserved_base(bios_total_bytes_global);
 }
 
 static unsigned int bios_pm_stack_top(void) {
@@ -1712,11 +1072,7 @@ static void install_pm_stack_top(void) {
 }
 
 static unsigned int bios_extended_usable_end(void) {
-    unsigned int top_reserved = bios_top_reserved_base();
-    if (top_reserved > bios_total_bytes_global) {
-        return bios_total_bytes_global;
-    }
-    return top_reserved;
+    return bios_memory_extended_usable_end(bios_total_bytes_global);
 }
 
 static void bios_memtest_print_kib_ok(unsigned int bytes) {
@@ -1826,60 +1182,11 @@ static void bios_run_optional_memtest(void) {
 }
 
 static unsigned int e820_entry_count(void) {
-    if (bios_total_bytes_global <= 0x00100000u) {
-        return 2u;
-    }
-    if (bios_top_reserved_base() > 0x00100000u) {
-        return 4u;
-    }
-    return 3u;
-}
-
-static void e820_set_entry(struct e820_entry* entry, unsigned int base,
-                           unsigned int length, unsigned int type) {
-    entry->base_low = base;
-    entry->base_high = 0u;
-    entry->length_low = length;
-    entry->length_high = 0u;
-    entry->type = type;
+    return bios_memory_e820_entry_count(bios_total_bytes_global);
 }
 
 static int e820_get_entry(unsigned int index, struct e820_entry* entry) {
-    unsigned int usable_end = bios_extended_usable_end();
-    unsigned int top_reserved = bios_top_reserved_base();
-
-    switch (index) {
-        case 0:
-            e820_set_entry(entry, 0x00000000u, 0x0009fc00u, E820_TYPE_USABLE);
-            return 0;
-        case 1:
-            e820_set_entry(entry, 0x0009fc00u, 0x00060400u, E820_TYPE_RESERVED);
-            return 0;
-        case 2:
-            if (bios_total_bytes_global <= 0x00100000u) {
-                return -1;
-            }
-            if (usable_end <= 0x00100000u) {
-                e820_set_entry(entry, 0x00100000u,
-                               bios_total_bytes_global - 0x00100000u,
-                               E820_TYPE_RESERVED);
-            } else {
-                e820_set_entry(entry, 0x00100000u, usable_end - 0x00100000u,
-                               E820_TYPE_USABLE);
-            }
-            return 0;
-        case 3:
-            if (top_reserved <= 0x00100000u ||
-                bios_total_bytes_global <= top_reserved) {
-                return -1;
-            }
-            e820_set_entry(entry, top_reserved,
-                           bios_total_bytes_global - top_reserved,
-                           E820_TYPE_RESERVED);
-            return 0;
-        default:
-            return -1;
-    }
+    return bios_memory_e820_get_entry(bios_total_bytes_global, index, entry);
 }
 
 #define ACPI_RSDP_LINEAR 0x0009fc00u
@@ -3034,7 +2341,7 @@ static void run_test_elf_blob(void) {
     install_boot_drive();
     install_pm_stack_top();
     install_vgabios_shadow();
-    rtc_prepare_for_linux();
+    bios_rtc_prepare_for_linux(nvram_enable_extended_cmos);
     acpi_install_for_linux();
     linux_setup_boot_params(entry_phys, 0u, 0u);
     init_vgabios_for_linux();
@@ -3196,7 +2503,7 @@ static int try_boot_linux_current(void) {
         serial_write_string("Linux initrd: none\r\n");
     }
 
-    rtc_prepare_for_linux();
+    bios_rtc_prepare_for_linux(nvram_enable_extended_cmos);
     acpi_install_for_linux();
     linux_setup_boot_params(entry_phys, initrd_base, initrd_size);
     init_vgabios_for_linux();
@@ -3238,291 +2545,6 @@ static int try_boot_linux(void) {
     return 0;
 }
 
-static void bios_int15_e820(struct rm_int13_frame* f) {
-    unsigned int index = f->ebx32;
-    unsigned int count = e820_entry_count();
-    struct e820_entry* entry;
-
-    if (f->edx32 != E820_SMAP || f->ecx32 < sizeof(*entry) || index >= count) {
-        rm_return_eax32(f, 0x00008600u);
-        rm_set_cf(f);
-        return;
-    }
-
-    entry = (struct e820_entry*)rm_seg_off_to_linear(f->es, f->di);
-    if (e820_get_entry(index, entry) != 0) {
-        rm_return_eax32(f, 0x00008600u);
-        rm_set_cf(f);
-        return;
-    }
-
-    rm_return_eax32(f, E820_SMAP);
-    rm_return_edx32(f, E820_SMAP);
-    rm_return_ecx32(f, sizeof(*entry));
-    rm_return_ebx32(f, (index + 1u < count) ? index + 1u : 0u);
-    rm_clear_cf(f);
-}
-
-static void bios_int13_floppy_params(struct rm_int13_frame* f) {
-    unsigned int sectors = legacy_floppy_sector_count();
-    unsigned int max_cyl =
-        (sectors / (LEGACY_FLOPPY_HEADS * LEGACY_FLOPPY_SPT)) -
-        1u;
-    unsigned int dpt_linear = bios_floppy_dpt_linear;
-
-    if (max_cyl > 79u) {
-        max_cyl = 79u;
-    }
-    f->ax = 0u;
-    f->bx = (unsigned short)((f->bx & 0xff00u) | 0x04u);
-    f->cx = (unsigned short)(((max_cyl & 0xffu) << 8) | LEGACY_FLOPPY_SPT |
-                             ((max_cyl >> 2) & 0xc0u));
-    f->dx = (unsigned short)(((LEGACY_FLOPPY_HEADS - 1u) << 8) | 0x01u);
-    f->es = (unsigned short)(dpt_linear >> 4);
-    f->di = (unsigned short)(dpt_linear & 0x0fu);
-    rm_clear_cf(f);
-}
-
-static void bios_int13_floppy_chs_read(struct rm_int13_frame* f) {
-    unsigned int count = (unsigned char)f->ax;
-    unsigned int cylinder =
-        ((unsigned int)(f->cx >> 8) | (((unsigned int)f->cx & 0x00c0u) << 2));
-    unsigned int sector = (unsigned int)(f->cx & 0x003fu);
-    unsigned int head = (unsigned int)(f->dx >> 8);
-    unsigned int lba;
-    unsigned int dest;
-
-    if (sector == 0u || sector > LEGACY_FLOPPY_SPT || count == 0u ||
-        head >= LEGACY_FLOPPY_HEADS) {
-        f->ax = 0x0100u;
-        rm_set_cf(f);
-        return;
-    }
-
-    lba = ((cylinder * LEGACY_FLOPPY_HEADS) + head) * LEGACY_FLOPPY_SPT +
-          sector - 1u;
-    dest = rm_seg_off_to_linear(f->es, f->bx);
-    if (legacy_floppy_read_sectors(lba, count, dest) != 0) {
-        f->ax = 0x0100u;
-        rm_set_cf(f);
-        return;
-    }
-    f->ax = (unsigned short)count;
-    rm_clear_cf(f);
-}
-
-static void bios_int13_floppy_service(struct rm_int13_frame* f) {
-    unsigned char ah = (unsigned char)(f->ax >> 8);
-
-    if (!legacy_floppy_present() || (unsigned char)f->dx != 0u) {
-        f->ax = 0x0100u;
-        rm_set_cf(f);
-        return;
-    }
-
-    switch (ah) {
-        case 0x00u:
-            f->ax &= 0x00ffu;
-            rm_clear_cf(f);
-            return;
-        case 0x02u:
-            bios_int13_floppy_chs_read(f);
-            return;
-        case 0x03u:
-            f->ax = 0x0300u;
-            rm_set_cf(f);
-            return;
-        case 0x04u:
-        case 0x16u:
-            f->ax &= 0x00ffu;
-            rm_clear_cf(f);
-            return;
-        case 0x08u:
-            bios_int13_floppy_params(f);
-            return;
-        case 0x15u:
-            f->ax = (unsigned short)((0x02u << 8) | (f->ax & 0x00ffu));
-            rm_clear_cf(f);
-            return;
-        default:
-            f->ax = 0x0100u;
-            rm_set_cf(f);
-            return;
-    }
-}
-
-static void bios_int13_hdd_params(struct rm_int13_frame* f) {
-    struct bios_hdd_geometry geometry;
-    unsigned int max_cyl;
-    unsigned int max_head;
-    unsigned int spt;
-
-    bios_hdd_get_geometry(&geometry);
-    max_cyl = geometry.cylinders - 1u;
-    max_head = geometry.heads - 1u;
-    spt = geometry.sectors_per_track;
-
-    f->ax = 0u;
-    f->cx = (unsigned short)(((max_cyl & 0xffu) << 8) | spt |
-                             ((max_cyl >> 2) & 0xc0u));
-    f->dx = (unsigned short)((max_head << 8) | 0x01u);
-    rm_clear_cf(f);
-}
-
-static void bios_int13_hdd_chs_rw(struct rm_int13_frame* f, unsigned char ah) {
-    struct bios_hdd_geometry geometry;
-    unsigned int count = (unsigned char)f->ax;
-    unsigned int cylinder =
-        ((unsigned int)(f->cx >> 8) | (((unsigned int)f->cx & 0x00c0u) << 2));
-    unsigned int sector = (unsigned int)(f->cx & 0x003fu);
-    unsigned int head = (unsigned int)(f->dx >> 8);
-    unsigned int lba;
-    unsigned int dest;
-
-    bios_hdd_get_geometry(&geometry);
-    if (ah != 0x02u || sector == 0u || count == 0u || head >= geometry.heads ||
-        cylinder >= geometry.cylinders) {
-        f->ax = 0x0100u;
-        rm_set_cf(f);
-        return;
-    }
-
-    lba = ((cylinder * geometry.heads) + head) * geometry.sectors_per_track +
-          sector - 1u;
-    dest = rm_seg_off_to_linear(f->es, f->bx);
-    if (bios_hdd_read_sectors(lba, count, dest) != 0) {
-        f->ax = 0x0100u;
-        rm_set_cf(f);
-        return;
-    }
-    f->ax = (unsigned short)count;
-    rm_clear_cf(f);
-}
-
-static void bios_int13_hdd_ext_read(struct rm_int13_frame* f) {
-    struct rm_dap* dap = (struct rm_dap*)rm_seg_off_to_linear(f->ds, f->si);
-    unsigned int dest;
-
-    if (dap->size < 0x10u || dap->lba_high != 0u || dap->count == 0u) {
-        serial_write_string("13h:42 bad dap size=");
-        serial_write_hex8(dap->size);
-        serial_write_string(" cnt=");
-        serial_write_hex16(dap->count);
-        serial_write_string(" high=");
-        serial_write_hex32(dap->lba_high);
-        serial_write_string("\r\n");
-        f->ax = 0x0100u;
-        rm_set_cf(f);
-        return;
-    }
-    dest = rm_seg_off_to_linear(dap->seg, dap->off);
-    if (bios_hdd_read_sectors(dap->lba_low, dap->count, dest) != 0) {
-        f->ax = 0x0100u;
-        rm_set_cf(f);
-        return;
-    }
-    f->ax = 0u;
-    rm_clear_cf(f);
-}
-
-static void bios_int13_hdd_ext_params(struct rm_int13_frame* f) {
-    struct rm_edd_params* p =
-        (struct rm_edd_params*)rm_seg_off_to_linear(f->ds, f->si);
-    struct bios_hdd_geometry geometry;
-    unsigned int fill_size;
-
-    bios_hdd_get_geometry(&geometry);
-    if (p->size < 0x1au) {
-        f->ax = 0x0100u;
-        rm_set_cf(f);
-        return;
-    }
-
-    fill_size = p->size;
-    if (fill_size > sizeof(*p)) {
-        fill_size = sizeof(*p);
-    }
-    bios_memset(p, 0, fill_size);
-    p->size = (unsigned short)fill_size;
-    p->information = 0x0001u;
-    p->cylinders = geometry.cylinders;
-    p->heads = geometry.heads;
-    p->sectors = geometry.sectors_per_track;
-    p->total_sectors_low = geometry.total_sectors;
-    p->total_sectors_high = 0u;
-    p->bytes_per_sector = 512u;
-    if (fill_size >= sizeof(*p)) {
-        p->edd_config_params = 0u;
-    }
-    f->ax = 0u;
-    rm_clear_cf(f);
-}
-
-static void bios_int13_hdd_service(struct rm_int13_frame* f) {
-    unsigned char ah = (unsigned char)(f->ax >> 8);
-    unsigned char dl = (unsigned char)f->dx;
-    struct bios_hdd_geometry geometry;
-
-    if (dl != 0x80u || !bios_hdd_is_present()) {
-        f->ax = 0x0100u;
-        rm_set_cf(f);
-        return;
-    }
-    bios_hdd_get_geometry(&geometry);
-
-    switch (ah) {
-        case 0x00u:
-            f->ax &= 0x00ffu;
-            rm_clear_cf(f);
-            return;
-        case 0x08u:
-            bios_int13_hdd_params(f);
-            return;
-        case 0x15u:
-            f->ax = (unsigned short)((0x03u << 8) | (f->ax & 0x00ffu));
-            f->cx = (unsigned short)(geometry.total_sectors >> 16);
-            f->dx = (unsigned short)geometry.total_sectors;
-            rm_clear_cf(f);
-            return;
-        case 0x02u:
-        case 0x03u:
-            bios_int13_hdd_chs_rw(f, ah);
-            return;
-        case 0x41u:
-            if (f->bx != 0x55aau) {
-                f->ax = 0x0100u;
-                rm_set_cf(f);
-                return;
-            }
-            f->bx = 0xaa55u;
-            f->cx = 0x0001u;
-            f->ax = 0x3000u;
-            rm_clear_cf(f);
-            return;
-        case 0x42u:
-            bios_int13_hdd_ext_read(f);
-            return;
-        case 0x48u:
-            bios_int13_hdd_ext_params(f);
-            return;
-        default:
-            f->ax = 0x0100u;
-            rm_set_cf(f);
-            return;
-    }
-}
-
-static void bios_int13_service(struct rm_int13_frame* f) {
-    unsigned char dl = (unsigned char)(f->dx & 0xffu);
-
-    if (dl >= 0x80u) {
-        bios_int13_hdd_service(f);
-        return;
-    }
-
-    bios_int13_floppy_service(f);
-}
-
 void bios_rm_service(unsigned int vector, struct rm_int13_frame* f) {
     bios_update_tick_counter();
     if (0 && vector != 0x16 && vector != 0x10) {
@@ -3537,124 +2559,26 @@ void bios_rm_service(unsigned int vector, struct rm_int13_frame* f) {
     }
     switch (vector & 0xffu) {
         case 0x10:
-            if ((unsigned char)(f->ax >> 8) == 0x0eu) {
-                serial_write_char((char)(f->ax & 0xffu));
-                bios_tty_advance((unsigned char)(f->ax & 0xffu));
-                return;
-            }
-            if ((unsigned char)(f->ax >> 8) == 0x02u) {
-                bios_set_cursor((unsigned char)(f->bx >> 8),
-                                (unsigned char)(f->dx >> 8),
-                                (unsigned char)(f->dx & 0x00ffu));
-                return;
-            }
-            if ((unsigned char)(f->ax >> 8) == 0x03u) {
-                f->dx = bios_get_cursor((unsigned char)(f->bx >> 8));
-                f->cx = *(volatile unsigned short*)BDA_CURSOR_SHAPE;
-                return;
-            }
-            if ((unsigned char)(f->ax >> 8) == 0x0fu) {
-                f->ax = (unsigned short)((80u << 8) | 0x03u);
-                f->bx &= 0x00ffu;
-            }
+            legacy_int10_service(f);
             return;
         case 0x11:
-            f->ax = *(volatile unsigned short*)0x0410u;
+            legacy_int11_service(f);
             return;
         case 0x12:
-            f->ax = bios_dos_base_mem_kb;
+            legacy_int12_service(f, bios_dos_base_mem_kb);
             return;
         case 0x13:
         case 0x40:
-            bios_int13_service(f);
+            legacy_int13_service(f, bios_floppy_dpt_linear);
             return;
         case 0x15:
-            if (f->ax == 0xe820u) {
-                bios_int15_e820(f);
-                return;
-            }
-            if ((unsigned char)(f->ax >> 8) == 0x88u) {
-                unsigned int kb = 0;
-                unsigned int usable_end = bios_extended_usable_end();
-                if (usable_end > 0x00100000u) {
-                    kb = (usable_end - 0x00100000u) >> 10;
-                    if (kb > 0xffffu) {
-                        kb = 0xffffu;
-                    }
-                }
-                f->ax = (unsigned short)kb;
-                rm_clear_cf(f);
-                return;
-            }
-            if (f->ax == 0xe801u) {
-                unsigned int usable_end = bios_extended_usable_end();
-                unsigned int below16m_kb = 0;
-                unsigned int above16m_64k = 0;
-                if (usable_end > 0x00100000u) {
-                    unsigned int below_end = usable_end;
-                    if (below_end > 0x01000000u) {
-                        below_end = 0x01000000u;
-                    }
-                    below16m_kb = (below_end - 0x00100000u) >> 10;
-                }
-                if (usable_end > 0x01000000u) {
-                    above16m_64k = (usable_end - 0x01000000u) >> 16;
-                }
-                f->ax = (unsigned short)below16m_kb;
-                f->bx = (unsigned short)above16m_64k;
-                f->cx = (unsigned short)below16m_kb;
-                f->dx = (unsigned short)above16m_64k;
-                rm_clear_cf(f);
-                return;
-            }
-            if ((unsigned char)(f->ax >> 8) == 0x86u) {
-                rm_clear_cf(f);
-                return;
-            }
-            f->ax = (unsigned short)((0x86u << 8) | (f->ax & 0x00ffu));
-            rm_set_cf(f);
+            legacy_int15_service(f, bios_total_bytes_global);
             return;
         case 0x16:
-            switch ((unsigned char)(f->ax >> 8)) {
-                case 0x01u:
-                case 0x11u:
-                    if (!bios_try_fill_keybuf()) {
-                        rm_set_zf(f);
-                    } else {
-                        rm_clear_zf(f);
-                        f->ax = *(
-                            volatile unsigned short*)(BDA_KBD_BUF_BASE +
-                                                      (*(volatile unsigned short*)
-                                                           BDA_KBD_HEAD -
-                                                       0x001eu));
-                    }
-                    rm_clear_cf(f);
-                    return;
-                case 0x02u:
-                    f->ax = (unsigned short)((f->ax & 0xff00u) |
-                                             *(volatile unsigned char*)
-                                                 BDA_KBD_FLAGS1);
-                    rm_clear_cf(f);
-                    return;
-                case 0x12u:
-                    f->ax = (unsigned short)((*(volatile unsigned char*)
-                                                  BDA_KBD_FLAGS2
-                                              << 8) |
-                                             *(volatile unsigned char*)
-                                                 BDA_KBD_FLAGS1);
-                    rm_clear_cf(f);
-                    return;
-                case 0x00u:
-                case 0x10u:
-                default:
-                    while (!bios_try_fill_keybuf()) {
-                    }
-                    f->ax = bios_kbd_dequeue();
-                    rm_clear_cf(f);
-                    return;
-            }
+            legacy_int16_service(f);
+            return;
         case 0x17:
-            rm_set_cf(f);
+            legacy_int17_service(f);
             return;
         case 0x19:
             prepare_boot_sector();
@@ -3662,109 +2586,11 @@ void bios_rm_service(unsigned int vector, struct rm_int13_frame* f) {
             bios_boot_freedos_pm32();
             return;
         case 0x1a:
-            switch ((unsigned char)(f->ax >> 8)) {
-                case 0x00u:
-                    f->cx = (unsigned short)(bios_tick_counter >> 16);
-                    f->dx = (unsigned short)bios_tick_counter;
-                    f->ax = (unsigned short)(*(
-                        volatile unsigned char*)BDA_MIDNIGHT_FLAG);
-                    *(volatile unsigned char*)BDA_MIDNIGHT_FLAG = 0u;
-                    rm_clear_cf(f);
-                    return;
-                case 0x01u:
-                    bios_set_tick_counter(((unsigned int)f->cx << 16) | f->dx);
-                    *(volatile unsigned char*)BDA_MIDNIGHT_FLAG = 0u;
-                    rm_clear_cf(f);
-                    return;
-                case 0x02u: {
-                    unsigned char hour_bcd;
-                    unsigned char min_bcd;
-                    unsigned char sec_bcd;
-                    // rtc_dump_raw("GETTIME");
-                    if (rtc_read_time_bcd(&hour_bcd, &min_bcd, &sec_bcd) != 0) {
-                        hour_bcd = 0x12u;
-                        min_bcd = 0x00u;
-                        sec_bcd = 0x00u;
-                    }
-                    f->cx = (unsigned short)(((unsigned short)hour_bcd << 8) |
-                                             min_bcd);
-                    f->dx = (unsigned short)(((unsigned short)sec_bcd << 8) |
-                                             0x00u);
-                    rm_clear_cf(f);
-                    return;
-                }
-                case 0x04u: {
-                    unsigned char day_bcd;
-                    unsigned char mon_bcd;
-                    unsigned char year_bcd;
-                    unsigned char century = 0x20u;
-                    // rtc_dump_raw("GETDATE");
-                    if (rtc_read_date_bcd(&year_bcd, &mon_bcd, &day_bcd) != 0) {
-                        year_bcd = 0x26u;
-                        mon_bcd = 0x05u;
-                        day_bcd = 0x08u;
-                    }
-                    f->cx = (unsigned short)(((unsigned short)century << 8) |
-                                             year_bcd);
-                    f->dx = (unsigned short)(((unsigned short)mon_bcd << 8) |
-                                             day_bcd);
-                    rm_clear_cf(f);
-                    return;
-                }
-                case 0x03u:
-                    // rtc_dump_raw("SETTIME-BEFORE");
-                    if (rtc_set_time_bcd((unsigned char)(f->cx >> 8),
-                                         (unsigned char)f->cx,
-                                         (unsigned char)(f->dx >> 8)) != 0) {
-                        f->ax =
-                            (unsigned short)((0x86u << 8) | (f->ax & 0x00ffu));
-                        rm_set_cf(f);
-                    } else {
-                        // rtc_dump_raw("SETTIME-AFTER");
-                        rm_clear_cf(f);
-                    }
-                    return;
-                case 0x05u:
-                    // rtc_dump_raw("SETDATE-BEFORE");
-                    if (rtc_set_date_bcd((unsigned char)f->cx,
-                                         (unsigned char)(f->dx >> 8),
-                                         (unsigned char)f->dx) != 0) {
-                        f->ax =
-                            (unsigned short)((0x86u << 8) | (f->ax & 0x00ffu));
-                        rm_set_cf(f);
-                    } else {
-                        // rtc_dump_raw("SETDATE-AFTER");
-                        rm_clear_cf(f);
-                    }
-                    return;
-                default:
-                    f->ax = (unsigned short)((0x86u << 8) | (f->ax & 0x00ffu));
-                    rm_set_cf(f);
-                    return;
-            }
-            rm_set_cf(f);
+            legacy_int1a_service(f, &bios_tick_counter);
             return;
-        case 0x60: {
-            unsigned int linear =
-                ((unsigned int)f->cx << 16) | (unsigned int)f->dx;
-            switch ((unsigned char)(f->ax >> 8)) {
-                case 0x00u:
-                    f->ax =
-                        (unsigned short)((f->ax & 0xff00u) |
-                                         (*(volatile unsigned char*)linear));
-                    rm_clear_cf(f);
-                    return;
-                case 0x01u:
-                    *(volatile unsigned char*)linear =
-                        (unsigned char)(f->ax & 0x00ffu);
-                    rm_clear_cf(f);
-                    return;
-                default:
-                    f->ax = (unsigned short)((0x86u << 8) | (f->ax & 0x00ffu));
-                    rm_set_cf(f);
-                    return;
-            }
-        }
+        case 0x60:
+            legacy_int60_service(f);
+            return;
         default:
             f->ax = (unsigned short)((0x86u << 8) | (f->ax & 0x00ffu));
             rm_set_cf(f);

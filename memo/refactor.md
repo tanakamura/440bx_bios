@@ -177,7 +177,9 @@ stage2 が使う DSDT などの board 固有 ACPI 入力はここでは別扱い
 移行中の状態:
 
 - legacy profile は optional payload を link せず、必要な test media だけ ROM free area へ後差しする。
-- `app/legacy/bios16.asm` と `app/legacy/legacy_floppy.*` は legacy 側へ移動済み。ただし `bios_rm_service` 本体はまだ `bios_main.c` に残っており、stage3 から直接呼ばれている。
+- `app/legacy/bios16.asm` と legacy service の一部は `app/legacy/` へ移動済み。現状は `legacy_floppy`, BDA 初期化, INT 10h/11h/12h/13h/15h/16h/17h/1Ah/60h が legacy 側 module になっている。
+- `bios_rm_service` はまだ `bios_main.c` に残る dispatcher で、stage3 から直接呼ばれている。legacy app を完全独立させるには dispatcher と thunk install も legacy app entry 側へ移す。
+- E820/memory map は `bios_memory.*`、RTC は `bios_rtc.*` へ分離済み。ただし shared service table 経由ではなく、まだ同一 ELF に直接 link している。
 - selftest profile は現状まだ `test_elf_blob` に依存している。build matrix の「selftest の app 用 payload なし」を実装するには、先に `selftest_app` を stage3 から切り出す必要がある。
 
 ## メモリマップ
@@ -464,10 +466,11 @@ legacy app 切り出し方針:
 移行中の残依存:
 
 - `app/legacy/bios16.asm` から呼ぶ `bios_rm_service` はまだ `bios_main.c` 内にある。
-- `install_bios_thunks()` と BDA 初期化はまだ stage3 entry が実行している。最終的には legacy app entry が実行する。
+- `bios_rm_service` の dispatcher は main に残る。INT 10h/11h/12h/13h/15h/16h/17h/1Ah/60h は legacy module へ委譲済みだが、INT 19h boot path はまだ main 側に残っている。
+- `install_bios_thunks()` と PIT/tick 初期化はまだ stage3 entry が実行している。BDA 初期化の中身は `legacy_bda_init()` へ移動済み。最終的には legacy app entry が thunk/BDA/PIT をまとめて設置する。
 - INT13 HDD path は `bios_storage` の global state を直接参照する。legacy app 独立後は、legacy app が storage scan するか、shared service table 経由の block device service にする。
-- INT15 E820 は stage3 の memory map helper を直接使う。legacy app へ移すには E820 provider を boot context/service として渡す。
-- RTC/tick/keyboard/serial console は低位 I/O だけで完結するので legacy app 側へ移せるが、現状は `bios_main.c` の static state にまとまっている。
+- INT15 E820 は `bios_memory.*` へ分離済み。ただし legacy app 独立後は E820 provider を boot context/service として渡す必要がある。
+- RTC read/write は `bios_rtc.*`、INT 1Ah 本体は `legacy_time.*` へ分離済み。tick counter の更新元と PIT interrupt setup はまだ main 側 state に依存している。
 
 ### linux_loader
 

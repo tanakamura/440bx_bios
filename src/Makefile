@@ -200,8 +200,8 @@ start: start.elf
 start.elf: start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o dsdt_blob.o vgabios_blob.o test_elf_blob.o p2b98_xv/stage1/start.ld
 	$(LD) -m elf_i386 -T p2b98_xv/stage1/start.ld -Map start.map -o $@ start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o dsdt_blob.o vgabios_blob.o test_elf_blob.o
 
-bios.elf: bios16.o bios_main.o bios_serial.o bios_pci.o bios_storage.o legacy_floppy.o bios.ld
-	$(LD) -m elf_i386 -T bios.ld -Map bios.map -o $@ bios16.o bios_main.o bios_serial.o bios_pci.o bios_storage.o legacy_floppy.o
+bios.elf: bios16.o bios_main.o bios_memory.o bios_rtc.o bios_serial.o bios_pci.o bios_storage.o legacy_bda.o legacy_debug.o legacy_floppy.o legacy_int13.o legacy_int15.o legacy_keyboard.o legacy_misc.o legacy_time.o legacy_video.o bios.ld
+	$(LD) -m elf_i386 -T bios.ld -Map bios.map -o $@ bios16.o bios_main.o bios_memory.o bios_rtc.o bios_serial.o bios_pci.o bios_storage.o legacy_bda.o legacy_debug.o legacy_floppy.o legacy_int13.o legacy_int15.o legacy_keyboard.o legacy_misc.o legacy_time.o legacy_video.o
 
 stage2.elf: stage2.o l2_service.o p2b98_xv/stage2/stage2.ld
 	$(LD) -m elf_i386 -T p2b98_xv/stage2/stage2.ld -Map stage2.map -o $@ stage2.o l2_service.o
@@ -266,7 +266,13 @@ bios16.o: app/legacy/bios16.asm post_code.inc
 qemu_start.o: qemu/stage1/qemu_start.asm
 	nasm $(NASMFLAGS) -f elf32 $< -o $@
 
-bios_main.o: bios_main.c post_code.h blob.h bios_io.h bios_nvram.h bios_pci.h bios_serial.h bios_storage.h app/legacy/legacy_floppy.h
+bios_main.o: bios_main.c post_code.h blob.h bios_io.h bios_memory.h bios_nvram.h bios_pci.h bios_rtc.h bios_serial.h bios_storage.h app/legacy/legacy_bda.h app/legacy/legacy_debug.h app/legacy/legacy_floppy.h app/legacy/legacy_int13.h app/legacy/legacy_int15.h app/legacy/legacy_keyboard.h app/legacy/legacy_misc.h app/legacy/legacy_rm.h app/legacy/legacy_time.h app/legacy/legacy_video.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+bios_memory.o: bios_memory.c bios_memory.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+bios_rtc.o: bios_rtc.c bios_io.h bios_rtc.h bios_serial.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 bios_serial.o: bios_serial.c bios_io.h bios_serial.h
@@ -279,6 +285,30 @@ bios_storage.o: bios_storage.c post_code.h bios_io.h bios_pci.h bios_serial.h bi
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 legacy_floppy.o: app/legacy/legacy_floppy.c bios_serial.h app/legacy/legacy_floppy.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+legacy_bda.o: app/legacy/legacy_bda.c app/legacy/legacy_bda.h app/legacy/legacy_keyboard.h app/legacy/legacy_video.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+legacy_debug.o: app/legacy/legacy_debug.c app/legacy/legacy_debug.h app/legacy/legacy_rm.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+legacy_int13.o: app/legacy/legacy_int13.c bios_serial.h bios_storage.h app/legacy/legacy_floppy.h app/legacy/legacy_int13.h app/legacy/legacy_rm.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+legacy_int15.o: app/legacy/legacy_int15.c bios_memory.h app/legacy/legacy_int15.h app/legacy/legacy_rm.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+legacy_keyboard.o: app/legacy/legacy_keyboard.c bios_io.h app/legacy/legacy_keyboard.h app/legacy/legacy_rm.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+legacy_misc.o: app/legacy/legacy_misc.c app/legacy/legacy_misc.h app/legacy/legacy_rm.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+legacy_time.o: app/legacy/legacy_time.c bios_rtc.h app/legacy/legacy_rm.h app/legacy/legacy_time.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+legacy_video.o: app/legacy/legacy_video.c bios_serial.h app/legacy/legacy_rm.h app/legacy/legacy_video.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 romtest: romtest.asm
