@@ -566,7 +566,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 ## 現在の移行状態
 
 - P2B98-XV stage1 と QEMU stage1 は DRAM 末尾に shared service table / boot context / payload manifest を置き、DRAM 最後 4 byte の pointer から辿れる。
-- stage2 は shared service table があれば `blob_expand` と stage3 payload をそこから使う。旧 `BOOT_AUX_*` は移行中の fallback として残す。
+- stage2 は shared service table があれば `blob_expand` と stage3 payload をそこから使い、aux なしでも stage3 まで進める。旧 `BOOT_AUX_*` は移行中の fallback として残す。
 - stage3 は DSDT / VGA BIOS / test ELF payload と `blob_expand` を shared service table 優先で使う。旧 `BOOT_AUX_*` は maintenance key と互換 fallback 用に残す。
 - legacy BIOS service の dispatcher / thunk / timer は `app/legacy/` へ移動済み。ただし legacy app 単体 blob 化と `0x000F0000` 配置は未完了。
 

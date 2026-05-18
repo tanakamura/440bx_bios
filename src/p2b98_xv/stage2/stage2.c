@@ -212,13 +212,14 @@ static void init_l2_cache(void) {
 __attribute__((section(".stage2.entry"), used)) void stage2_entry(
     unsigned int total_bytes, unsigned int aux_linear) {
     typedef void (*bios_entry_fn)(unsigned int, unsigned int);
-    volatile unsigned int* aux = (volatile unsigned int*)aux_linear;
+    volatile unsigned int* aux =
+        aux_linear != 0u ? (volatile unsigned int*)aux_linear : 0;
     struct shared_service_table* service =
         shared_service_from_total(total_bytes);
     struct shared_boot_context* boot_ctx = shared_boot_context(service);
     struct shared_payload_entry* stage3_payload =
         shared_payload_find(service, SHARED_PAYLOAD_ID_STAGE3);
-    const void* stage3_blob = (const void*)aux[BOOT_AUX_STAGE3_BLOB];
+    const void* stage3_blob = 0;
     blob_expand_fn expand = (blob_expand_fn)BLOB_SERVICE_LINEAR;
     struct blob_status status;
     int rc;
@@ -229,6 +230,9 @@ __attribute__((section(".stage2.entry"), used)) void stage2_entry(
     if (stage3_payload != 0) {
         stage3_blob = (const void*)stage3_payload->blob_ptr;
     }
+    if (stage3_blob == 0 && aux != 0) {
+        stage3_blob = (const void*)aux[BOOT_AUX_STAGE3_BLOB];
+    }
 
     zero_stage2_bss();
     serial_write_string("stage2 @ 00080000\r\n");
@@ -238,12 +242,21 @@ __attribute__((section(".stage2.entry"), used)) void stage2_entry(
     enable_shadow_ram_and_wb();
     clear_app_shadow_window();
     clear_stage3_window();
-    aux[BOOT_AUX_SHADOW_READY] = 1u;
+    if (aux != 0) {
+        aux[BOOT_AUX_SHADOW_READY] = 1u;
+    }
     if (boot_ctx != 0) {
         boot_ctx->flags |= SHARED_BOOT_FLAG_SHADOW_READY;
     }
 
     serial_write_string("Load stage3 @ 00200000...\r\n");
+    if (stage3_blob == 0) {
+        serial_write_string("stage3 blob missing\r\n");
+        outb(0x80u, 0xefu);
+        for (;;) {
+            __asm__ volatile("hlt");
+        }
+    }
     rc = expand(stage3_blob, (void*)BLOB_STAGE_LINEAR, (void*)BIOS_LOAD_LINEAR,
                 BIOS_LOAD_CAPACITY, &status);
     if (rc != 0) {
