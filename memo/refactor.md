@@ -466,11 +466,11 @@ legacy app 切り出し方針:
 移行中の残依存:
 
 - `app/legacy/bios16.asm` から呼ぶ `bios_rm_service` は `app/legacy/legacy_service.c` 側に移動済み。ただし同一 ELF 内 symbol 参照であり、app blob として独立 link しているわけではない。
-- thunk/IVT/DPT 設置は `legacy_thunk.*` に移動済み。stage3 はまだ `install_bios_shadow` callback と PIT/tick 初期化 callback を渡している。
+- thunk/IVT/DPT 設置は `legacy_thunk.*` に移動済み。stage3 はまだ `install_bios_shadow` callback を渡している。
 - INT19 boot sector 選択は `legacy_boot.*` に移動済み。ただし FreeDOS へ落ちる protected-mode-to-real-mode jump は `bios16.asm` の `bios_boot_freedos_pm32` symbol を同一 ELF 参照している。
 - INT13 HDD path は `bios_storage` の global state を直接参照する。legacy app 独立後は、legacy app が storage scan するか、shared service table 経由の block device service にする。
 - INT15 E820 は `bios_memory.*` へ分離済み。ただし legacy app 独立後は E820 provider を boot context/service として渡す必要がある。
-- RTC read/write は `bios_rtc.*`、INT 1Ah 本体は `legacy_time.*` へ分離済み。tick counter の更新元と PIT interrupt setup はまだ main 側 state に依存している。
+- RTC read/write は `bios_rtc.*`、INT 1Ah 本体は `legacy_time.*`、PIT/tick counter は `legacy_timer.*` へ分離済み。
 
 ### linux_loader
 

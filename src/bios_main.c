@@ -10,6 +10,7 @@
 #include "app/legacy/legacy_floppy.h"
 #include "app/legacy/legacy_service.h"
 #include "app/legacy/legacy_thunk.h"
+#include "app/legacy/legacy_timer.h"
 #include "post_code.h"
 
 void bios32_entry_c(unsigned int total_bytes, unsigned int aux_blob_linear);
@@ -57,11 +58,6 @@ static const unsigned int bios_runtime_gdt_linear = 0x000ff800u;
 static const unsigned short bios_ebda_segment = 0x0000u;
 static const unsigned short bios_dos_base_mem_kb = 640u;
 static unsigned int bios_floppy_dpt_linear = 0x00000500u;
-static unsigned int bios_tick_counter = 0;
-static unsigned char bios_tick_initialized = 0;
-static unsigned short bios_tick_last_raw = 0;
-static unsigned int bios_tick_subcount = 0;
-static unsigned char bios_timer_irq_enabled = 0;
 static unsigned char bios_boot_drive = 0x80u;
 
 #define BIOS_MTRR_SAVE_MAX 8u
@@ -109,12 +105,6 @@ static void wrmsr64(unsigned int msr, unsigned int lo, unsigned int hi) {
 #define MTRR_DEF_TYPE_TYPE_MASK 0x000000ffu
 #define MTRR_DEF_TYPE_E 0x00000800u
 #define MTRR_PHYSMASK_VALID 0x00000800u
-#define IA32_APIC_BASE 0x0000001bu
-#define APIC_BASE_ENABLE 0x00000800u
-
-#define BDA_TICK_COUNT 0x046cu
-#define BDA_MIDNIGHT_FLAG 0x0470u
-
 #define PIIX4_ISA_DEV 7u
 #define PIIX4_ISA_FN 0u
 #define PIIX4_RTCCFG 0xcbu
@@ -285,101 +275,6 @@ static void nvram_save_cmdline_suffix(const char* text) {
     for (++i; i < BIOS_NVRAM_CMDLINE_MAX; ++i) {
         nvram_write((unsigned char)(BIOS_NVRAM_CMDLINE_OFF + i), 0u);
     }
-}
-
-static unsigned short pit_read_counter0(void) {
-    unsigned char lo;
-    unsigned char hi;
-    outb(0x0043u, 0x00u);
-    lo = inb(0x0040u);
-    hi = inb(0x0040u);
-    return (unsigned short)(((unsigned short)hi << 8) | lo);
-}
-
-static void bios_set_tick_counter(unsigned int ticks) {
-    bios_tick_counter = ticks;
-    *(volatile unsigned int*)BDA_TICK_COUNT = ticks;
-}
-
-static void io_wait(void) { outb(0x0080u, 0x00u); }
-
-static void bios_disable_local_apic(void) {
-    unsigned long long apic_base = rdmsr64(IA32_APIC_BASE);
-    if (((unsigned int)apic_base & APIC_BASE_ENABLE) != 0u) {
-        wrmsr64(IA32_APIC_BASE, ((unsigned int)apic_base & ~APIC_BASE_ENABLE),
-                (unsigned int)(apic_base >> 32));
-    }
-}
-
-static void bios_init_pit(void) {
-    outb(0x0043u, 0x36u);
-    outb(0x0040u, 0x00u);
-    outb(0x0040u, 0x00u);
-    bios_tick_initialized = 0;
-    bios_tick_subcount = 0;
-    bios_set_tick_counter(0u);
-    *(volatile unsigned char*)BDA_MIDNIGHT_FLAG = 0u;
-    bios_timer_irq_enabled = 0u;
-}
-
-static void bios_init_pic_for_timer(void) {
-    bios_disable_local_apic();
-    outb(0x0022u, 0x70u);
-    io_wait();
-    outb(0x0023u, 0x00u);
-    io_wait();
-    outb(0x0020u, 0x11u);
-    io_wait();
-    outb(0x00a0u, 0x11u);
-    io_wait();
-    outb(0x0021u, 0x08u);
-    io_wait();
-    outb(0x00a1u, 0x70u);
-    io_wait();
-    outb(0x0021u, 0x04u);
-    io_wait();
-    outb(0x00a1u, 0x02u);
-    io_wait();
-    outb(0x0021u, 0x01u);
-    io_wait();
-    outb(0x00a1u, 0x01u);
-    io_wait();
-    outb(0x0020u, 0x20u);
-    outb(0x00a0u, 0x20u);
-    io_wait();
-    outb(0x0021u, 0xfeu);
-    outb(0x00a1u, 0xffu);
-    bios_timer_irq_enabled = 1u;
-}
-
-static void bios_update_tick_counter(void) {
-    unsigned short raw;
-    if (bios_timer_irq_enabled) {
-        bios_tick_counter = *(volatile unsigned int*)BDA_TICK_COUNT;
-        return;
-    }
-
-    raw = pit_read_counter0();
-    if (!bios_tick_initialized) {
-        bios_tick_initialized = 1;
-        bios_tick_last_raw = raw;
-        *(volatile unsigned int*)BDA_TICK_COUNT = bios_tick_counter;
-        return;
-    }
-
-    bios_tick_subcount +=
-        (unsigned short)((bios_tick_last_raw - raw) & 0xffffu);
-    bios_tick_last_raw = raw;
-
-    while (bios_tick_subcount >= 65536u) {
-        bios_tick_subcount -= 65536u;
-        ++bios_tick_counter;
-        if (bios_tick_counter >= 0x001800b0u) {
-            bios_tick_counter = 0;
-            *(volatile unsigned char*)BDA_MIDNIGHT_FLAG = 1u;
-        }
-    }
-    *(volatile unsigned int*)BDA_TICK_COUNT = bios_tick_counter;
 }
 
 static unsigned char serial_read_char_blocking(void) {
@@ -836,11 +731,6 @@ static void init_vgabios_for_linux(void) {
     serial_write_string("VBIOS init returned\r\n");
 }
 
-static void bios_init_legacy_pit(void) {
-    bios_init_pit();
-    bios_init_pic_for_timer();
-}
-
 static void nvram_record_boot_success(unsigned char kind);
 
 static void install_bios_thunks(void) {
@@ -852,14 +742,12 @@ static void install_bios_thunks(void) {
 
     context.total_bytes = bios_total_bytes_global;
     context.floppy_dpt_linear = bios_floppy_dpt_linear;
-    context.tick_counter = &bios_tick_counter;
     context.base_mem_kb = bios_dos_base_mem_kb;
     context.boot_priority = bios_boot_priority;
     context.record_boot_success = nvram_record_boot_success;
-    context.update_ticks = bios_update_tick_counter;
     context.boot_pm32 = bios_boot_freedos_pm32;
     legacy_service_init(&context);
-    bios_init_legacy_pit();
+    legacy_timer_init();
 }
 
 #define BIOS_MEMTEST_START 0x00100000u

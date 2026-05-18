@@ -9,6 +9,7 @@
 #include "app/legacy/legacy_misc.h"
 #include "app/legacy/legacy_rm.h"
 #include "app/legacy/legacy_thunk.h"
+#include "app/legacy/legacy_timer.h"
 #include "app/legacy/legacy_time.h"
 #include "app/legacy/legacy_video.h"
 
@@ -21,9 +22,7 @@ void legacy_service_init(const struct legacy_service_context* context) {
 }
 
 void bios_rm_service(unsigned int vector, struct rm_int13_frame* f) {
-    if (legacy_context.update_ticks != 0) {
-        legacy_context.update_ticks();
-    }
+    legacy_timer_update();
     if (0 && vector != 0x16 && vector != 0x10) {
         serial_write_string("bios_rm_service=");
         serial_write_hex8(vector & 0xffu);
@@ -64,7 +63,7 @@ void bios_rm_service(unsigned int vector, struct rm_int13_frame* f) {
             return;
         }
         case 0x1a:
-            legacy_int1a_service(f, legacy_context.tick_counter);
+            legacy_int1a_service(f, legacy_timer_tick_counter());
             return;
         case 0x60:
             legacy_int60_service(f);
