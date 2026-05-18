@@ -9,9 +9,8 @@
 #include "service_table.h"
 #include "app/legacy/legacy_boot.h"
 #include "app/legacy/legacy_floppy.h"
-#include "app/legacy/legacy_service.h"
+#include "app/legacy/legacy_runtime.h"
 #include "app/legacy/legacy_thunk.h"
-#include "app/legacy/legacy_timer.h"
 #include "post_code.h"
 
 void bios32_entry_c(unsigned int total_bytes, unsigned int aux_blob_linear);
@@ -59,7 +58,6 @@ static char bios_linux_cmdline_suffix[BIOS_NVRAM_CMDLINE_MAX];
 static const unsigned int bios_runtime_gdt_linear = 0x000ff800u;
 static const unsigned short bios_ebda_segment = 0x0000u;
 static const unsigned short bios_dos_base_mem_kb = 640u;
-static unsigned int bios_floppy_dpt_linear = 0x00000500u;
 static unsigned char bios_boot_drive = 0x80u;
 
 #define BIOS_MTRR_SAVE_MAX 8u
@@ -744,20 +742,18 @@ static void init_vgabios_for_linux(void) {
 static void nvram_record_boot_success(unsigned char kind);
 
 static void install_bios_thunks(void) {
-    struct legacy_service_context context;
+    struct legacy_runtime_config config;
 
-    bios_floppy_dpt_linear = legacy_install_bios_thunks(
-        legacy_floppy_present(), bios_hdd_is_present(), bios_dos_base_mem_kb,
-        bios_ebda_segment, install_bios_shadow, 0);
-
-    context.total_bytes = bios_total_bytes_global;
-    context.floppy_dpt_linear = bios_floppy_dpt_linear;
-    context.base_mem_kb = bios_dos_base_mem_kb;
-    context.boot_priority = bios_boot_priority;
-    context.record_boot_success = nvram_record_boot_success;
-    context.boot_pm32 = bios_boot_freedos_pm32;
-    legacy_service_init(&context);
-    legacy_timer_init();
+    config.total_bytes = bios_total_bytes_global;
+    config.floppy_present = legacy_floppy_present();
+    config.hdd_present = bios_hdd_is_present();
+    config.base_mem_kb = bios_dos_base_mem_kb;
+    config.ebda_segment = bios_ebda_segment;
+    config.boot_priority = bios_boot_priority;
+    config.record_boot_success = nvram_record_boot_success;
+    config.boot_pm32 = bios_boot_freedos_pm32;
+    config.install_shadow = install_bios_shadow;
+    legacy_runtime_init(&config);
 }
 
 #define BIOS_MEMTEST_START 0x00100000u
