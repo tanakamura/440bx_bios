@@ -693,6 +693,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - `make -C src test` は生成 ROM 経路の最低限確認として `qemu_legacy_genrom.bin` の IDE boot も実行する。
 - stage3、P2B98-XV/QEMU stage2、P2B98-XV/QEMU stage1-only ELF の link rule と object list は各 stage directory の `Makefile` へ切り出し済み。現状は top-level `src/Makefile` から include する非再帰 make。
 - legacy と linux_loader の object list / compile rule は各 app directory の `Makefile` へ切り出し済み。まだ stage3 と同一 ELF に link しており、独立 app ELF/blob 化は未完了。
+- selftest/uACPI の object list / compile rule / test ELF blob rule は `app/selftest/s3test/Makefile` へ切り出し済み。生成物名は互換維持のため `src/s3test.elf` / `src/test_elf_blob.bin` のまま。
 
 ## 決定事項
 

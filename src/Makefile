@@ -9,13 +9,6 @@ NASMFLAGS := -I.
 OBJCOPY_ELF_FLAGS := -I binary -O elf32-i386 -B i386
 BUILD_SCRIPTS := ../scripts/build
 TEST_SCRIPTS := ../scripts/test
-UACPI_CPPFLAGS := $(CPPFLAGS) -Iapp/selftest/s3test -I../uACPI/include -DUACPI_OVERRIDE_CONFIG
-UACPI_CFLAGS := $(CFLAGS) -Os -ffunction-sections -fdata-sections \
-	-Wno-unused-parameter -Wno-sign-compare -Wno-missing-field-initializers
-UACPI_SRC_NAMES := tables types uacpi utilities interpreter opcodes namespace \
-	stdlib shareable opregion default_handlers io notify sleep registers \
-	resources event mutex osi
-UACPI_OBJS := $(addsuffix .o,$(addprefix uacpi_,$(UACPI_SRC_NAMES)))
 CORE_C_OBJS := bootblock.o stage2.o qemu_stage2.o acpi_tables.o blob_service.o \
 	l2_service.o qemu_stage1.o stage3_entry.o stage3_runtime.o \
 	bios_acpi_runtime.o bios_benchmark.o bios_legacy.o bios_linux.o \
@@ -26,9 +19,6 @@ CORE_C_OBJS := bootblock.o stage2.o qemu_stage2.o acpi_tables.o blob_service.o \
 	legacy_floppy.o legacy_int13.o legacy_int15.o legacy_keyboard.o \
 	legacy_misc.o legacy_platform.o legacy_runtime.o legacy_service.o \
 	legacy_thunk.o legacy_timer.o legacy_time.o legacy_video.o
-SELFTEST_C_OBJS := s3test.o s3test_uacpi.o $(UACPI_OBJS)
-C_DEP_OBJS := $(CORE_C_OBJS) $(SELFTEST_C_OBJS)
-DEPS := $(C_DEP_OBJS:.o=.d)
 
 COMPILE_C = $(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 COMPILE_UACPI_C = $(CC) $(UACPI_CPPFLAGS) $(UACPI_CFLAGS) -c $< -o $@
@@ -48,11 +38,15 @@ post_code.h post_code.inc ../specs/POST_CODE.md: post_code.def $(BUILD_SCRIPTS)/
 
 include app/legacy/Makefile
 include app/linux_loader/Makefile
+include app/selftest/s3test/Makefile
 include stage3/Makefile
 include platform/p2b98_xv/stage1/Makefile
 include platform/p2b98_xv/stage2/Makefile
 include platform/qemu/stage1/Makefile
 include platform/qemu/stage2/Makefile
+
+C_DEP_OBJS := $(CORE_C_OBJS) $(SELFTEST_C_OBJS)
+DEPS := $(C_DEP_OBJS:.o=.d)
 
 fdos_blob.bin: ../freedos_boot_fd.img $(BUILD_SCRIPTS)/gen_blob.py
 	python3 $(BUILD_SCRIPTS)/gen_blob.py --fat12-normalize ../freedos_boot_fd.img fdos_blob.bin
@@ -113,26 +107,6 @@ linuxprobe.elf: linuxprobe.o linuxprobe.ld
 
 linuxprobe.img linuxprobe_raw.img: linuxprobe.elf $(BUILD_SCRIPTS)/gen_linuxprobe_img.py
 	python3 $(BUILD_SCRIPTS)/gen_linuxprobe_img.py
-
-s3test.o: app/selftest/s3test/s3test.c
-	$(COMPILE_C)
-
-s3test_uacpi.o: app/selftest/s3test/s3test_uacpi.c
-	$(COMPILE_UACPI_C)
-
-uacpi_%.o: ../uACPI/source/%.c
-	$(COMPILE_UACPI_C)
-
-s3test.elf: s3test.o s3test_uacpi.o $(UACPI_OBJS) app/selftest/s3test/s3test.ld
-	$(LD) -m elf_i386 --gc-sections -T app/selftest/s3test/s3test.ld -Map s3test.map -o $@ s3test.o s3test_uacpi.o $(UACPI_OBJS) $(LIBGCC)
-
-test_elf_blob.bin: s3test.elf $(BUILD_SCRIPTS)/gen_blob.py
-	python3 $(BUILD_SCRIPTS)/gen_blob.py s3test.elf test_elf_blob.bin
-
-test_elf_blob.o: test_elf_blob.bin
-	objcopy $(OBJCOPY_ELF_FLAGS) \
-		--rename-section .data=.testelfblob,alloc,load,readonly,data,contents \
-		$< $@
 
 srecsave.com: ../tools/dos/srecsave.asm
 	nasm -f bin $< -o $@
