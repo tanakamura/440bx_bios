@@ -39,15 +39,6 @@ SECTIONS
 
     . = ALIGN(16);
 
-    .blobsvc :
-    {
-        __blob_service_start = .;
-        KEEP(*(.blobsvc.entry))
-        KEEP(*(.blobsvc))
-        __blob_service_end = .;
-    }
-
-    . = ALIGN(16);
     __rom_free_first = .;
     __rom_free_end = 0x000F0000;
     ASSERT(__rom_free_first <= __rom_free_end, "ROM payloads overlap free area")
@@ -63,6 +54,14 @@ SECTIONS
     {
         *(.text)
         *(.text.*)
+    }
+
+    .blobsvc :
+    {
+        __blob_service_start = .;
+        KEEP(*(.blobsvc.entry))
+        KEEP(*(.blobsvc))
+        __blob_service_end = .;
     }
 
     .rodata :
