@@ -687,6 +687,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - board/profile ごとの blob list は `platform/qemu/*.blobs` と `platform/p2b98_xv/*.blobs` に追加済み。`genrom` target はこの blob list を入力にする。
 - `.blobsvc` は ROM payload area から stage1 tail 側へ移動済み。payload area は stage2/stage3/app/blob 用に寄せ、stage1 が必要とする shared service code は stage1 image の一部として持つ。
 - gen_rom 用に stage directory 配下の ELF alias を作る target を追加済み。stage1 ELF は payload symbol なしでも link できるようにし、`gen_rom.py` は stage1 ELF の alloc section だけを ROM 末尾へ overlay して payload directory を壊さない。
+- `make -C src test` は生成 ROM 経路の最低限確認として `qemu_legacy_genrom.bin` の IDE boot も実行する。
 
 ## 決定事項
 

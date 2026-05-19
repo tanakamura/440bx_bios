@@ -438,7 +438,7 @@ $(STAGE3_DIR_ELF): stage3.elf
 romtest: romtest.asm
 	nasm -f bin $< -o $@
 
-test: stdtest.img usbmbr.img linuxprobe.img linuxprobe_raw.img qemu_flat_test_bios.bin qemu_legacy_test_bios.bin
+test: stdtest.img usbmbr.img linuxprobe.img linuxprobe_raw.img qemu_flat_test_bios.bin qemu_legacy_test_bios.bin qemu_legacy_genrom.bin
 	python3 $(TEST_SCRIPTS)/run_qemu_tests.py
 
 -include $(DEPS)

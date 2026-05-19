@@ -93,6 +93,29 @@ def main() -> int:
                 "E820OK",
             ],
         )
+        genrom_ideboot_ok = run_case(
+            "custombios-genrom-idembr",
+            [
+                "qemu-system-i386",
+                "-m", "32m",
+                "-bios", str(ROOT / "qemu_legacy_genrom.bin"),
+                "-M", "pc",
+                "-serial", "stdio",
+                "-monitor", "none",
+                "-nographic",
+                "-no-reboot",
+                "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
+                "-drive", f"if=ide,format=raw,file={ide_img}",
+            ],
+            [
+                "qemu stage3 copied",
+                "BIOS HDD80 IDE",
+                "USBMBR",
+                "TIMEROK",
+                "INT60OK",
+                "E820OK",
+            ],
+        )
         linuxprobe_ok = run_case(
             "custombios-linuxprobe",
             [
@@ -180,7 +203,7 @@ def main() -> int:
                 "SQ",
             ],
         )
-    return 0 if (std_ok and ideboot_ok and linuxprobe_ok and
+    return 0 if (std_ok and ideboot_ok and genrom_ideboot_ok and linuxprobe_ok and
                  linuxprobe_raw_ok and usbmbr_ok and
                  legacy_floppy_ok) else 1
 
