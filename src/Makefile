@@ -18,9 +18,6 @@ QEMU_STAGE2_ELF := platform/qemu/stage2/stage2.elf
 STAGE3_DIR_ELF := stage3/stage3.elf
 GENROM_STAGE_ELFS := $(P2B_STAGE1_ELF) $(P2B_STAGE2_ELF) \
 	$(QEMU_STAGE1_ELF) $(QEMU_STAGE2_ELF) $(STAGE3_DIR_ELF)
-GENROM_BINS := p2b98_xv_legacy_genrom.bin p2b98_xv_selftest_genrom.bin \
-	p2b98_xv_linux_genrom.bin qemu_legacy_genrom.bin \
-	qemu_selftest_genrom.bin qemu_linux_genrom.bin
 
 post_code.h post_code.inc ../specs/POST_CODE.md: post_code.def $(BUILD_SCRIPTS)/gen_post_codes.py
 	python3 $(BUILD_SCRIPTS)/gen_post_codes.py
@@ -35,11 +32,14 @@ include lib/storage/Makefile
 include lib/x86/Makefile
 include shared_service/Makefile
 include stage3/Makefile
+include platform/p2b98_xv/Makefile
 include platform/p2b98_xv/stage1/Makefile
 include platform/p2b98_xv/stage2/Makefile
+include platform/qemu/Makefile
 include platform/qemu/stage1/Makefile
 include platform/qemu/stage2/Makefile
 
+GENROM_BINS := $(P2B98_XV_GENROM_BINS) $(QEMU_GENROM_BINS)
 CORE_C_OBJS := $(P2B_STAGE1_C_OBJS) $(P2B_STAGE2_C_OBJS) \
 	$(QEMU_STAGE1_C_OBJS) $(QEMU_STAGE2_C_OBJS) \
 	$(ACPI_OBJS) $(SHARED_SERVICE_OBJS) $(X86_OBJS) \
@@ -215,12 +215,6 @@ bios.elf: stage3.elf
 	cp $< $@
 
 genrom: $(GENROM_BINS)
-
-p2b98_xv_%_genrom.bin: platform/p2b98_xv/%.blobs $(GENROM_STAGE_ELFS) dsdt.aml ../images/gbsmc.088 $(BUILD_SCRIPTS)/gen_rom.py $(BUILD_SCRIPTS)/gen_blob.py
-	python3 $(BUILD_SCRIPTS)/gen_rom.py $< $@
-
-qemu_%_genrom.bin: platform/qemu/%.blobs $(GENROM_STAGE_ELFS) dsdt.aml ../images/gbsmc.088 $(BUILD_SCRIPTS)/gen_rom.py $(BUILD_SCRIPTS)/gen_blob.py
-	python3 $(BUILD_SCRIPTS)/gen_rom.py $< $@
 
 romtest: romtest.asm
 	nasm -f bin $< -o $@

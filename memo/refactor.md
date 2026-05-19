@@ -694,7 +694,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - stage3、P2B98-XV/QEMU stage2、P2B98-XV/QEMU stage1-only ELF の link rule と object list は各 stage directory の `Makefile` へ切り出し済み。現状は top-level `src/Makefile` から include する非再帰 make。
 - legacy と linux_loader の object list / compile rule は各 app directory の `Makefile` へ切り出し済み。まだ stage3 と同一 ELF に link しており、独立 app ELF/blob 化は未完了。
 - selftest/uACPI の object list / compile rule / test ELF blob rule は `app/selftest/s3test/Makefile` へ切り出し済み。生成物名は互換維持のため `src/s3test.elf` / `src/test_elf_blob.bin` のまま。
-- stage3 固有 `.c`、platform stage 固有 source、lib/shared helper の compile rule は各 directory の `Makefile` へ切り出し済み。top-level の `CORE_C_OBJS` は module 変数の合成になっている。旧 `start` / `qemu_bios.bin` ROM build rule は platform stage1 `Makefile` へ移動済み。genrom board/profile rule はまだ top-level に残る。
+- stage3 固有 `.c`、platform stage 固有 source、lib/shared helper の compile rule は各 directory の `Makefile` へ切り出し済み。top-level の `CORE_C_OBJS` は module 変数の合成になっている。旧 `start` / `qemu_bios.bin` ROM build rule は platform stage1 `Makefile` へ、genrom board/profile rule は platform board `Makefile` へ移動済み。
 
 ## 決定事項
 
