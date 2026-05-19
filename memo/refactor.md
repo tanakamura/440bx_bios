@@ -19,7 +19,7 @@ stage とディレクトリを整理する。移動だけで済むものは先�
 - `0x000F0000-0x000FFFFF` は legacy/Linux loader 用 app slot として使う。他の app は app blob 側でロードアドレスを決める。
 - stage 間でシンボルを相互参照しない。共通データと関数は shared service table 経由で受け渡す。
 - board 固有情報は stage2 が shared service table 上の boot context に詰めて stage3 に渡す。
-- `bios_main.c` は stage3 entry と機能モジュールへ分割する。
+- stage3 entry と stage3 runtime flow は分割し、entry は `stage3/entry.c` に置く。
 - blob format / POST code / memory map / shared service table は C と asm で定数を重複させない。
 - QEMU と実機で同じ stage3 を使う。違いは stage1/stage2 と shared service table の内容だけに閉じ込める。
 - uACPI は自作 AML interpreter の代わりに使う。ただし stage3 には常駐させず、selftest blob 側だけで使う。
@@ -181,7 +181,7 @@ stage2 が使う DSDT などの board 固有 ACPI 入力はここでは別扱い
 - `bios_rm_service` dispatcher と thunk/IVT/DPT 設置は `app/legacy/` へ移動済み。現状は同一 ELF に link し、stage3 が `legacy_service_init()` で context を渡している。
 - E820/memory map は `bios_memory.*`、RTC は `bios_rtc.*` へ分離済み。legacy service からは `legacy_platform_ops` callback 経由で呼ぶ。
 - selftest profile は現状まだ `test_elf_blob` に依存している。build matrix の「selftest の app 用 payload なし」を実装するには、先に `selftest_app` を stage3 から切り出す必要がある。
-- stage3 main flow は `bios_stage3.*` へ分離済み。`bios_main.c` は legacy asm entry からの BSS clear と stage3 run wrapper だけを持つ。
+- stage3 main flow は `stage3/stage3.*` へ分離済み。`stage3/entry.c` は legacy asm entry からの BSS clear と stage3 run wrapper だけを持つ。
 
 ## メモリマップ
 
@@ -460,7 +460,7 @@ legacy app 切り出し方針:
 - 標準 BIOS との比較は media transport ではなく INT 13h service level で合わせる。標準 BIOS は `-fda testfd.img`、自作 BIOS は `FDS0 in ROM free area` でよい。
 - `FDS0` は custom BIOS に test floppy を渡す transport であり、test floppy の中身は BIOS INT 13h/10h だけを使う。test の期待値は stage3 の log ではなく boot sector が出す `SQ` などの guest-visible 結果に寄せる。
 - legacy app は `bios16.asm` と `bios_rm_service` を持つ。stage3 は legacy app をロードして entry を呼ぶだけにする。
-- storage は `lib/storage` 相当として共有し、legacy app から直接使う。難所は storage driver ではなく、現在 `bios_main.c` に混在している BDA 初期化、INT 10h/11h/12h/13h/15h/16h/1Ah、tick、keyboard、boot drive、`0x7c00` への real-mode jump を legacy app 側へ分離すること。
+- storage は `lib/storage` 相当として共有し、legacy app から直接使う。難所は storage driver ではなく、現在同一 ELF 内に残る BDA 初期化、INT 10h/11h/12h/13h/15h/16h/1Ah、tick、keyboard、boot drive、`0x7c00` への real-mode jump を legacy app 側へ独立 link/load すること。
 - `bios16.asm` の thunk は runtime では `0x000FE000` にコピーして使う。app ELF 内の `bios16_thunk_start` はコピー元であり、`bios16_thunk_runtime_base` とは分けて考える。
 - legacy app は `0x000F0000` に配置する。したがって先に stage3 を `0x00200000` へ移して `0x000F0000-0x000FFFFF` を app slot として空ける。
 
@@ -472,7 +472,7 @@ legacy app 切り出し方針:
 - INT13 HDD path は `legacy_platform_ops` 経由になった。legacy app 単体 blob 化では、この callback の実装を app 側 storage scan または shared service table 経由 block device service に差し替える。
 - INT15 E820 は `legacy_platform_ops` 経由になった。legacy app 単体 blob 化では、この callback の実装を boot context/service 由来の E820 provider に差し替える。
 - RTC read/write は `bios_rtc.*`、INT 1Ah 本体は `legacy_time.*`、PIT/tick counter は `legacy_timer.*` へ分離済み。
-- shadow PAM/MTRR/GDT setup と VBIOS shadow/init は `bios_shadow.*` へ分離済み。`bios_main.c` は stage2 の shadow-ready flag と payload/blob service を渡すだけ。
+- shadow PAM/MTRR/GDT setup と VBIOS shadow/init は `bios_shadow.*` へ分離済み。`stage3/stage3.c` は stage2 の shadow-ready flag と payload/blob service を渡すだけ。
 
 ### linux_loader
 
@@ -565,7 +565,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 8. Linux loader を `app/linux_loader/` に切り出し、`0x000F0000` に配置する。
 9. `blob_service.c` を `shared_service/` に移す。
 10. P2B98-XV/QEMU の stage1/stage2 を `platform/` 以下に移す。
-11. `bios_main.c` から serial/pci/storage/nvram/maintenance を切り出す。
+11. `stage3/stage3.c` から serial/pci/storage/nvram/maintenance glue を切り出す。
 12. S3/uACPI selftest を `app/selftest/s3test/` に切り出す。
 13. generator scripts を `scripts/build/`、QEMU test runner を `scripts/test/`、実機更新系を `scripts/board/` に移す。
 14. それぞれの移動後に `make -C src test` を通す。
@@ -582,16 +582,16 @@ payload blob の場所は boot context ではなく、shared service table の `
 - legacy BIOS service の dispatcher / thunk / timer / runtime glue は `app/legacy/` へ移動済み。ただし legacy app 単体 blob 化と `0x000F0000` 配置は未完了。
 - legacy service は serial/storage/RTC/E820 などの stage3 直参照を `legacy_platform_ops` callback table 経由へ寄せた。残る大きな直結は app としての entry/link/load ABI。
 - Linux kernel/initrd loader と Linux boot params/VBE setup は `app/linux_loader/` へ移動済み。serial/storage/E820 は `linux_loader_config` callback 経由になり、stage3 は NVRAM 設定と ACPI/RTC/VBIOS/storage/memory callback を渡す glue だけ持つ。
-- NVRAM raw access と設定 decode/save は `bios_nvram.*` へ分離済み。`bios_main.c` には stage3 global へ反映する薄い glue だけ残っている。
-- maintenance prompt は `bios_maintenance.*` へ分離済み。`bios_main.c` は NVRAM 設定ポインタと save callback を渡すだけ。
-- optional memtest とその一時 MTRR UC 化は `bios_memtest.*` へ分離済み。`bios_main.c` は enable flag / DRAM size / shared service table を渡すだけ。
+- NVRAM raw access と設定 decode/save は `bios_nvram.*` へ分離済み。`stage3/stage3.c` には stage3 global へ反映する薄い glue だけ残っている。
+- maintenance prompt は `bios_maintenance.*` へ分離済み。`stage3/stage3.c` は NVRAM 設定ポインタと save callback を渡すだけ。
+- optional memtest とその一時 MTRR UC 化は `bios_memtest.*` へ分離済み。`stage3/stage3.c` は enable flag / DRAM size / shared service table を渡すだけ。
 - Linux 起動直前の ACPI PM event clear / SCI enable は `bios_acpi_runtime.*` へ分離済み。stage3 は stage2 由来の RSDP/PM port/flag を渡すだけ。
 - manual bandwidth benchmark は `bios_benchmark.*` へ分離済み。stage3 main flow からは fallback diagnostic として呼ぶだけ。
-- shared service table / boot context / payload manifest の stage3 decode は `bios_stage_context.*` へ分離済み。`bios_main.c` は `struct bios_stage_context` を保持して各 module へ渡すだけ。
-- NVRAM 設定 state / maintenance prompt glue / boot priority learn は `bios_settings.*` へ分離済み。`bios_main.c` は `struct bios_settings` を各 app config に渡すだけ。
-- legacy platform ops / runtime config / boot drive glue は `bios_legacy.*` へ分離済み。`bios_main.c` は boot priority と callbacks を渡して legacy app を呼び出すだけ。
-- Linux loader config / platform callback glue は `bios_linux.*` へ分離済み。`bios_main.c` は stage/settings/VBE callback を渡して Linux loader を呼び出すだけ。
-- ROM test ELF 起動 glue は `bios_selftest.*` へ分離済み。`bios_main.c` は run-test bit を見て selftest config を渡すだけ。
+- shared service table / boot context / payload manifest の stage3 decode は `bios_stage_context.*` へ分離済み。`stage3/stage3.c` は `struct bios_stage_context` を保持して各 module へ渡すだけ。
+- NVRAM 設定 state / maintenance prompt glue / boot priority learn は `bios_settings.*` へ分離済み。`stage3/stage3.c` は `struct bios_settings` を各 app config に渡すだけ。
+- legacy platform ops / runtime config / boot drive glue は `bios_legacy.*` へ分離済み。`stage3/stage3.c` は boot priority と callbacks を渡して legacy app を呼び出すだけ。
+- Linux loader config / platform callback glue は `bios_linux.*` へ分離済み。`stage3/stage3.c` は stage/settings/VBE callback を渡して Linux loader を呼び出すだけ。
+- ROM test ELF 起動 glue は `bios_selftest.*` へ分離済み。`stage3/stage3.c` は run-test bit を見て selftest config を渡すだけ。
 
 ## 決定事項
 

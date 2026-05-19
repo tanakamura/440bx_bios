@@ -8,7 +8,7 @@
 #include "bios_serial.h"
 #include "bios_settings.h"
 #include "bios_shadow.h"
-#include "bios_stage3.h"
+#include "stage3.h"
 #include "bios_stage_context.h"
 #include "bios_storage.h"
 #include "app/legacy/legacy_floppy.h"

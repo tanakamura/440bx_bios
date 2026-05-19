@@ -1,4 +1,4 @@
-#include "bios_stage3.h"
+#include "stage3.h"
 
 extern unsigned char __bss_start[];
 extern unsigned char __bss_end[];
