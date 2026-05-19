@@ -180,11 +180,17 @@ testfd_sparse.o: testfd_sparse.bin
 test_floppy_blob.bin: testfd.img $(BUILD_SCRIPTS)/gen_fdos_sparse.py
 	python3 $(BUILD_SCRIPTS)/gen_fdos_sparse.py testfd.img test_floppy_blob.bin
 
-bios.bin: bios.elf
+stage3.bin: stage3.elf
 	$(OBJCOPY) -O binary $< $@
 
-bios_blob.bin: bios.bin $(BUILD_SCRIPTS)/gen_blob.py
-	python3 $(BUILD_SCRIPTS)/gen_blob.py --load-addr 0x00200000 bios.bin bios_blob.bin
+bios.bin: stage3.bin
+	cp $< $@
+
+stage3_blob.bin: stage3.bin $(BUILD_SCRIPTS)/gen_blob.py
+	python3 $(BUILD_SCRIPTS)/gen_blob.py --load-addr 0x00200000 stage3.bin stage3_blob.bin
+
+bios_blob.bin: stage3_blob.bin
+	cp $< $@
 
 bios_blob.o: bios_blob.bin
 	objcopy $(OBJCOPY_ELF_FLAGS) \
@@ -219,8 +225,11 @@ start: start.elf
 start.elf: start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o dsdt_blob.o vgabios_blob.o test_elf_blob.o platform/p2b98_xv/stage1/start.ld
 	$(LD) -m elf_i386 -T platform/p2b98_xv/stage1/start.ld -Map start.map -o $@ start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o dsdt_blob.o vgabios_blob.o test_elf_blob.o
 
-bios.elf: bios16.o stage3_entry.o stage3_runtime.o bios_acpi_runtime.o bios_benchmark.o bios_legacy.o bios_linux.o bios_maintenance.o bios_memtest.o bios_memory.o bios_nvram.o bios_rtc.o bios_selftest.o bios_serial.o bios_settings.o bios_shadow.o bios_stage_context.o bios_pci.o bios_storage.o linux_loader.o legacy_bda.o legacy_boot.o legacy_debug.o legacy_floppy.o legacy_int13.o legacy_int15.o legacy_keyboard.o legacy_misc.o legacy_platform.o legacy_runtime.o legacy_service.o legacy_thunk.o legacy_timer.o legacy_time.o legacy_video.o bios.ld
-	$(LD) -m elf_i386 -T bios.ld -Map bios.map -o $@ bios16.o stage3_entry.o stage3_runtime.o bios_acpi_runtime.o bios_benchmark.o bios_legacy.o bios_linux.o bios_maintenance.o bios_memtest.o bios_memory.o bios_nvram.o bios_rtc.o bios_selftest.o bios_serial.o bios_settings.o bios_shadow.o bios_stage_context.o bios_pci.o bios_storage.o linux_loader.o legacy_bda.o legacy_boot.o legacy_debug.o legacy_floppy.o legacy_int13.o legacy_int15.o legacy_keyboard.o legacy_misc.o legacy_platform.o legacy_runtime.o legacy_service.o legacy_thunk.o legacy_timer.o legacy_time.o legacy_video.o
+stage3.elf: bios16.o stage3_entry.o stage3_runtime.o bios_acpi_runtime.o bios_benchmark.o bios_legacy.o bios_linux.o bios_maintenance.o bios_memtest.o bios_memory.o bios_nvram.o bios_rtc.o bios_selftest.o bios_serial.o bios_settings.o bios_shadow.o bios_stage_context.o bios_pci.o bios_storage.o linux_loader.o legacy_bda.o legacy_boot.o legacy_debug.o legacy_floppy.o legacy_int13.o legacy_int15.o legacy_keyboard.o legacy_misc.o legacy_platform.o legacy_runtime.o legacy_service.o legacy_thunk.o legacy_timer.o legacy_time.o legacy_video.o stage3/stage3.ld
+	$(LD) -m elf_i386 -T stage3/stage3.ld -Map stage3.map -o $@ bios16.o stage3_entry.o stage3_runtime.o bios_acpi_runtime.o bios_benchmark.o bios_legacy.o bios_linux.o bios_maintenance.o bios_memtest.o bios_memory.o bios_nvram.o bios_rtc.o bios_selftest.o bios_serial.o bios_settings.o bios_shadow.o bios_stage_context.o bios_pci.o bios_storage.o linux_loader.o legacy_bda.o legacy_boot.o legacy_debug.o legacy_floppy.o legacy_int13.o legacy_int15.o legacy_keyboard.o legacy_misc.o legacy_platform.o legacy_runtime.o legacy_service.o legacy_thunk.o legacy_timer.o legacy_time.o legacy_video.o
+
+bios.elf: stage3.elf
+	cp $< $@
 
 stage2.elf: stage2.o l2_service.o acpi_tables.o platform/p2b98_xv/stage2/stage2.ld
 	$(LD) -m elf_i386 -T platform/p2b98_xv/stage2/stage2.ld -Map stage2.map -o $@ stage2.o l2_service.o acpi_tables.o

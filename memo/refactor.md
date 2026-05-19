@@ -186,7 +186,7 @@ stage2 が使う DSDT などの board 固有 ACPI 入力はここでは別扱い
 - `bios_rm_service` dispatcher と thunk/IVT/DPT 設置は `app/legacy/` へ移動済み。現状は同一 ELF に link し、stage3 が `legacy_service_init()` で context を渡している。
 - E820/memory map は `bios_memory.*`、RTC は `bios_rtc.*` へ分離済み。legacy service からは `legacy_platform_ops` callback 経由で呼ぶ。
 - selftest profile は現状まだ `test_elf_blob` に依存している。build matrix の「selftest の app 用 payload なし」を実装するには、先に `selftest_app` を stage3 から切り出す必要がある。
-- stage3 main flow は `stage3/stage3.*` へ分離済み。`stage3/entry.c` は legacy asm entry からの BSS clear と stage3 run wrapper だけを持つ。
+- stage3 main flow は `stage3/stage3.*` へ分離済み。`stage3/entry.c` は legacy asm entry からの BSS clear と stage3 run wrapper だけを持つ。linker script も `stage3/stage3.ld` へ移動済み。
 - stage3 専用 glue のうち context/settings/maintenance/memtest/selftest/benchmark/ACPI runtime/legacy/Linux/shadow は `src/stage3/` へ移動済み。
 - low-level helper のうち x86 I/O/memory/RTC/NVRAM、PCI、serial、storage は `src/lib/` へ移動済み。ファイル名/API は移行中のため一旦 `bios_*` のまま。
 
@@ -681,6 +681,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - DOS tool / DOS test helper の source は `tools/dos/` へ移動済み。build output は互換のため引き続き `src/*.exe` / `src/*.com` に出す。
 - build generator scripts は `scripts/build/`、QEMU test runner は `scripts/test/` へ移動済み。`make -C src` から呼ぶ前提で、生成物の基準 directory は引き続き `src/`。
 - S3/uACPI selftest source は `src/app/selftest/s3test/` へ移動済み。生成物は互換のため引き続き `src/s3test.elf` / `src/test_elf_blob.bin`。
+- stage3 の実体出力は `stage3.elf` / `stage3.bin` / `stage3_blob.bin` へ移行済み。互換のため `bios.elf` / `bios.bin` / `bios_blob.bin` は alias として残している。
 - BLZ4 blob header は `load_addr` と `BLOB_FLAG_HAS_LOAD_ADDR` を持つ。現状は stage2 / stage3 blob 生成時に load address を埋め、既存 loader は互換のため caller 指定 destination へ展開している。
 
 ## 決定事項
