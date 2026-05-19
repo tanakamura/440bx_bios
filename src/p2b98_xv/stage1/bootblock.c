@@ -320,9 +320,13 @@ static unsigned int blob_service_base_for_total(unsigned int total_bytes) {
         shared_table_base_from_total(total_bytes), blob_service_size_aligned());
 }
 
+static unsigned int blob_stage_base_for_total(unsigned int total_bytes) {
+    return blob_service_base_for_total(total_bytes) - BLOB_STAGE_CAPACITY;
+}
+
 static unsigned int dram_stack_top(unsigned int total_bytes) {
     if (total_bytes >= 0x00300000u) {
-        return blob_service_base_for_total(total_bytes);
+        return blob_stage_base_for_total(total_bytes);
     }
     return 0x001ff000u;
 }
@@ -598,7 +602,8 @@ static void payload_add(struct shared_payload_manifest* manifest,
 
 static void install_shared_service_table(unsigned int total_bytes,
                                          unsigned int stack_top,
-                                         unsigned int service_base) {
+                                         unsigned int service_base,
+                                         unsigned int blob_stage) {
     unsigned int table_linear = shared_table_base_from_total(total_bytes);
     unsigned int ptr_slot = shared_table_pointer_slot(total_bytes);
     struct shared_service_table* table =
@@ -636,6 +641,8 @@ static void install_shared_service_table(unsigned int total_bytes,
     table->blob_expand =
         service_base +
         ((unsigned int)blob_expand_service - (unsigned int)__blob_service_start);
+    table->blob_stage = blob_stage;
+    table->blob_stage_size = BLOB_STAGE_CAPACITY;
 
     manifest->magic = SHARED_PAYLOAD_MAGIC;
     manifest->version = SHARED_PAYLOAD_VERSION;
@@ -674,23 +681,26 @@ static void enter_stage2(unsigned int total_bytes) {
     struct shared_service_table* service =
         shared_service_from_total(total_bytes);
     blob_expand_fn expand = 0;
+    unsigned int blob_stage = 0u;
     const unsigned char* blob = rom_high_ptr(__stage2_blob_start);
     struct shared_payload_entry* stage2_payload;
     int rc;
 
     if (service != 0 && service->blob_expand != 0u) {
         expand = (blob_expand_fn)service->blob_expand;
+        blob_stage = service->blob_stage;
         stage2_payload = shared_payload_find(service, SHARED_PAYLOAD_ID_STAGE2);
         if (stage2_payload != 0) {
             blob = (const unsigned char*)stage2_payload->blob_ptr;
         }
     }
-    if (expand == 0) {
+    if (expand == 0 || blob_stage == 0u ||
+        service->blob_stage_size < BLOB_STAGE_CAPACITY) {
         serial_write_string("blobsvc missing\r\n");
         die_with_post(0xef);
     }
 
-    rc = expand(blob, (void*)BLOB_STAGE_LINEAR, (void*)STAGE2_LOAD_LINEAR,
+    rc = expand(blob, (void*)blob_stage, (void*)STAGE2_LOAD_LINEAR,
                 STAGE2_LOAD_CAPACITY, &status, total_bytes);
     if (rc != 0) {
         serial_write_string("\r\nstage2 load failed rc=");
@@ -741,12 +751,14 @@ static unsigned int prepare_runtime_gdt(void) {
 void postcar_bootblock_resume(unsigned int total_bytes) {
     unsigned int stack_top = dram_stack_top(total_bytes);
     unsigned int service_base = blob_service_base_for_total(total_bytes);
+    unsigned int blob_stage = blob_stage_base_for_total(total_bytes);
 
     serial_write_string("bootblock post-CAR\r\n");
     serial_write_string("Install blobsvc...\r\n");
     install_blob_service(service_base);
     serial_write_string("blobsvc ok\r\n");
-    install_shared_service_table(total_bytes, stack_top, service_base);
+    install_shared_service_table(total_bytes, stack_top, service_base,
+                                 blob_stage);
     serial_write_string("svctab ok\r\n");
     serial_write_string("Load stage2 @ 00080000...\r\n");
     enter_stage2(total_bytes);

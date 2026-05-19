@@ -284,7 +284,8 @@ static void enable_platform_pm_io(struct shared_boot_context* boot_ctx) {
 
 static void install_real_acpi_tables(unsigned int total_bytes,
                                      struct shared_boot_context* boot_ctx,
-                                     blob_expand_fn expand) {
+                                     blob_expand_fn expand,
+                                     unsigned int blob_stage) {
     unsigned int dsdt_blob = 0u;
     unsigned int base = acpi_table_base_for_total(total_bytes);
     unsigned int cap = acpi_table_capacity_for_total(total_bytes);
@@ -295,7 +296,8 @@ static void install_real_acpi_tables(unsigned int total_bytes,
     if (boot_ctx != 0) {
         dsdt_blob = boot_ctx->acpi_input_ptr;
     }
-    if (dsdt_blob == 0u || cap <= 0x1000u) {
+    if (dsdt_blob == 0u || cap <= 0x1000u || expand == 0 ||
+        blob_stage == 0u) {
         serial_write_string("ACPI real tables skipped\r\n");
         return;
     }
@@ -303,7 +305,7 @@ static void install_real_acpi_tables(unsigned int total_bytes,
     serial_write_string("ACPI real DSDT @ ");
     serial_write_hex32(base);
     serial_write_string("...");
-    rc = expand((const void*)dsdt_blob, (void*)BLOB_STAGE_LINEAR, (void*)dsdt,
+    rc = expand((const void*)dsdt_blob, (void*)blob_stage, (void*)dsdt,
                 cap - 0x1000u, &status, total_bytes);
     serial_write_string("\r\n");
     if (rc != 0) {
@@ -333,11 +335,13 @@ __attribute__((section(".stage2.entry"), used)) void stage2_entry(
         shared_payload_find(service, SHARED_PAYLOAD_ID_STAGE3);
     const void* stage3_blob = 0;
     blob_expand_fn expand = 0;
+    unsigned int blob_stage = 0u;
     struct blob_status status;
     int rc;
 
     if (service != 0 && service->blob_expand != 0u) {
         expand = (blob_expand_fn)service->blob_expand;
+        blob_stage = service->blob_stage;
     }
     if (stage3_payload != 0) {
         stage3_blob = (const void*)stage3_payload->blob_ptr;
@@ -354,17 +358,18 @@ __attribute__((section(".stage2.entry"), used)) void stage2_entry(
     if (boot_ctx != 0) {
         boot_ctx->flags |= SHARED_BOOT_FLAG_SHADOW_READY;
     }
-    install_real_acpi_tables(total_bytes, boot_ctx, expand);
+    install_real_acpi_tables(total_bytes, boot_ctx, expand, blob_stage);
 
     serial_write_string("Load stage3 @ 00200000...\r\n");
-    if (stage3_blob == 0 || expand == 0) {
+    if (stage3_blob == 0 || expand == 0 || blob_stage == 0u ||
+        service->blob_stage_size < BLOB_STAGE_CAPACITY) {
         serial_write_string("stage3 blob missing\r\n");
         outb(0x80u, 0xefu);
         for (;;) {
             __asm__ volatile("hlt");
         }
     }
-    rc = expand(stage3_blob, (void*)BLOB_STAGE_LINEAR, (void*)BIOS_LOAD_LINEAR,
+    rc = expand(stage3_blob, (void*)blob_stage, (void*)BIOS_LOAD_LINEAR,
                 BIOS_LOAD_CAPACITY, &status, total_bytes);
     if (rc != 0) {
         serial_write_string("\r\nstage3 load failed rc=");

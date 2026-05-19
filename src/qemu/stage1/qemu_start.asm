@@ -3,7 +3,7 @@ bits 16
 %define CODE_SEL 0x08
 %define DATA_SEL 0x10
 %define ROM_HIGH_DELTA 0xFFF00000
-%define BLOB_STAGE_LINEAR 0x00380000
+%define BLOB_STAGE_CAPACITY 8192
 %define BLOB_STATUS_SIZE 20
 %define SHARED_TABLE_BYTES 0x1000
 %define STAGE2_LOAD_LINEAR 0x00080000
@@ -69,8 +69,9 @@ qemu_pm_entry:
     add ebx, 15
     and ebx, 0xfffffff0
     sub eax, ebx
-    mov esp, eax
     mov ebp, eax
+    sub eax, BLOB_STAGE_CAPACITY
+    mov esp, eax
 
     mov esi, __blob_service_start + ROM_HIGH_DELTA
     mov edi, ebp
@@ -79,12 +80,14 @@ qemu_pm_entry:
     rep movsb
     xor eax, eax
     cpuid
+    mov esi, esp
 
+    push esi
     push ebp
-    push ebp
+    push esi
     push dword QEMU_TOTAL_BYTES
     call qemu_install_shared_service_table
-    add esp, 12
+    add esp, 16
 
     sub esp, BLOB_STATUS_SIZE
     mov ebx, esp
@@ -94,7 +97,7 @@ qemu_pm_entry:
     push ebx
     push dword STAGE2_LOAD_CAPACITY
     push dword STAGE2_LOAD_LINEAR
-    push dword BLOB_STAGE_LINEAR
+    push esi
     push dword __stage2_blob_start + ROM_HIGH_DELTA
     mov eax, blob_shadow_load_and_enter
     sub eax, __blob_service_start

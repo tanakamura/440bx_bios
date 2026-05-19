@@ -243,11 +243,13 @@ __attribute__((section(".stage2.entry"), used)) void qemu_stage2_entry(
         shared_payload_find(service, SHARED_PAYLOAD_ID_STAGE3);
     const void* stage3_blob = 0;
     blob_expand_fn expand = 0;
+    unsigned int blob_stage = 0u;
     struct blob_status status;
     int rc;
 
     if (service != 0 && service->blob_expand != 0u) {
         expand = (blob_expand_fn)service->blob_expand;
+        blob_stage = service->blob_stage;
     }
     if (stage3_payload != 0) {
         stage3_blob = (const void*)stage3_payload->blob_ptr;
@@ -260,14 +262,15 @@ __attribute__((section(".stage2.entry"), used)) void qemu_stage2_entry(
     }
     install_qemu_acpi_tables(total_bytes, boot_ctx);
 
-    if (stage3_blob == 0 || expand == 0) {
+    if (stage3_blob == 0 || expand == 0 || blob_stage == 0u ||
+        service->blob_stage_size < BLOB_STAGE_CAPACITY) {
         serial_write_string("qemu stage3 blob missing\r\n");
         outb(0x80u, 0xefu);
         for (;;) {
             __asm__ volatile("hlt");
         }
     }
-    rc = expand(stage3_blob, (void*)BLOB_STAGE_LINEAR, (void*)BIOS_LOAD_LINEAR,
+    rc = expand(stage3_blob, (void*)blob_stage, (void*)BIOS_LOAD_LINEAR,
                 BIOS_LOAD_CAPACITY, &status, total_bytes);
     if (rc != 0) {
         serial_write_string("\r\nqemu stage3 load failed rc=");

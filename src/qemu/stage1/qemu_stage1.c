@@ -41,7 +41,8 @@ static void payload_add(struct shared_payload_manifest* manifest,
 
 void qemu_install_shared_service_table(unsigned int total_bytes,
                                        unsigned int stack_top,
-                                       unsigned int service_base) {
+                                       unsigned int service_base,
+                                       unsigned int blob_stage) {
     unsigned int table_linear = shared_table_base_from_total(total_bytes);
     unsigned int ptr_slot = shared_table_pointer_slot(total_bytes);
     struct shared_service_table* table =
@@ -77,6 +78,8 @@ void qemu_install_shared_service_table(unsigned int total_bytes,
     table->blob_expand =
         service_base +
         ((unsigned int)blob_expand_service - (unsigned int)__blob_service_start);
+    table->blob_stage = blob_stage;
+    table->blob_stage_size = BLOB_STAGE_CAPACITY;
 
     manifest->magic = SHARED_PAYLOAD_MAGIC;
     manifest->version = SHARED_PAYLOAD_VERSION;

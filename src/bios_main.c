@@ -660,8 +660,18 @@ static blob_expand_fn bios_blob_expand_fn(void) {
     return 0;
 }
 
+static void* bios_blob_stage_ptr(void) {
+    if (bios_shared_service_global != 0 &&
+        bios_shared_service_global->blob_stage != 0u &&
+        bios_shared_service_global->blob_stage_size >= BLOB_STAGE_CAPACITY) {
+        return (void*)bios_shared_service_global->blob_stage;
+    }
+    return 0;
+}
+
 static void install_vgabios_shadow(void) {
     blob_expand_fn expand = bios_blob_expand_fn();
+    void* blob_stage = bios_blob_stage_ptr();
     struct blob_status status;
     unsigned int size;
     unsigned int i;
@@ -672,15 +682,15 @@ static void install_vgabios_shadow(void) {
     if (bios_vgabios_blob_linear_global == 0u) {
         return;
     }
-    if (expand == 0) {
+    if (expand == 0 || blob_stage == 0) {
         serial_write_string("VBIOS blob service missing\r\n");
         return;
     }
 
     serial_write_string("VBIOS @ 000c0000...");
     rc = expand((const void*)bios_vgabios_blob_linear_global,
-                (void*)BLOB_STAGE_LINEAR, (void*)VGA_BIOS_LINEAR,
-                VGA_BIOS_CAPACITY, &status, bios_total_bytes_global);
+                blob_stage, (void*)VGA_BIOS_LINEAR, VGA_BIOS_CAPACITY,
+                &status, bios_total_bytes_global);
     serial_write_string("\r\n");
     if (rc != 0) {
         serial_write_string("VBIOS blob failed rc=");
@@ -833,9 +843,14 @@ static unsigned int bios_memtest_skip_end(unsigned int addr) {
         return bios_shared_service_global->service_base +
                bios_shared_service_global->service_size;
     }
-    if (addr >= BLOB_STAGE_LINEAR &&
-        addr < BLOB_STAGE_LINEAR + BLOB_STAGE_CAPACITY) {
-        return BLOB_STAGE_LINEAR + BLOB_STAGE_CAPACITY;
+    if (bios_shared_service_global != 0 &&
+        bios_shared_service_global->blob_stage != 0u &&
+        bios_shared_service_global->blob_stage_size != 0u &&
+        addr >= bios_shared_service_global->blob_stage &&
+        addr < bios_shared_service_global->blob_stage +
+                   bios_shared_service_global->blob_stage_size) {
+        return bios_shared_service_global->blob_stage +
+               bios_shared_service_global->blob_stage_size;
     }
     return addr;
 }
@@ -980,6 +995,7 @@ static void run_test_elf_blob(void) {
     typedef unsigned int (*test_elf_entry_fn)(unsigned int, unsigned int,
                                              unsigned int, unsigned int);
     blob_expand_fn expand = bios_blob_expand_fn();
+    void* blob_stage = bios_blob_stage_ptr();
     struct blob_status status;
     struct linux_loader_config linux_config;
     unsigned char* image = (unsigned char*)LINUX_LOADER_TEST_ELF_IMAGE_LINEAR;
@@ -991,16 +1007,15 @@ static void run_test_elf_blob(void) {
         serial_write_string("No test ELF blob\r\n");
         return;
     }
-    if (expand == 0) {
+    if (expand == 0 || blob_stage == 0) {
         serial_write_string("Test ELF blob service missing\r\n");
         return;
     }
 
     serial_write_string("Run ROM test ELF...\r\n");
     expand_rc = expand((const void*)bios_test_elf_blob_linear_global,
-                       (void*)BLOB_STAGE_LINEAR, image,
-                       LINUX_LOADER_TEST_ELF_IMAGE_CAPACITY, &status,
-                       bios_total_bytes_global);
+                       blob_stage, image, LINUX_LOADER_TEST_ELF_IMAGE_CAPACITY,
+                       &status, bios_total_bytes_global);
     if (expand_rc != 0) {
         serial_write_string("Test ELF blob failed rc=");
         serial_write_hex8((unsigned char)expand_rc);
