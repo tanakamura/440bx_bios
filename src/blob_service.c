@@ -1,4 +1,5 @@
 #include "blob.h"
+#include "service_table.h"
 
 #define BLOBSVC __attribute__((section(".blobsvc"), noinline, used))
 #define BLOBSVC_INLINE __attribute__((always_inline)) inline
@@ -26,7 +27,38 @@ static void serial_write_char(char c) {
     outb(0x03f8, (unsigned char)c);
 }
 
-static BLOBSVC void blob_check_maintenance_key(void) {
+static BLOBSVC void blob_set_maintenance_request(unsigned int total_bytes) {
+    unsigned int ptr_slot;
+    volatile unsigned int* slot;
+    struct shared_service_table* table;
+    struct shared_boot_context* ctx;
+
+    if (total_bytes < 0x1000u) {
+        return;
+    }
+
+    ptr_slot = (total_bytes & ~3u) - 4u;
+    slot = (volatile unsigned int*)ptr_slot;
+    table = (struct shared_service_table*)*slot;
+    if (table == 0 || ((unsigned int)table & 0x0fu) != 0u ||
+        (unsigned int)table >= ptr_slot || (unsigned int)table < 0x1000u ||
+        table->magic != SHARED_SERVICE_MAGIC ||
+        table->version != SHARED_SERVICE_VERSION ||
+        table->size < sizeof(*table) || table->boot_context_ptr == 0u) {
+        return;
+    }
+
+    ctx = (struct shared_boot_context*)table->boot_context_ptr;
+    if (ctx->magic != SHARED_BOOT_CONTEXT_MAGIC ||
+        ctx->version != SHARED_BOOT_CONTEXT_VERSION ||
+        ctx->size < sizeof(*ctx)) {
+        return;
+    }
+
+    ctx->flags |= SHARED_BOOT_FLAG_MAINTENANCE_REQUESTED;
+}
+
+static BLOBSVC void blob_check_maintenance_key(unsigned int total_bytes) {
     unsigned char ch;
 
     if ((inb(0x03f8 + 5) & 0x01u) == 0) {
@@ -34,7 +66,7 @@ static BLOBSVC void blob_check_maintenance_key(void) {
     }
     ch = inb(0x03f8);
     if (ch == 'm' || ch == 'M') {
-        ((volatile unsigned int*)BOOT_AUX_LINEAR)[BOOT_AUX_MAINTENANCE] = 1u;
+        blob_set_maintenance_request(total_bytes);
     }
 }
 
@@ -184,7 +216,8 @@ static BLOBSVC int blob_lz4_decode(const unsigned char* src,
 
 BLOBSVC_ENTRY int blob_expand_service(const void* blob_ptr, void* stage_ptr,
                                       void* dst_ptr, unsigned int dst_capacity,
-                                      struct blob_status* status) {
+                                      struct blob_status* status,
+                                      unsigned int total_bytes) {
     const unsigned char* blob = (const unsigned char*)blob_ptr;
     unsigned char* stage = (unsigned char*)stage_ptr;
     unsigned char* dst = (unsigned char*)dst_ptr;
@@ -245,12 +278,12 @@ BLOBSVC_ENTRY int blob_expand_service(const void* blob_ptr, void* stage_ptr,
 
         src = data + block->compressed_off;
         out = dst + block->uncompressed_off;
-        blob_check_maintenance_key();
+        blob_check_maintenance_key(total_bytes);
         for (retry = 0; retry < 64u; ++retry) {
             unsigned int j;
             for (j = 0; j < block->compressed_size; ++j) {
                 if ((j & 0xffu) == 0u) {
-                    blob_check_maintenance_key();
+                    blob_check_maintenance_key(total_bytes);
                 }
                 if (retry == 0u) {
                     stage[j] = ((volatile const unsigned char*)src)[j];
@@ -281,7 +314,7 @@ BLOBSVC_ENTRY int blob_expand_service(const void* blob_ptr, void* stage_ptr,
             }
         }
         serial_write_char('.');
-        blob_check_maintenance_key();
+        blob_check_maintenance_key(total_bytes);
         if ((i & 0xf) == 0) {
             serial_write_char('\r');
             serial_write_char('\n');
@@ -411,7 +444,8 @@ BLOBSVC void blob_shadow_load_and_enter(const void* blob, void* stage,
         *p++ = 0u;
     }
 
-    rc = blob_expand_service(blob, stage, dst, dst_capacity, status);
+    rc = blob_expand_service(blob, stage, dst, dst_capacity, status,
+                             total_bytes);
     if (rc != 0) {
         outb(0x0080u, 0xefu);
         for (;;) {

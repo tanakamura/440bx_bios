@@ -496,7 +496,7 @@ ROM 上の test ELF blob をロードして実行する。
 
 ## boot_context
 
-現状の `BOOT_AUX_*` dword 配列は廃止する。boot context は shared service table から pointer で辿る構造体にする。
+旧 aux dword 配列は廃止済み。boot context は shared service table から pointer で辿る構造体にする。
 
 最低限:
 
@@ -556,7 +556,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 1. shared service table ABI を定義する。
 2. shared service table offset を C/asm 用に生成する。
 3. stage1 が DRAM 末尾へ PIC shared service と table を動的配置し、DRAM 最後 4 byte に table pointer を置く。
-4. `BLOB_SERVICE_LINEAR` と `BOOT_AUX_*` の直接参照を shared service table 経由に置き換える。
+4. `BLOB_SERVICE_LINEAR` と旧 aux dword 配列の直接参照を shared service table 経由に置き換える。
 5. stage 間の linker symbol 参照をなくす。blob pointer は shared service table 上の payload manifest で渡す。
 6. stage3 のリンク先を `0x00200000` に移し、`0x000F0000` を legacy/Linux loader 用に空ける。
 7. legacy BIOS service を `app/legacy/` に切り出し、`0x000F0000` に配置する。
@@ -571,9 +571,9 @@ payload blob の場所は boot context ではなく、shared service table の `
 ## 現在の移行状態
 
 - P2B98-XV stage1 と QEMU stage1 は DRAM 末尾に shared service table / boot context / payload manifest を置き、DRAM 最後 4 byte の pointer から辿れる。
-- stage2 は `blob_expand` と stage3 payload を shared service table から使う。payload pointer の旧 `BOOT_AUX_*` fallback は削除済み。
-- blob 展開中の maintenance key はまだ blob service が旧 `BOOT_AUX_MAINTENANCE` に一時記録し、stage2 が boot context flag へ転記している。これは blob service 側を shared service table aware にするまでの残依存。
-- stage3 は VGA BIOS / test ELF payload と `blob_expand` を shared service table から使う。旧 `BOOT_AUX_*` fallback と固定 `BLOB_SERVICE_LINEAR` fallback は削除済み。
+- stage2 は `blob_expand` と stage3 payload を shared service table から使う。payload pointer の旧 aux fallback は削除済み。
+- blob 展開中の maintenance key は blob service が DRAM 末尾の shared service table pointer から boot context を辿り、`SHARED_BOOT_FLAG_MAINTENANCE_REQUESTED` を直接立てる。旧 aux dword 配列は削除済み。
+- stage3 は VGA BIOS / test ELF payload と `blob_expand` を shared service table から使う。旧 aux fallback と固定 `BLOB_SERVICE_LINEAR` fallback は削除済み。
 - ACPI table 構築は stage2 へ移動済み。P2B98-XV stage2 は DSDT blob を展開して RSDT/FADT/FACS/RSDP を作る。QEMU stage2 は fw_cfg の ACPI tables を取得/patch して RSDP を作る。stage3 は board 非依存の ACPI PM event clear / SCI enable だけを持つ。
 - legacy BIOS service の dispatcher / thunk / timer / runtime glue は `app/legacy/` へ移動済み。ただし legacy app 単体 blob 化と `0x000F0000` 配置は未完了。
 - Linux kernel/initrd loader と Linux boot params/VBE setup は `app/linux_loader/` へ移動済み。stage3 は NVRAM 設定と ACPI/RTC/VBIOS callback を渡す glue だけ持つ。

@@ -9,15 +9,11 @@ bits 16
 %define STAGE2_LOAD_LINEAR 0x00080000
 %define STAGE2_LOAD_CAPACITY 0x00010000
 %define STAGE2_ENTRY 0x00080000
-%define BOOT_AUX_LINEAR 0x0007F000
 %define QEMU_TOTAL_BYTES (32 * 1024 * 1024)
 
 global qemu_start
 
-extern __bios_blob_start
 extern __stage2_blob_start
-extern __test_elf_blob_start
-extern __test_elf_blob_end
 extern __blob_service_start
 extern __blob_service_end
 extern blob_shadow_load_and_enter
@@ -80,23 +76,10 @@ qemu_pm_entry:
     call qemu_install_shared_service_table
     add esp, 8
 
-    mov dword [BOOT_AUX_LINEAR + 0], 0
-    mov dword [BOOT_AUX_LINEAR + 4], 0
-    mov dword [BOOT_AUX_LINEAR + 8], __bios_blob_start + ROM_HIGH_DELTA
-    mov dword [BOOT_AUX_LINEAR + 12], 0
-    mov dword [BOOT_AUX_LINEAR + 16], 0
-    mov eax, __test_elf_blob_start + ROM_HIGH_DELTA
-    mov ebx, __test_elf_blob_end + ROM_HIGH_DELTA
-    cmp eax, ebx
-    jne .store_test_elf_aux
-    xor eax, eax
-.store_test_elf_aux:
-    mov dword [BOOT_AUX_LINEAR + 20], eax
-
     sub esp, BLOB_STATUS_SIZE
     mov ebx, esp
     push dword STAGE2_ENTRY
-    push dword BOOT_AUX_LINEAR
+    push dword 0
     push dword QEMU_TOTAL_BYTES
     push ebx
     push dword STAGE2_LOAD_CAPACITY

@@ -233,18 +233,9 @@ static void install_qemu_acpi_tables(unsigned int total_bytes,
     serial_write_string("ACPI qemu tables ok\r\n");
 }
 
-static void propagate_maintenance_request(struct shared_boot_context* boot_ctx,
-                                          volatile unsigned int* aux) {
-    if (boot_ctx != 0 && aux != 0 && aux[BOOT_AUX_MAINTENANCE] != 0u) {
-        boot_ctx->flags |= SHARED_BOOT_FLAG_MAINTENANCE_REQUESTED;
-    }
-}
-
 __attribute__((section(".stage2.entry"), used)) void qemu_stage2_entry(
     unsigned int total_bytes, unsigned int aux_linear) {
     typedef void (*bios_entry_fn)(unsigned int, unsigned int);
-    volatile unsigned int* aux =
-        aux_linear != 0u ? (volatile unsigned int*)aux_linear : 0;
     struct shared_service_table* service =
         shared_service_from_total(total_bytes);
     struct shared_boot_context* boot_ctx = shared_boot_context(service);
@@ -264,7 +255,6 @@ __attribute__((section(".stage2.entry"), used)) void qemu_stage2_entry(
 
     zero_bss();
     serial_write_string("qemu stage2 @ 00080000\r\n");
-    propagate_maintenance_request(boot_ctx, aux);
     if (boot_ctx != 0) {
         boot_ctx->flags |= SHARED_BOOT_FLAG_SHADOW_READY;
     }
@@ -278,7 +268,7 @@ __attribute__((section(".stage2.entry"), used)) void qemu_stage2_entry(
         }
     }
     rc = expand(stage3_blob, (void*)BLOB_STAGE_LINEAR, (void*)BIOS_LOAD_LINEAR,
-                BIOS_LOAD_CAPACITY, &status);
+                BIOS_LOAD_CAPACITY, &status, total_bytes);
     if (rc != 0) {
         serial_write_string("\r\nqemu stage3 load failed rc=");
         serial_write_hex8((unsigned char)rc);
@@ -294,8 +284,6 @@ __attribute__((section(".stage2.entry"), used)) void qemu_stage2_entry(
             __asm__ volatile("hlt");
         }
     }
-    propagate_maintenance_request(boot_ctx, aux);
-
     serial_write_string("\r\nqemu stage3 copied\r\n");
     ((bios_entry_fn)BIOS32_ENTRY)(total_bytes, aux_linear);
     for (;;) {

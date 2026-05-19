@@ -13,7 +13,8 @@ extern unsigned char __blob_service_start[];
 extern unsigned char __blob_service_end[];
 extern int blob_expand_service(const void* blob, void* stage, void* dst,
                                unsigned int dst_capacity,
-                               struct blob_status* status);
+                               struct blob_status* status,
+                               unsigned int total_bytes);
 
 static const unsigned char* rom_high_ptr(const unsigned char* ptr) {
     return (const unsigned char*)((unsigned int)ptr + ROM_HIGH_DELTA);

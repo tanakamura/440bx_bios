@@ -72,7 +72,8 @@ extern unsigned char __blob_service_start[];
 extern unsigned char __blob_service_end[];
 extern int blob_expand_service(const void* blob, void* stage, void* dst,
                                unsigned int dst_capacity,
-                               struct blob_status* status);
+                               struct blob_status* status,
+                               unsigned int total_bytes);
 
 static void serial_write_char(char c) {
     while ((inb(0x03f8 + 5) & 0x20) == 0) {
@@ -162,14 +163,6 @@ static void pci_write8(unsigned char bus, unsigned char device,
 
 static const unsigned char* rom_high_ptr(const unsigned char* ptr) {
     return (const unsigned char*)((unsigned int)ptr + ROM_HIGH_DELTA);
-}
-
-static unsigned int rom_payload_linear(const unsigned char* start,
-                                       const unsigned char* end) {
-    if (start == end) {
-        return 0u;
-    }
-    return (unsigned int)rom_high_ptr(start);
 }
 
 static unsigned char rom_read_stable_u8(const unsigned char* ptr) {
@@ -672,15 +665,6 @@ static void enter_stage2(unsigned int total_bytes) {
         shared_service_from_total(total_bytes);
     blob_expand_fn expand = (blob_expand_fn)BLOB_SERVICE_LINEAR;
     const unsigned char* blob = rom_high_ptr(__stage2_blob_start);
-    unsigned int stage3_blob_linear =
-        rom_payload_linear(__bios_blob_start, __bios_blob_end);
-    unsigned int dsdt_blob_linear =
-        rom_payload_linear(__dsdt_blob_start, __dsdt_blob_end);
-    unsigned int vgabios_blob_linear =
-        rom_payload_linear(__vgabios_blob_start, __vgabios_blob_end);
-    unsigned int test_elf_blob_linear =
-        rom_payload_linear(__test_elf_blob_start, __test_elf_blob_end);
-    volatile unsigned int* aux = (volatile unsigned int*)BOOT_AUX_LINEAR;
     struct shared_payload_entry* stage2_payload;
     int rc;
 
@@ -692,15 +676,8 @@ static void enter_stage2(unsigned int total_bytes) {
         }
     }
 
-    aux[BOOT_AUX_DSDT_BLOB] = dsdt_blob_linear;
-    aux[BOOT_AUX_MAINTENANCE] = 0u;
-    aux[BOOT_AUX_STAGE3_BLOB] = stage3_blob_linear;
-    aux[BOOT_AUX_SHADOW_READY] = 0u;
-    aux[BOOT_AUX_VBIOS_BLOB] = vgabios_blob_linear;
-    aux[BOOT_AUX_TEST_ELF_BLOB] = test_elf_blob_linear;
-
     rc = expand(blob, (void*)BLOB_STAGE_LINEAR, (void*)STAGE2_LOAD_LINEAR,
-                STAGE2_LOAD_CAPACITY, &status);
+                STAGE2_LOAD_CAPACITY, &status, total_bytes);
     if (rc != 0) {
         serial_write_string("\r\nstage2 load failed rc=");
         serial_write_hex8((unsigned char)rc);
@@ -715,7 +692,7 @@ static void enter_stage2(unsigned int total_bytes) {
     }
 
     serial_write_string("\r\nstage2 copied\r\n");
-    ((stage2_entry_fn)STAGE2_ENTRY)(total_bytes, BOOT_AUX_LINEAR);
+    ((stage2_entry_fn)STAGE2_ENTRY)(total_bytes, 0u);
     die_with_post(0xef);
 }
 

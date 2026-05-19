@@ -680,7 +680,7 @@ static void install_vgabios_shadow(void) {
     serial_write_string("VBIOS @ 000c0000...");
     rc = expand((const void*)bios_vgabios_blob_linear_global,
                 (void*)BLOB_STAGE_LINEAR, (void*)VGA_BIOS_LINEAR,
-                VGA_BIOS_CAPACITY, &status);
+                VGA_BIOS_CAPACITY, &status, bios_total_bytes_global);
     serial_write_string("\r\n");
     if (rc != 0) {
         serial_write_string("VBIOS blob failed rc=");
@@ -995,7 +995,8 @@ static void run_test_elf_blob(void) {
     serial_write_string("Run ROM test ELF...\r\n");
     expand_rc = expand((const void*)bios_test_elf_blob_linear_global,
                        (void*)BLOB_STAGE_LINEAR, image,
-                       LINUX_LOADER_TEST_ELF_IMAGE_CAPACITY, &status);
+                       LINUX_LOADER_TEST_ELF_IMAGE_CAPACITY, &status,
+                       bios_total_bytes_global);
     if (expand_rc != 0) {
         serial_write_string("Test ELF blob failed rc=");
         serial_write_hex8((unsigned char)expand_rc);
