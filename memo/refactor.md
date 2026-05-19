@@ -577,7 +577,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 
 ## 現在の移行状態
 
-- P2B98-XV stage1 と QEMU stage1 は DRAM 末尾に shared service code / shared service table / boot context / payload manifest を置き、DRAM 最後 4 byte の pointer から辿れる。stack 初期値は shared service code の直前に置く。
+- P2B98-XV stage1/stage2 と QEMU stage1/stage2 は `src/platform/` へ移動済み。P2B98-XV stage1 と QEMU stage1 は DRAM 末尾に shared service code / shared service table / boot context / payload manifest を置き、DRAM 最後 4 byte の pointer から辿れる。stack 初期値は shared service code の直前に置く。
 - shared service code と table ABI は `src/shared_service/` へ移動済み。
 - stage2 は `blob_expand` と stage3 payload を shared service table から使う。payload pointer の旧 aux fallback は削除済み。
 - blob 展開用 staging/scratch は固定低位アドレスではなく、DRAM 末尾に予約した `blob_stage` を shared service table 経由で渡す。まだ heap allocate/free ではない。

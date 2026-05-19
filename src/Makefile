@@ -199,58 +199,58 @@ qemu_stage2_blob.o: qemu_stage2_blob.bin
 start: start.elf
 	$(OBJCOPY) -O binary --pad-to 0x100000 --gap-fill 0x90 $< $@
 
-start.elf: start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o dsdt_blob.o vgabios_blob.o test_elf_blob.o p2b98_xv/stage1/start.ld
-	$(LD) -m elf_i386 -T p2b98_xv/stage1/start.ld -Map start.map -o $@ start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o dsdt_blob.o vgabios_blob.o test_elf_blob.o
+start.elf: start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o dsdt_blob.o vgabios_blob.o test_elf_blob.o platform/p2b98_xv/stage1/start.ld
+	$(LD) -m elf_i386 -T platform/p2b98_xv/stage1/start.ld -Map start.map -o $@ start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o dsdt_blob.o vgabios_blob.o test_elf_blob.o
 
 bios.elf: bios16.o stage3_entry.o stage3_runtime.o bios_acpi_runtime.o bios_benchmark.o bios_legacy.o bios_linux.o bios_maintenance.o bios_memtest.o bios_memory.o bios_nvram.o bios_rtc.o bios_selftest.o bios_serial.o bios_settings.o bios_shadow.o bios_stage_context.o bios_pci.o bios_storage.o linux_loader.o legacy_bda.o legacy_boot.o legacy_debug.o legacy_floppy.o legacy_int13.o legacy_int15.o legacy_keyboard.o legacy_misc.o legacy_platform.o legacy_runtime.o legacy_service.o legacy_thunk.o legacy_timer.o legacy_time.o legacy_video.o bios.ld
 	$(LD) -m elf_i386 -T bios.ld -Map bios.map -o $@ bios16.o stage3_entry.o stage3_runtime.o bios_acpi_runtime.o bios_benchmark.o bios_legacy.o bios_linux.o bios_maintenance.o bios_memtest.o bios_memory.o bios_nvram.o bios_rtc.o bios_selftest.o bios_serial.o bios_settings.o bios_shadow.o bios_stage_context.o bios_pci.o bios_storage.o linux_loader.o legacy_bda.o legacy_boot.o legacy_debug.o legacy_floppy.o legacy_int13.o legacy_int15.o legacy_keyboard.o legacy_misc.o legacy_platform.o legacy_runtime.o legacy_service.o legacy_thunk.o legacy_timer.o legacy_time.o legacy_video.o
 
-stage2.elf: stage2.o l2_service.o acpi_tables.o p2b98_xv/stage2/stage2.ld
-	$(LD) -m elf_i386 -T p2b98_xv/stage2/stage2.ld -Map stage2.map -o $@ stage2.o l2_service.o acpi_tables.o
+stage2.elf: stage2.o l2_service.o acpi_tables.o platform/p2b98_xv/stage2/stage2.ld
+	$(LD) -m elf_i386 -T platform/p2b98_xv/stage2/stage2.ld -Map stage2.map -o $@ stage2.o l2_service.o acpi_tables.o
 
 qemu_bios.bin: qemu_start.elf
 	$(OBJCOPY) -O binary $< $@
 	truncate -s 262144 $@
 
-qemu_start.elf: qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o qemu/stage1/qemu.ld
-	$(LD) -m elf_i386 -T qemu/stage1/qemu.ld -Map qemu.map -o $@ qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o
+qemu_start.elf: qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o platform/qemu/stage1/qemu.ld
+	$(LD) -m elf_i386 -T platform/qemu/stage1/qemu.ld -Map qemu.map -o $@ qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o
 
 qemu_legacy_bios.bin: qemu_legacy_start.elf
 	$(OBJCOPY) -O binary $< $@
 	truncate -s 262144 $@
 
-qemu_legacy_start.elf: qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o qemu/stage1/qemu.ld
-	$(LD) -m elf_i386 -T qemu/stage1/qemu.ld -Map qemu_legacy.map -o $@ qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o
+qemu_legacy_start.elf: qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o platform/qemu/stage1/qemu.ld
+	$(LD) -m elf_i386 -T platform/qemu/stage1/qemu.ld -Map qemu_legacy.map -o $@ qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o
 
 qemu_flat_test_bios.bin: qemu_flat_test_start.elf
 	$(OBJCOPY) -O binary $< $@
 	truncate -s 262144 $@
 
-qemu_flat_test_start.elf: qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o qemu/stage1/qemu.ld
-	$(LD) -m elf_i386 -T qemu/stage1/qemu.ld -Map qemu_flat_test.map -o $@ qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o
+qemu_flat_test_start.elf: qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o platform/qemu/stage1/qemu.ld
+	$(LD) -m elf_i386 -T platform/qemu/stage1/qemu.ld -Map qemu_flat_test.map -o $@ qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o
 
 qemu_legacy_test_bios.bin: qemu_legacy_bios.bin test_floppy_blob.bin $(BUILD_SCRIPTS)/patch_rom_free.py
 	cp qemu_legacy_bios.bin $@
 	python3 $(BUILD_SCRIPTS)/patch_rom_free.py $@ test_floppy_blob.bin
 
-start_legacy: start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o p2b98_xv/stage1/start.ld
-	$(LD) -m elf_i386 -T p2b98_xv/stage1/start.ld -Map start_legacy.map -o start_legacy.elf start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o
+start_legacy: start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o platform/p2b98_xv/stage1/start.ld
+	$(LD) -m elf_i386 -T platform/p2b98_xv/stage1/start.ld -Map start_legacy.map -o start_legacy.elf start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o
 	$(OBJCOPY) -O binary --pad-to 0x100000 --gap-fill 0x90 start_legacy.elf $@
 
 start_legacy_test: start_legacy test_floppy_blob.bin $(BUILD_SCRIPTS)/patch_rom_free.py
 	cp start_legacy $@
 	python3 $(BUILD_SCRIPTS)/patch_rom_free.py $@ test_floppy_blob.bin
 
-start_asm.o: p2b98_xv/stage1/start.asm post_code.inc
+start_asm.o: platform/p2b98_xv/stage1/start.asm post_code.inc
 	nasm $(NASMFLAGS) -f elf32 $< -o $@
 
-bootblock.o: p2b98_xv/stage1/bootblock.c post_code.h blob.h shared_service/service_table.h bios_nvram.h
+bootblock.o: platform/p2b98_xv/stage1/bootblock.c post_code.h blob.h shared_service/service_table.h bios_nvram.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-stage2.o: p2b98_xv/stage2/stage2.c acpi_tables.h blob.h shared_service/service_table.h p2b98_xv/stage2/l2_service.h
+stage2.o: platform/p2b98_xv/stage2/stage2.c acpi_tables.h blob.h shared_service/service_table.h platform/p2b98_xv/stage2/l2_service.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-qemu_stage2.o: qemu/stage2/stage2.c acpi_tables.h blob.h shared_service/service_table.h
+qemu_stage2.o: platform/qemu/stage2/stage2.c acpi_tables.h blob.h shared_service/service_table.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 acpi_tables.o: acpi_tables.c acpi_tables.h bios_memory.h
@@ -259,19 +259,19 @@ acpi_tables.o: acpi_tables.c acpi_tables.h bios_memory.h
 blob_service.o: shared_service/blob_service.c blob.h shared_service/service_table.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-l2_service.o: p2b98_xv/stage2/l2_service.c p2b98_xv/stage2/l2_service.h
+l2_service.o: platform/p2b98_xv/stage2/l2_service.c platform/p2b98_xv/stage2/l2_service.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-qemu_stage2.elf: qemu_stage2.o acpi_tables.o qemu/stage2/stage2.ld
-	$(LD) -m elf_i386 -T qemu/stage2/stage2.ld -Map qemu_stage2.map -o $@ qemu_stage2.o acpi_tables.o
+qemu_stage2.elf: qemu_stage2.o acpi_tables.o platform/qemu/stage2/stage2.ld
+	$(LD) -m elf_i386 -T platform/qemu/stage2/stage2.ld -Map qemu_stage2.map -o $@ qemu_stage2.o acpi_tables.o
 
 bios16.o: app/legacy/bios16.asm post_code.inc
 	nasm $(NASMFLAGS) -f elf32 $< -o $@
 
-qemu_start.o: qemu/stage1/qemu_start.asm
+qemu_start.o: platform/qemu/stage1/qemu_start.asm
 	nasm $(NASMFLAGS) -f elf32 $< -o $@
 
-qemu_stage1.o: qemu/stage1/qemu_stage1.c blob.h shared_service/service_table.h
+qemu_stage1.o: platform/qemu/stage1/qemu_stage1.c blob.h shared_service/service_table.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 stage3_entry.o: stage3/entry.c stage3/stage3.h
