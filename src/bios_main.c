@@ -7,7 +7,7 @@
 #include "bios_serial.h"
 #include "bios_storage.h"
 #include "blob.h"
-#include "service_table.h"
+#include "shared_service/service_table.h"
 #include "app/linux_loader/linux_loader.h"
 #include "app/legacy/legacy_boot.h"
 #include "app/legacy/legacy_floppy.h"

@@ -1,6 +1,6 @@
 #include "acpi_tables.h"
 #include "blob.h"
-#include "service_table.h"
+#include "shared_service/service_table.h"
 
 extern unsigned char __qemu_stage2_bss_start[];
 extern unsigned char __qemu_stage2_bss_end[];

@@ -1,7 +1,7 @@
 #include "acpi_tables.h"
 #include "blob.h"
 #include "l2_service.h"
-#include "service_table.h"
+#include "shared_service/service_table.h"
 
 extern unsigned char __stage2_bss_start[];
 extern unsigned char __stage2_bss_end[];

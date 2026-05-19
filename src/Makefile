@@ -242,19 +242,19 @@ start_legacy_test: start_legacy test_floppy_blob.bin patch_rom_free.py
 start_asm.o: p2b98_xv/stage1/start.asm post_code.inc
 	nasm $(NASMFLAGS) -f elf32 $< -o $@
 
-bootblock.o: p2b98_xv/stage1/bootblock.c post_code.h blob.h service_table.h bios_nvram.h
+bootblock.o: p2b98_xv/stage1/bootblock.c post_code.h blob.h shared_service/service_table.h bios_nvram.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-stage2.o: p2b98_xv/stage2/stage2.c acpi_tables.h blob.h service_table.h p2b98_xv/stage2/l2_service.h
+stage2.o: p2b98_xv/stage2/stage2.c acpi_tables.h blob.h shared_service/service_table.h p2b98_xv/stage2/l2_service.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-qemu_stage2.o: qemu/stage2/stage2.c acpi_tables.h blob.h service_table.h
+qemu_stage2.o: qemu/stage2/stage2.c acpi_tables.h blob.h shared_service/service_table.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 acpi_tables.o: acpi_tables.c acpi_tables.h bios_memory.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-blob_service.o: blob_service.c blob.h
+blob_service.o: shared_service/blob_service.c blob.h shared_service/service_table.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 l2_service.o: p2b98_xv/stage2/l2_service.c p2b98_xv/stage2/l2_service.h
@@ -269,10 +269,10 @@ bios16.o: app/legacy/bios16.asm post_code.inc
 qemu_start.o: qemu/stage1/qemu_start.asm
 	nasm $(NASMFLAGS) -f elf32 $< -o $@
 
-qemu_stage1.o: qemu/stage1/qemu_stage1.c blob.h service_table.h
+qemu_stage1.o: qemu/stage1/qemu_stage1.c blob.h shared_service/service_table.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-bios_main.o: bios_main.c post_code.h acpi_tables.h blob.h service_table.h bios_io.h bios_memory.h bios_nvram.h bios_pci.h bios_rtc.h bios_serial.h bios_storage.h app/linux_loader/linux_loader.h app/legacy/legacy_boot.h app/legacy/legacy_floppy.h app/legacy/legacy_runtime.h app/legacy/legacy_thunk.h
+bios_main.o: bios_main.c post_code.h acpi_tables.h blob.h shared_service/service_table.h bios_io.h bios_memory.h bios_nvram.h bios_pci.h bios_rtc.h bios_serial.h bios_storage.h app/linux_loader/linux_loader.h app/legacy/legacy_boot.h app/legacy/legacy_floppy.h app/legacy/legacy_runtime.h app/legacy/legacy_thunk.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 bios_memory.o: bios_memory.c bios_memory.h

@@ -1,6 +1,6 @@
 #include "post_code.h"
 #include "blob.h"
-#include "service_table.h"
+#include "shared_service/service_table.h"
 
 static inline void outb(unsigned short port, unsigned char value) {
     __asm__ volatile("outb %0, %1" : : "a"(value), "Nd"(port));

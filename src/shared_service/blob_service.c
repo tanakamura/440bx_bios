@@ -1,5 +1,5 @@
 #include "blob.h"
-#include "service_table.h"
+#include "shared_service/service_table.h"
 
 #define BLOBSVC __attribute__((section(".blobsvc"), noinline, used))
 #define BLOBSVC_INLINE __attribute__((always_inline)) inline

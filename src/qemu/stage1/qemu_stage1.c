@@ -1,5 +1,5 @@
 #include "blob.h"
-#include "service_table.h"
+#include "shared_service/service_table.h"
 
 #define ROM_HIGH_DELTA 0xfff00000u
 
