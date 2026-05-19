@@ -657,7 +657,7 @@ static blob_expand_fn bios_blob_expand_fn(void) {
         bios_shared_service_global->blob_expand != 0u) {
         return (blob_expand_fn)bios_shared_service_global->blob_expand;
     }
-    return (blob_expand_fn)BLOB_SERVICE_LINEAR;
+    return 0;
 }
 
 static void install_vgabios_shadow(void) {
@@ -670,6 +670,10 @@ static void install_vgabios_shadow(void) {
 
     bios_vgabios_shadow_ready = 0u;
     if (bios_vgabios_blob_linear_global == 0u) {
+        return;
+    }
+    if (expand == 0) {
+        serial_write_string("VBIOS blob service missing\r\n");
         return;
     }
 
@@ -769,8 +773,6 @@ static void install_bios_thunks(void) {
 
 #define BIOS_MEMTEST_START 0x00100000u
 #define BIOS_MEMTEST_MARK_STEP 0x00100000u
-#define BLOB_SERVICE_RESERVED_SIZE 0x00001000u
-
 static void prepare_boot_sector(void) {
     bios_boot_drive = legacy_prepare_boot_sector(
         bios_boot_priority, nvram_record_boot_success);
@@ -826,10 +828,6 @@ static unsigned int bios_memtest_skip_end(unsigned int addr) {
                    bios_shared_service_global->service_size) {
         return bios_shared_service_global->service_base +
                bios_shared_service_global->service_size;
-    }
-    if (addr >= BLOB_SERVICE_LINEAR &&
-        addr < BLOB_SERVICE_LINEAR + BLOB_SERVICE_RESERVED_SIZE) {
-        return BLOB_SERVICE_LINEAR + BLOB_SERVICE_RESERVED_SIZE;
     }
     if (addr >= BLOB_STAGE_LINEAR &&
         addr < BLOB_STAGE_LINEAR + BLOB_STAGE_CAPACITY) {
@@ -987,6 +985,10 @@ static void run_test_elf_blob(void) {
 
     if (bios_test_elf_blob_linear_global == 0u) {
         serial_write_string("No test ELF blob\r\n");
+        return;
+    }
+    if (expand == 0) {
+        serial_write_string("Test ELF blob service missing\r\n");
         return;
     }
 
@@ -1153,10 +1155,8 @@ static unsigned int bios_payload_blob_ptr(unsigned int payload_id) {
     return payload->blob_ptr;
 }
 
-static void bios_load_stage_context(unsigned int total_bytes,
-                                    unsigned int aux_blob_linear) {
+static void bios_load_stage_context(unsigned int total_bytes) {
     struct shared_boot_context* boot_ctx;
-    const unsigned int* aux = (const unsigned int*)aux_blob_linear;
     unsigned int blob;
 
     bios_total_bytes_global = total_bytes;
@@ -1197,26 +1197,13 @@ static void bios_load_stage_context(unsigned int total_bytes,
         bios_test_elf_blob_linear_global = blob;
     }
 
-    if (aux_blob_linear != 0u) {
-        if (bios_vgabios_blob_linear_global == 0u) {
-            bios_vgabios_blob_linear_global = aux[BOOT_AUX_VBIOS_BLOB];
-        }
-        if (bios_test_elf_blob_linear_global == 0u) {
-            bios_test_elf_blob_linear_global = aux[BOOT_AUX_TEST_ELF_BLOB];
-        }
-        if (aux[BOOT_AUX_MAINTENANCE] != 0u) {
-            bios_maintenance_requested = 1u;
-        }
-        if (aux[BOOT_AUX_SHADOW_READY] != 0u) {
-            bios_shadow_ready = 1u;
-        }
-    }
 }
 
 void postcar_resume(unsigned int total_bytes, unsigned int aux_blob_linear) {
     volatile unsigned int stack_cookie = 0x13579bdfu;
 
-    bios_load_stage_context(total_bytes, aux_blob_linear);
+    (void)aux_blob_linear;
+    bios_load_stage_context(total_bytes);
     storage_set_scratch_base(bios_top_reserved_base());
     nvram_load_settings();
     legacy_floppy_probe();

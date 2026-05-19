@@ -8,7 +8,7 @@ stage とディレクトリを整理する。移動だけで済むものは先�
 - `stage3` のロード先は現状 `0x000F0000` だが、これは移動する。`0x000F0000` は `app/legacy` や `app/linux_loader` を置く低位 app slot として使う。
 - `stage3` は「PCI/IDE/UHCI など標準処理」と「legacy BIOS service / Linux loader / selftest」を全部含んでいる。責務を分け、`stage3` は高位 DRAM 上の実行基盤、`app/` は個別ロードアドレスを持つ機能モジュールとして整理する。
 - `shared_service` は全 stage に静的リンクするものではなく、stage1 が DRAM 末尾に設置し、DRAM 最後 4 byte の table pointer から辿って呼ぶ runtime service。現状は blob loader がこれに該当する。
-- ACPI table は board 依存入力を持つ。P2B98-XV は `specs/dsdt.dsl` 由来、QEMU は fw_cfg 由来にする必要がある。
+- ACPI table は board 依存入力を持つ。P2B98-XV は `specs/dsdt.dsl` 由来、QEMU は fw_cfg 由来にする必要がある。table 構築と platform 固有 PM I/O 設定は stage2 に置き、stage3 は boot context に渡された port 値で Linux 起動直前の PM event clear / SCI enable だけ行う。
 - `srcipts/` は typo。スクリプトは repo root の `scripts/` に集約する。
 
 ## 方針
@@ -280,7 +280,7 @@ stage3 は `0x000F0000` には置かない。stage3 は `0x00200000` で動き�
 - legacy BIOS app のロードと登録。
 - PCI enumeration と resource assignment。
 - IDE/UHCI/USB storage scan。
-- ACPI table expose。
+- ACPI table expose。table 自体は stage2 が完成させ、stage3 は RSDP と PM port 情報を boot context から受け取る。
 - maintenance mode。
 - boot priority に従って Linux loader / legacy boot / selftest を起動。
 
@@ -510,6 +510,11 @@ platform_id
 acpi_input_ptr
 acpi_input_size
 rsdp_linear
+acpi_pm1_evt
+acpi_pm1_cnt
+acpi_gpe0
+acpi_gpe0_len
+acpi_flags
 pci_io_base
 pci_io_limit
 pci_mem_base
@@ -566,8 +571,10 @@ payload blob の場所は boot context ではなく、shared service table の `
 ## 現在の移行状態
 
 - P2B98-XV stage1 と QEMU stage1 は DRAM 末尾に shared service table / boot context / payload manifest を置き、DRAM 最後 4 byte の pointer から辿れる。
-- stage2 は shared service table があれば `blob_expand` と stage3 payload をそこから使い、aux なしでも stage3 まで進める。旧 `BOOT_AUX_*` は移行中の fallback として残す。
-- stage3 は DSDT / VGA BIOS / test ELF payload と `blob_expand` を shared service table 優先で使う。旧 `BOOT_AUX_*` は maintenance key と互換 fallback 用に残す。
+- stage2 は `blob_expand` と stage3 payload を shared service table から使う。payload pointer の旧 `BOOT_AUX_*` fallback は削除済み。
+- blob 展開中の maintenance key はまだ blob service が旧 `BOOT_AUX_MAINTENANCE` に一時記録し、stage2 が boot context flag へ転記している。これは blob service 側を shared service table aware にするまでの残依存。
+- stage3 は VGA BIOS / test ELF payload と `blob_expand` を shared service table から使う。旧 `BOOT_AUX_*` fallback と固定 `BLOB_SERVICE_LINEAR` fallback は削除済み。
+- ACPI table 構築は stage2 へ移動済み。P2B98-XV stage2 は DSDT blob を展開して RSDT/FADT/FACS/RSDP を作る。QEMU stage2 は fw_cfg の ACPI tables を取得/patch して RSDP を作る。stage3 は board 非依存の ACPI PM event clear / SCI enable だけを持つ。
 - legacy BIOS service の dispatcher / thunk / timer / runtime glue は `app/legacy/` へ移動済み。ただし legacy app 単体 blob 化と `0x000F0000` 配置は未完了。
 - Linux kernel/initrd loader と Linux boot params/VBE setup は `app/linux_loader/` へ移動済み。stage3 は NVRAM 設定と ACPI/RTC/VBIOS callback を渡す glue だけ持つ。
 
@@ -581,7 +588,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - shared heap は free 可能にする。blob staging/scratch は固定予約せず、必要時に heap から取って処理後に返す。
 - shared service table pointer と shared service 領域は Linux 起動直前に解放する。残す理由はない。
 - uACPI は selftest だけで使う。stage3 には常駐させない。
-- ACPI table は stage3 で完成させる。stage2 は board 固有入力を shared service table 経由で渡す。
+- ACPI table は stage2 で完成させる。stage3 は boot context の `rsdp_linear` と ACPI PM port 情報だけを使う。
 - DOS 用 tools は `tools/dos/` へ移す。
 - app blob は先頭 4 byte に `load_addr` を持ち、その後ろに既存 BLZ4 blob を置く。
 - shared service table pointer を消した後の panic/debug serial は不要。

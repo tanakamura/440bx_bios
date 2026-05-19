@@ -233,6 +233,13 @@ static void install_qemu_acpi_tables(unsigned int total_bytes,
     serial_write_string("ACPI qemu tables ok\r\n");
 }
 
+static void propagate_maintenance_request(struct shared_boot_context* boot_ctx,
+                                          volatile unsigned int* aux) {
+    if (boot_ctx != 0 && aux != 0 && aux[BOOT_AUX_MAINTENANCE] != 0u) {
+        boot_ctx->flags |= SHARED_BOOT_FLAG_MAINTENANCE_REQUESTED;
+    }
+}
+
 __attribute__((section(".stage2.entry"), used)) void qemu_stage2_entry(
     unsigned int total_bytes, unsigned int aux_linear) {
     typedef void (*bios_entry_fn)(unsigned int, unsigned int);
@@ -244,7 +251,7 @@ __attribute__((section(".stage2.entry"), used)) void qemu_stage2_entry(
     struct shared_payload_entry* stage3_payload =
         shared_payload_find(service, SHARED_PAYLOAD_ID_STAGE3);
     const void* stage3_blob = 0;
-    blob_expand_fn expand = (blob_expand_fn)BLOB_SERVICE_LINEAR;
+    blob_expand_fn expand = 0;
     struct blob_status status;
     int rc;
 
@@ -254,21 +261,16 @@ __attribute__((section(".stage2.entry"), used)) void qemu_stage2_entry(
     if (stage3_payload != 0) {
         stage3_blob = (const void*)stage3_payload->blob_ptr;
     }
-    if (stage3_blob == 0 && aux != 0) {
-        stage3_blob = (const void*)aux[BOOT_AUX_STAGE3_BLOB];
-    }
 
     zero_bss();
     serial_write_string("qemu stage2 @ 00080000\r\n");
-    if (aux != 0) {
-        aux[BOOT_AUX_SHADOW_READY] = 1u;
-    }
+    propagate_maintenance_request(boot_ctx, aux);
     if (boot_ctx != 0) {
         boot_ctx->flags |= SHARED_BOOT_FLAG_SHADOW_READY;
     }
     install_qemu_acpi_tables(total_bytes, boot_ctx);
 
-    if (stage3_blob == 0) {
+    if (stage3_blob == 0 || expand == 0) {
         serial_write_string("qemu stage3 blob missing\r\n");
         outb(0x80u, 0xefu);
         for (;;) {
@@ -292,6 +294,7 @@ __attribute__((section(".stage2.entry"), used)) void qemu_stage2_entry(
             __asm__ volatile("hlt");
         }
     }
+    propagate_maintenance_request(boot_ctx, aux);
 
     serial_write_string("\r\nqemu stage3 copied\r\n");
     ((bios_entry_fn)BIOS32_ENTRY)(total_bytes, aux_linear);
