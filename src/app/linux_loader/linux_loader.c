@@ -1,10 +1,5 @@
 #include "app/linux_loader/linux_loader.h"
 
-#include "bios_memory.h"
-#include "bios_nvram.h"
-#include "bios_serial.h"
-#include "bios_storage.h"
-
 #define LINUX_SECTOR_BUF 0x00080000u
 #define LINUX_PHDR_BUF 0x00088000u
 #define LINUX_CMDLINE 0x00098000u
@@ -50,6 +45,113 @@ struct linux_vbe_lfb {
 };
 
 static struct linux_vbe_lfb linux_vbe;
+static const struct linux_loader_config* linux_active_config;
+
+static void linux_loader_set_active_config(
+    const struct linux_loader_config* config) {
+    linux_active_config = config;
+}
+
+static void serial_write_string(const char* s) {
+    if (linux_active_config != 0 && linux_active_config->serial_write_string) {
+        linux_active_config->serial_write_string(s);
+    }
+}
+
+static void serial_write_hex8(unsigned char value) {
+    if (linux_active_config != 0 && linux_active_config->serial_write_hex8) {
+        linux_active_config->serial_write_hex8(value);
+    }
+}
+
+static void serial_write_hex16(unsigned short value) {
+    if (linux_active_config != 0 && linux_active_config->serial_write_hex16) {
+        linux_active_config->serial_write_hex16(value);
+    }
+}
+
+static void serial_write_hex32(unsigned int value) {
+    if (linux_active_config != 0 && linux_active_config->serial_write_hex32) {
+        linux_active_config->serial_write_hex32(value);
+    }
+}
+
+static void serial_write_u32(unsigned int value) {
+    if (linux_active_config != 0 && linux_active_config->serial_write_u32) {
+        linux_active_config->serial_write_u32(value);
+    }
+}
+
+static unsigned char linux_hdd_is_present(void) {
+    if (linux_active_config == 0 || linux_active_config->hdd_is_present == 0) {
+        return 0u;
+    }
+    return linux_active_config->hdd_is_present();
+}
+
+static unsigned char linux_hdd_current_kind(void) {
+    if (linux_active_config == 0 || linux_active_config->hdd_current_kind == 0) {
+        return LINUX_LOADER_HDD_KIND_NONE;
+    }
+    return linux_active_config->hdd_current_kind();
+}
+
+static unsigned char linux_hdd_select_kind(unsigned char kind) {
+    if (linux_active_config == 0 || linux_active_config->hdd_select_kind == 0) {
+        return 0u;
+    }
+    return linux_active_config->hdd_select_kind(kind);
+}
+
+static void linux_hdd_get_geometry(
+    struct linux_loader_hdd_geometry* geometry) {
+    if (geometry == 0) {
+        return;
+    }
+    if (linux_active_config != 0 && linux_active_config->hdd_get_geometry) {
+        linux_active_config->hdd_get_geometry(geometry);
+        return;
+    }
+    geometry->total_sectors = 0u;
+    geometry->cylinders = 0u;
+    geometry->heads = 0u;
+    geometry->sectors_per_track = 0u;
+}
+
+static int linux_hdd_read_sectors(unsigned int lba, unsigned int count,
+                                  unsigned int dest) {
+    if (linux_active_config == 0 || linux_active_config->hdd_read_sectors == 0) {
+        return -1;
+    }
+    return linux_active_config->hdd_read_sectors(lba, count, dest);
+}
+
+static unsigned int linux_memory_extended_usable_end(unsigned int total_bytes) {
+    if (linux_active_config == 0 ||
+        linux_active_config->memory_extended_usable_end == 0) {
+        return 0u;
+    }
+    return linux_active_config->memory_extended_usable_end(total_bytes);
+}
+
+static unsigned int linux_memory_e820_entry_count(unsigned int total_bytes) {
+    if (linux_active_config == 0 ||
+        linux_active_config->memory_e820_entry_count == 0) {
+        return 0u;
+    }
+    return linux_active_config->memory_e820_entry_count(total_bytes);
+}
+
+static int linux_memory_e820_get_entry(
+    unsigned int total_bytes, unsigned int index,
+    struct linux_loader_e820_entry* entry) {
+    if (linux_active_config == 0 ||
+        linux_active_config->memory_e820_get_entry == 0) {
+        return -1;
+    }
+    return linux_active_config->memory_e820_get_entry(total_bytes, index,
+                                                      entry);
+}
 
 static unsigned int tsc_low(void) {
     unsigned int value;
@@ -84,7 +186,7 @@ static void linux_memcpy(void* dst, const void* src, unsigned int len) {
 }
 
 static unsigned int linux_usable_end(const struct linux_loader_config* config) {
-    return bios_memory_extended_usable_end(config->total_bytes);
+    return linux_memory_extended_usable_end(config->total_bytes);
 }
 
 static unsigned short linux_le16(const unsigned char* p) {
@@ -285,12 +387,12 @@ static int linux_sector_is_elf32_i386(const unsigned char* sector) {
 }
 
 static int linux_use_whole_disk(struct linux_partition* part) {
-    struct bios_hdd_geometry geometry;
+    struct linux_loader_hdd_geometry geometry;
 
-    if (!bios_hdd_is_present()) {
+    if (!linux_hdd_is_present()) {
         return -1;
     }
-    bios_hdd_get_geometry(&geometry);
+    linux_hdd_get_geometry(&geometry);
     if (geometry.total_sectors == 0u) {
         return -1;
     }
@@ -325,8 +427,8 @@ static int linux_read_partition(unsigned int index,
                                 struct linux_partition* part) {
     unsigned char* mbr = (unsigned char*)LINUX_SECTOR_BUF;
 
-    if (!bios_hdd_is_present() || index >= 4u ||
-        bios_hdd_read_sectors(0u, 1u, LINUX_SECTOR_BUF) != 0) {
+    if (!linux_hdd_is_present() || index >= 4u ||
+        linux_hdd_read_sectors(0u, 1u, LINUX_SECTOR_BUF) != 0) {
         return -1;
     }
     return linux_parse_mbr_partition(index, part, mbr);
@@ -338,8 +440,8 @@ static int linux_select_kernel_source(
     unsigned char* sector0 = (unsigned char*)LINUX_SECTOR_BUF;
 
     *whole_disk = 0u;
-    if (!bios_hdd_is_present() ||
-        bios_hdd_read_sectors(0u, 1u, LINUX_SECTOR_BUF) != 0) {
+    if (!linux_hdd_is_present() ||
+        linux_hdd_read_sectors(0u, 1u, LINUX_SECTOR_BUF) != 0) {
         return -1;
     }
     if (linux_sector_is_elf32_i386(sector0)) {
@@ -391,14 +493,14 @@ static int linux_read_partition_bytes(const struct linux_partition* part,
             if (count > 2048u) {
                 count = 2048u;
             }
-            if (bios_hdd_read_sectors(part->start_lba + (offset >> 9), count,
-                                      dest) != 0) {
+            if (linux_hdd_read_sectors(part->start_lba + (offset >> 9), count,
+                                       dest) != 0) {
                 return -1;
             }
             chunk = count << 9;
         } else {
-            if (bios_hdd_read_sectors(part->start_lba + (offset >> 9), 1u,
-                                      LINUX_SECTOR_BUF) != 0) {
+            if (linux_hdd_read_sectors(part->start_lba + (offset >> 9), 1u,
+                                       LINUX_SECTOR_BUF) != 0) {
                 return -1;
             }
             chunk = 512u - sector_off;
@@ -524,7 +626,7 @@ static void linux_setup_boot_params(
     const struct linux_loader_config* config, unsigned int entry_phys,
     unsigned int initrd_base, unsigned int initrd_size) {
     unsigned char* bp = (unsigned char*)LINUX_LOADER_BOOT_PARAMS;
-    unsigned int count = bios_memory_e820_entry_count(config->total_bytes);
+    unsigned int count = linux_memory_e820_entry_count(config->total_bytes);
     unsigned int i;
     unsigned int alt_mem_kb = 0u;
     unsigned int usable_end = linux_usable_end(config);
@@ -545,8 +647,8 @@ static void linux_setup_boot_params(
     linux_put16(bp + 0x01e0u, (unsigned short)alt_mem_kb);
     bp[0x01e8u] = (unsigned char)count;
     for (i = 0; i < count; ++i) {
-        struct e820_entry entry;
-        if (bios_memory_e820_get_entry(config->total_bytes, i, &entry) != 0) {
+        struct linux_loader_e820_entry entry;
+        if (linux_memory_e820_get_entry(config->total_bytes, i, &entry) != 0) {
             break;
         }
         linux_memcpy(bp + LINUX_E820_TABLE_OFF + i * sizeof(entry), &entry,
@@ -572,6 +674,7 @@ static void linux_setup_boot_params(
 void linux_loader_prepare_boot_params(
     const struct linux_loader_config* config, unsigned int entry_phys,
     unsigned int initrd_base, unsigned int initrd_size) {
+    linux_loader_set_active_config(config);
     if (config->prepare_platform != 0) {
         config->prepare_platform();
     }
@@ -610,8 +713,10 @@ int linux_loader_load_elf_image(const struct linux_loader_config* config,
     unsigned int phnum;
     unsigned int phdr_bytes;
     unsigned int i;
-    unsigned int usable_end = linux_usable_end(config);
+    unsigned int usable_end;
 
+    linux_loader_set_active_config(config);
+    usable_end = linux_usable_end(config);
     if (image_size < 52u || !linux_sector_is_elf32_i386(elf)) {
         serial_write_string("Test ELF bad header\r\n");
         return -1;
@@ -809,7 +914,7 @@ static int try_boot_linux_current(const struct linux_loader_config* config) {
     linux_loader_prepare_boot_params(config, entry_phys, initrd_base,
                                      initrd_size);
     if (config->record_boot_success != 0) {
-        config->record_boot_success(bios_hdd_current_kind());
+        config->record_boot_success(linux_hdd_current_kind());
     }
     serial_write_string("Boot Linux entry=");
     serial_write_hex32(entry_phys);
@@ -821,24 +926,25 @@ static int try_boot_linux_current(const struct linux_loader_config* config) {
 }
 
 int linux_loader_try_boot(const struct linux_loader_config* config) {
-    if (config->boot_priority == BIOS_NVRAM_BOOT_PRIORITY_IDE) {
-        if (bios_hdd_select_kind(BIOS_HDD_KIND_IDE) == 0u) {
+    linux_loader_set_active_config(config);
+    if (config->boot_priority == LINUX_LOADER_BOOT_PRIORITY_IDE) {
+        if (linux_hdd_select_kind(LINUX_LOADER_HDD_KIND_IDE) == 0u) {
             return 0;
         }
         return try_boot_linux_current(config);
     }
-    if (config->boot_priority == BIOS_NVRAM_BOOT_PRIORITY_USB) {
-        if (bios_hdd_select_kind(BIOS_HDD_KIND_USB) == 0u) {
+    if (config->boot_priority == LINUX_LOADER_BOOT_PRIORITY_USB) {
+        if (linux_hdd_select_kind(LINUX_LOADER_HDD_KIND_USB) == 0u) {
             return 0;
         }
         return try_boot_linux_current(config);
     }
 
-    if (bios_hdd_select_kind(BIOS_HDD_KIND_IDE) != 0u &&
+    if (linux_hdd_select_kind(LINUX_LOADER_HDD_KIND_IDE) != 0u &&
         try_boot_linux_current(config)) {
         return 1;
     }
-    if (bios_hdd_select_kind(BIOS_HDD_KIND_USB) != 0u &&
+    if (linux_hdd_select_kind(LINUX_LOADER_HDD_KIND_USB) != 0u &&
         try_boot_linux_current(config)) {
         return 1;
     }

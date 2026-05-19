@@ -780,6 +780,33 @@ static int legacy_memory_e820_get_entry_cb(unsigned int total_bytes,
     return 0;
 }
 
+static void linux_hdd_get_geometry_cb(
+    struct linux_loader_hdd_geometry* geometry) {
+    struct bios_hdd_geometry bios_geometry;
+
+    bios_hdd_get_geometry(&bios_geometry);
+    geometry->total_sectors = bios_geometry.total_sectors;
+    geometry->cylinders = bios_geometry.cylinders;
+    geometry->heads = bios_geometry.heads;
+    geometry->sectors_per_track = bios_geometry.sectors_per_track;
+}
+
+static int linux_memory_e820_get_entry_cb(unsigned int total_bytes,
+                                          unsigned int index,
+                                          struct linux_loader_e820_entry* entry) {
+    struct e820_entry bios_entry;
+
+    if (bios_memory_e820_get_entry(total_bytes, index, &bios_entry) != 0) {
+        return -1;
+    }
+    entry->base_low = bios_entry.base_low;
+    entry->base_high = bios_entry.base_high;
+    entry->length_low = bios_entry.length_low;
+    entry->length_high = bios_entry.length_high;
+    entry->type = bios_entry.type;
+    return 0;
+}
+
 static void install_legacy_platform_ops(void) {
     struct legacy_platform_ops ops = {0};
 
@@ -825,6 +852,19 @@ static void fill_linux_loader_config(struct linux_loader_config* config) {
     config->vbe_mode_info_buffer = legacy_vbe_mode_info_buffer;
     config->vbe_mode_info_pm32 = bios_call_vbe_mode_info_pm32;
     config->vbe_set_mode_pm32 = bios_call_vbe_set_mode_pm32;
+    config->serial_write_string = serial_write_string;
+    config->serial_write_hex8 = serial_write_hex8;
+    config->serial_write_hex16 = serial_write_hex16;
+    config->serial_write_hex32 = serial_write_hex32;
+    config->serial_write_u32 = serial_write_u32;
+    config->hdd_is_present = bios_hdd_is_present;
+    config->hdd_current_kind = bios_hdd_current_kind;
+    config->hdd_select_kind = bios_hdd_select_kind;
+    config->hdd_get_geometry = linux_hdd_get_geometry_cb;
+    config->hdd_read_sectors = bios_hdd_read_sectors;
+    config->memory_extended_usable_end = bios_memory_extended_usable_end;
+    config->memory_e820_entry_count = bios_memory_e820_entry_count;
+    config->memory_e820_get_entry = linux_memory_e820_get_entry_cb;
 }
 
 static void install_bios_thunks(void) {
@@ -1058,7 +1098,7 @@ static void run_test_elf_blob(void) {
     blob_expand_fn expand = bios_blob_expand_fn();
     void* blob_stage = bios_blob_stage_ptr();
     struct blob_status status;
-    struct linux_loader_config linux_config;
+    struct linux_loader_config linux_config = {0};
     unsigned char* image = (unsigned char*)LINUX_LOADER_TEST_ELF_IMAGE_LINEAR;
     unsigned int entry_phys = 0u;
     unsigned int rc;
@@ -1129,7 +1169,7 @@ static void nvram_record_boot_success(unsigned char kind) {
 }
 
 static int try_boot_linux(void) {
-    struct linux_loader_config config;
+    struct linux_loader_config config = {0};
 
     fill_linux_loader_config(&config);
     return linux_loader_try_boot(&config);

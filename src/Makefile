@@ -290,7 +290,7 @@ bios_pci.o: bios_pci.c bios_io.h bios_pci.h
 bios_storage.o: bios_storage.c post_code.h bios_io.h bios_pci.h bios_serial.h bios_storage.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-linux_loader.o: app/linux_loader/linux_loader.c app/linux_loader/linux_loader.h bios_memory.h bios_nvram.h bios_serial.h bios_storage.h
+linux_loader.o: app/linux_loader/linux_loader.c app/linux_loader/linux_loader.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 legacy_floppy.o: app/legacy/legacy_floppy.c app/legacy/legacy_floppy.h app/legacy/legacy_platform.h
