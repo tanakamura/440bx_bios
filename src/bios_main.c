@@ -4,9 +4,9 @@
 #include "bios_memtest.h"
 #include "bios_memory.h"
 #include "bios_nvram.h"
-#include "bios_pci.h"
 #include "bios_rtc.h"
 #include "bios_serial.h"
+#include "bios_shadow.h"
 #include "bios_storage.h"
 #include "blob.h"
 #include "shared_service/service_table.h"
@@ -36,8 +36,6 @@ static unsigned int bios_acpi_gpe0_global = 0;
 static unsigned int bios_acpi_gpe0_len_global = 0;
 static unsigned int bios_acpi_flags_global = 0;
 static struct shared_service_table* bios_shared_service_global = 0;
-static unsigned char bios_vgabios_shadow_ready = 0;
-static unsigned char bios_vgabios_initialized = 0;
 static unsigned char bios_maintenance_requested = 0;
 static unsigned char bios_shadow_ready = 0;
 static unsigned char bios_nvram_flags0 = BIOS_NVRAM_FLAGS0_DEFAULT;
@@ -46,7 +44,6 @@ static unsigned char bios_linux_vmlinux_partition = 0;
 static unsigned char bios_enable_memtest = 0;
 static unsigned char bios_run_test_blob = 0;
 static char bios_linux_cmdline_suffix[BIOS_NVRAM_CMDLINE_MAX];
-static const unsigned int bios_runtime_gdt_linear = 0x000ff800u;
 static const unsigned short bios_ebda_segment = 0x0000u;
 static const unsigned short bios_dos_base_mem_kb = 640u;
 static unsigned char bios_boot_drive = 0x80u;
@@ -58,28 +55,6 @@ static void zero_bss(void) {
         *p++ = 0u;
     }
 }
-
-static unsigned long long rdmsr64(unsigned int msr) {
-    unsigned int lo;
-    unsigned int hi;
-    __asm__ volatile("rdmsr" : "=a"(lo), "=d"(hi) : "c"(msr));
-    return ((unsigned long long)hi << 32) | lo;
-}
-
-static void wrmsr64(unsigned int msr, unsigned int lo, unsigned int hi) {
-    __asm__ volatile("wrmsr" : : "c"(msr), "a"(lo), "d"(hi));
-}
-
-#define IA32_MTRR_FIX4K_C0000 0x268u
-#define IA32_MTRR_FIX4K_C8000 0x269u
-#define IA32_MTRR_FIX4K_D0000 0x26au
-#define IA32_MTRR_FIX4K_D8000 0x26bu
-#define IA32_MTRR_FIX4K_E0000 0x26cu
-#define IA32_MTRR_FIX4K_E8000 0x26du
-#define IA32_MTRR_FIX4K_F0000 0x26eu
-#define IA32_MTRR_FIX4K_F8000 0x26fu
-#define IA32_MTRR_DEF_TYPE 0x2ffu
-#define MTRR_DEF_TYPE_E 0x00000800u
 
 static int nvram_enable_extended_cmos(void) {
     return bios_nvram_enable_extended_cmos();
@@ -158,144 +133,11 @@ static void maintenance_prompt(void) {
     bios_maintenance_prompt(&config);
 }
 
-static const unsigned long long bios_gdt_template[] = {
-    0x0000000000000000ull, 0x00cf9b000000ffffull, 0x00cf93000000ffffull,
-    0x00009b0fe000ffffull, 0x0000930fe000ffffull,
-};
-
-struct gdtr32 {
-    unsigned short limit;
-    unsigned int base;
-} __attribute__((packed));
-
-static void load_bios_gdt(const unsigned long long* gdt) {
-    struct gdtr32 gdtr;
-    gdtr.limit = (unsigned short)(sizeof(bios_gdt_template) - 1u);
-    gdtr.base = (unsigned int)gdt;
-
-    __asm__ volatile("lgdt %0" : : "m"(gdtr) : "memory");
-    __asm__ volatile(
-        "movw $0x10, %%ax\n\t"
-        "movw %%ax, %%ds\n\t"
-        "movw %%ax, %%es\n\t"
-        "movw %%ax, %%fs\n\t"
-        "movw %%ax, %%gs\n\t"
-        "movw %%ax, %%ss\n\t"
-        :
-        :
-        : "eax", "memory");
-}
-
-static void cache_writeback_invalidate(void) {
-    __asm__ volatile("wbinvd" : : : "memory");
-}
-
 static void cpu_serialize(void) {
     __asm__ volatile("xorl %%eax, %%eax\n\tcpuid"
                      :
                      :
                      : "eax", "ebx", "ecx", "edx", "memory");
-}
-
-static void cache_disable_for_mtrr_update(void) {
-    __asm__ volatile(
-        "movl %%cr0, %%eax\n\t"
-        "orl $0x40000000, %%eax\n\t"
-        "andl $0xdfffffff, %%eax\n\t"
-        "movl %%eax, %%cr0\n\t"
-        "wbinvd"
-        :
-        :
-        : "eax", "memory");
-}
-
-static void cache_enable_after_mtrr_update(void) {
-    __asm__ volatile(
-        "wbinvd\n\t"
-        "movl %%cr0, %%eax\n\t"
-        "andl $0x9fffffff, %%eax\n\t"
-        "movl %%eax, %%cr0"
-        :
-        :
-        : "eax", "memory");
-}
-
-static void enable_shadow_wb_mtrrs(void) {
-    unsigned long long def_type = rdmsr64(IA32_MTRR_DEF_TYPE);
-    unsigned int def_lo = (unsigned int)def_type;
-    unsigned int def_hi = (unsigned int)(def_type >> 32);
-
-    cache_disable_for_mtrr_update();
-    wrmsr64(IA32_MTRR_DEF_TYPE, (def_lo & ~MTRR_DEF_TYPE_E), def_hi);
-    wrmsr64(IA32_MTRR_FIX4K_C0000, 0x06060606u, 0x06060606u);
-    wrmsr64(IA32_MTRR_FIX4K_C8000, 0x06060606u, 0x06060606u);
-    wrmsr64(IA32_MTRR_FIX4K_D0000, 0x06060606u, 0x06060606u);
-    wrmsr64(IA32_MTRR_FIX4K_D8000, 0x06060606u, 0x06060606u);
-    wrmsr64(IA32_MTRR_FIX4K_E0000, 0x06060606u, 0x06060606u);
-    wrmsr64(IA32_MTRR_FIX4K_E8000, 0x06060606u, 0x06060606u);
-    wrmsr64(IA32_MTRR_FIX4K_F0000, 0x06060606u, 0x06060606u);
-    wrmsr64(IA32_MTRR_FIX4K_F8000, 0x06060606u, 0x06060606u);
-    wrmsr64(IA32_MTRR_DEF_TYPE, def_lo, def_hi);
-    cache_enable_after_mtrr_update();
-    serial_write_string("MTRR shadow C-F WB\r\n");
-}
-
-static void enable_shadow_dram(void) {
-    unsigned char old_pam0;
-    unsigned char pam;
-
-    old_pam0 = pci_read8(0, 0, 0, 0x59);
-
-    cache_writeback_invalidate();
-    pci_write8(0, 0, 0, 0x59, (unsigned char)(old_pam0 | 0x30u));
-    for (pam = 0x5au; pam <= 0x5fu; ++pam) {
-        pci_write8(0, 0, 0, pam, 0x33u);
-    }
-    cache_writeback_invalidate();
-
-    serial_write_string("PAM shadow RAM C-F old=");
-    serial_write_hex8(old_pam0);
-    serial_write_string(" new=");
-    serial_write_hex8(pci_read8(0, 0, 0, 0x59));
-    serial_write_string("\r\n");
-}
-
-static void clear_shadow_window(void) {
-    volatile unsigned int* p = (volatile unsigned int*)0x000c0000u;
-    volatile unsigned int* end = (volatile unsigned int*)0x000e0000u;
-
-    while (p < end) {
-        *p++ = 0u;
-    }
-}
-
-static void install_runtime_gdt(void) {
-    volatile unsigned long long* gdt =
-        (volatile unsigned long long*)bios_runtime_gdt_linear;
-    unsigned int i;
-
-    for (i = 0; i < sizeof(bios_gdt_template) / sizeof(bios_gdt_template[0]);
-         ++i) {
-        gdt[i] = bios_gdt_template[i];
-    }
-    load_bios_gdt((const unsigned long long*)bios_runtime_gdt_linear);
-}
-
-#define VGA_BIOS_LINEAR 0x000c0000u
-#define VGA_BIOS_CAPACITY (BIOS_LOAD_LINEAR - VGA_BIOS_LINEAR)
-
-static void install_bios_shadow(void) {
-    if (bios_shadow_ready != 0u) {
-        install_runtime_gdt();
-        serial_write_string("PAM shadow already ready\r\n");
-        return;
-    }
-
-    load_bios_gdt(bios_gdt_template);
-    enable_shadow_dram();
-    clear_shadow_window();
-    enable_shadow_wb_mtrrs();
-    install_runtime_gdt();
 }
 
 static blob_expand_fn bios_blob_expand_fn(void) {
@@ -315,77 +157,18 @@ static void* bios_blob_stage_ptr(void) {
     return 0;
 }
 
+static void install_bios_shadow(void) {
+    bios_shadow_install(bios_shadow_ready);
+}
+
 static void install_vgabios_shadow(void) {
-    blob_expand_fn expand = bios_blob_expand_fn();
-    void* blob_stage = bios_blob_stage_ptr();
-    struct blob_status status;
-    unsigned int size;
-    unsigned int i;
-    unsigned char sum = 0u;
-    int rc;
-
-    bios_vgabios_shadow_ready = 0u;
-    if (bios_vgabios_blob_linear_global == 0u) {
-        return;
-    }
-    if (expand == 0 || blob_stage == 0) {
-        serial_write_string("VBIOS blob service missing\r\n");
-        return;
-    }
-
-    serial_write_string("VBIOS @ 000c0000...");
-    rc = expand((const void*)bios_vgabios_blob_linear_global,
-                blob_stage, (void*)VGA_BIOS_LINEAR, VGA_BIOS_CAPACITY,
-                &status, bios_total_bytes_global);
-    serial_write_string("\r\n");
-    if (rc != 0) {
-        serial_write_string("VBIOS blob failed rc=");
-        serial_write_hex8((unsigned char)rc);
-        serial_write_string(" block=");
-        serial_write_hex32(status.block);
-        serial_write_string("\r\n");
-        return;
-    }
-
-    if (*(volatile unsigned char*)VGA_BIOS_LINEAR != 0x55u ||
-        *(volatile unsigned char*)(VGA_BIOS_LINEAR + 1u) != 0xaau) {
-        serial_write_string("VBIOS bad signature\r\n");
-        return;
-    }
-
-    size =
-        (unsigned int)(*(volatile unsigned char*)(VGA_BIOS_LINEAR + 2u)) * 512u;
-    if (size == 0u || size > VGA_BIOS_CAPACITY) {
-        serial_write_string("VBIOS bad size\r\n");
-        return;
-    }
-    for (i = 0u; i < size; ++i) {
-        sum = (unsigned char)(sum +
-                              *(volatile unsigned char*)(VGA_BIOS_LINEAR + i));
-    }
-    if (sum != 0u) {
-        serial_write_string("VBIOS bad checksum=");
-        serial_write_hex8(sum);
-        serial_write_string("\r\n");
-        return;
-    }
-
-    bios_vgabios_shadow_ready = 1u;
-    serial_write_string("VBIOS ok size=");
-    serial_write_hex8(*(volatile unsigned char*)(VGA_BIOS_LINEAR + 2u));
-    serial_write_string("*512\r\n");
+    bios_shadow_install_vgabios(bios_vgabios_blob_linear_global,
+                                bios_blob_expand_fn(), bios_blob_stage_ptr(),
+                                bios_total_bytes_global);
 }
 
 static void init_vgabios_for_linux(void) {
-    if (bios_vgabios_shadow_ready == 0u || bios_vgabios_initialized != 0u) {
-        return;
-    }
-    serial_write_string("VBIOS init C000:0003...\r\n");
-    cache_writeback_invalidate();
-    bios_call_vgabios_init_pm32();
-    cache_writeback_invalidate();
-    bios_vgabios_initialized = 1u;
-    serial_write_string("VBIOS init returned\r\n");
+    bios_shadow_init_vgabios(bios_call_vgabios_init_pm32);
 }
 
 static void nvram_record_boot_success(unsigned char kind);

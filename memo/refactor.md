@@ -471,6 +471,7 @@ legacy app 切り出し方針:
 - INT13 HDD path は `legacy_platform_ops` 経由になった。legacy app 単体 blob 化では、この callback の実装を app 側 storage scan または shared service table 経由 block device service に差し替える。
 - INT15 E820 は `legacy_platform_ops` 経由になった。legacy app 単体 blob 化では、この callback の実装を boot context/service 由来の E820 provider に差し替える。
 - RTC read/write は `bios_rtc.*`、INT 1Ah 本体は `legacy_time.*`、PIT/tick counter は `legacy_timer.*` へ分離済み。
+- shadow PAM/MTRR/GDT setup と VBIOS shadow/init は `bios_shadow.*` へ分離済み。`bios_main.c` は stage2 の shadow-ready flag と payload/blob service を渡すだけ。
 
 ### linux_loader
 
