@@ -39,6 +39,12 @@ post_code.h post_code.inc ../specs/POST_CODE.md: post_code.def $(BUILD_SCRIPTS)/
 include app/legacy/Makefile
 include app/linux_loader/Makefile
 include app/selftest/s3test/Makefile
+include lib/acpi/Makefile
+include lib/pci/Makefile
+include lib/serial/Makefile
+include lib/storage/Makefile
+include lib/x86/Makefile
+include shared_service/Makefile
 include stage3/Makefile
 include platform/p2b98_xv/stage1/Makefile
 include platform/p2b98_xv/stage2/Makefile
@@ -260,30 +266,6 @@ start_legacy: start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o p
 start_legacy_test: start_legacy test_floppy_blob.bin $(BUILD_SCRIPTS)/patch_rom_free.py
 	cp start_legacy $@
 	python3 $(BUILD_SCRIPTS)/patch_rom_free.py $@ test_floppy_blob.bin
-
-acpi_tables.o: lib/acpi/acpi_tables.c
-	$(COMPILE_C)
-
-blob_service.o: shared_service/blob_service.c
-	$(COMPILE_C)
-
-bios_memory.o: lib/x86/bios_memory.c
-	$(COMPILE_C)
-
-bios_nvram.o: lib/x86/bios_nvram.c
-	$(COMPILE_C)
-
-bios_rtc.o: lib/x86/bios_rtc.c
-	$(COMPILE_C)
-
-bios_serial.o: lib/serial/bios_serial.c
-	$(COMPILE_C)
-
-bios_pci.o: lib/pci/bios_pci.c
-	$(COMPILE_C)
-
-bios_storage.o: lib/storage/bios_storage.c
-	$(COMPILE_C)
 
 romtest: romtest.asm
 	nasm -f bin $< -o $@
