@@ -470,6 +470,7 @@ BLOBSVC void blob_shadow_load_and_enter(const void* blob, void* stage,
     struct shared_payload_entry* payload;
     volatile unsigned int* p;
     volatile unsigned int* end;
+    blob_load_fn load = 0;
     int rc;
 
     blob_enable_ef_shadow();
@@ -488,8 +489,16 @@ BLOBSVC void blob_shadow_load_and_enter(const void* blob, void* stage,
         *p++ = 0u;
     }
 
-    rc = blob_expand_service(blob, stage, dst, dst_capacity, status,
-                             total_bytes);
+    if (service != 0 && service->blob_load != 0u) {
+        load = (blob_load_fn)service->blob_load;
+    }
+    if (load != 0) {
+        rc = load(SHARED_PAYLOAD_ID_STAGE2, dst, dst_capacity, &bios_entry,
+                  status, total_bytes);
+    } else {
+        rc = blob_expand_service(blob, stage, dst, dst_capacity, status,
+                                 total_bytes);
+    }
     if (rc != 0) {
         outb(0x0080u, 0xefu);
         for (;;) {

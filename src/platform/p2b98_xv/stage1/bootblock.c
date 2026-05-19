@@ -703,14 +703,16 @@ static void enter_stage2(unsigned int total_bytes) {
     struct shared_service_table* service =
         shared_service_from_total(total_bytes);
     blob_expand_fn expand = 0;
+    blob_load_fn load = 0;
     unsigned int blob_stage = 0u;
-    unsigned int stage2_load;
+    unsigned int stage2_load = STAGE2_LOAD_LINEAR;
     const unsigned char* blob = 0;
     struct shared_payload_entry* stage2_payload;
     int rc;
 
-    if (service != 0 && service->blob_expand != 0u) {
+    if (service != 0) {
         expand = (blob_expand_fn)service->blob_expand;
+        load = (blob_load_fn)service->blob_load;
         blob_stage = service->blob_stage;
         stage2_payload = shared_payload_find(service, SHARED_PAYLOAD_ID_STAGE2);
         if (stage2_payload != 0) {
@@ -721,15 +723,20 @@ static void enter_stage2(unsigned int total_bytes) {
         (unsigned int)__stage2_blob_start != (unsigned int)__stage2_blob_end) {
         blob = rom_high_ptr(__stage2_blob_start);
     }
-    if (blob == 0 || expand == 0 || blob_stage == 0u ||
-        service->blob_stage_size < BLOB_STAGE_CAPACITY) {
-        serial_write_string("blobsvc missing\r\n");
-        die_with_post(0xef);
-    }
 
-    stage2_load = blob_load_addr_or(blob, STAGE2_LOAD_LINEAR);
-    rc = expand(blob, (void*)blob_stage, (void*)stage2_load,
-                STAGE2_LOAD_CAPACITY, &status, total_bytes);
+    if (load != 0) {
+        rc = load(SHARED_PAYLOAD_ID_STAGE2, (void*)STAGE2_LOAD_LINEAR,
+                  STAGE2_LOAD_CAPACITY, &stage2_load, &status, total_bytes);
+    } else {
+        if (blob == 0 || expand == 0 || blob_stage == 0u ||
+            service->blob_stage_size < BLOB_STAGE_CAPACITY) {
+            serial_write_string("blobsvc missing\r\n");
+            die_with_post(0xef);
+        }
+        stage2_load = blob_load_addr_or(blob, STAGE2_LOAD_LINEAR);
+        rc = expand(blob, (void*)blob_stage, (void*)stage2_load,
+                    STAGE2_LOAD_CAPACITY, &status, total_bytes);
+    }
     if (rc != 0) {
         serial_write_string("\r\nstage2 load failed rc=");
         serial_write_hex8((unsigned char)rc);
