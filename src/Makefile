@@ -9,17 +9,6 @@ NASMFLAGS := -I.
 OBJCOPY_ELF_FLAGS := -I binary -O elf32-i386 -B i386
 BUILD_SCRIPTS := ../scripts/build
 TEST_SCRIPTS := ../scripts/test
-CORE_C_OBJS := bootblock.o stage2.o qemu_stage2.o acpi_tables.o blob_service.o \
-	l2_service.o qemu_stage1.o stage3_entry.o stage3_runtime.o \
-	bios_acpi_runtime.o bios_benchmark.o bios_legacy.o bios_linux.o \
-	bios_maintenance.o bios_memtest.o bios_memory.o bios_nvram.o \
-	bios_rtc.o bios_selftest.o bios_serial.o bios_settings.o \
-	bios_shadow.o bios_stage_context.o bios_pci.o bios_storage.o \
-	linux_loader.o legacy_bda.o legacy_boot.o legacy_debug.o \
-	legacy_floppy.o legacy_int13.o legacy_int15.o legacy_keyboard.o \
-	legacy_misc.o legacy_platform.o legacy_runtime.o legacy_service.o \
-	legacy_thunk.o legacy_timer.o legacy_time.o legacy_video.o
-
 COMPILE_C = $(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 COMPILE_UACPI_C = $(CC) $(UACPI_CPPFLAGS) $(UACPI_CFLAGS) -c $< -o $@
 P2B_STAGE1_ELF := platform/p2b98_xv/stage1/stage1.elf
@@ -51,6 +40,11 @@ include platform/p2b98_xv/stage2/Makefile
 include platform/qemu/stage1/Makefile
 include platform/qemu/stage2/Makefile
 
+CORE_C_OBJS := $(P2B_STAGE1_C_OBJS) $(P2B_STAGE2_C_OBJS) \
+	$(QEMU_STAGE1_C_OBJS) $(QEMU_STAGE2_C_OBJS) \
+	$(ACPI_OBJS) $(SHARED_SERVICE_OBJS) $(X86_OBJS) \
+	$(SERIAL_OBJS) $(PCI_OBJS) $(STORAGE_OBJS) \
+	$(STAGE3_C_OBJS) $(LINUX_LOADER_C_OBJS) $(LEGACY_C_OBJS)
 C_DEP_OBJS := $(CORE_C_OBJS) $(SELFTEST_C_OBJS)
 DEPS := $(C_DEP_OBJS:.o=.d)
 
