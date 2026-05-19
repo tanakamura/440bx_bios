@@ -181,6 +181,7 @@ stage2 が使う DSDT などの board 固有 ACPI 入力はここでは別扱い
 - `bios_rm_service` dispatcher と thunk/IVT/DPT 設置は `app/legacy/` へ移動済み。現状は同一 ELF に link し、stage3 が `legacy_service_init()` で context を渡している。
 - E820/memory map は `bios_memory.*`、RTC は `bios_rtc.*` へ分離済み。legacy service からは `legacy_platform_ops` callback 経由で呼ぶ。
 - selftest profile は現状まだ `test_elf_blob` に依存している。build matrix の「selftest の app 用 payload なし」を実装するには、先に `selftest_app` を stage3 から切り出す必要がある。
+- stage3 main flow は `bios_stage3.*` へ分離済み。`bios_main.c` は legacy asm entry からの BSS clear と stage3 run wrapper だけを持つ。
 
 ## メモリマップ
 
