@@ -1,5 +1,5 @@
-#include "bios_serial.h"
 #include "legacy_floppy.h"
+#include "legacy_platform.h"
 
 #define ROM_FREE_DESCRIPTOR_LINEAR 0xfffffff8u
 #define LEGACY_FLOPPY_MAGIC 0x30445346u
@@ -94,15 +94,15 @@ void legacy_floppy_probe(void) {
     }
 
     legacy_floppy_rom_linear = base;
-    serial_write_string("Test floppy @ ");
-    serial_write_hex32(base);
-    serial_write_string("-");
-    serial_write_hex32(end);
-    serial_write_string(" sectors=");
-    serial_write_u32(legacy_floppy_sectors);
-    serial_write_string(" runs=");
-    serial_write_u32(legacy_floppy_runs);
-    serial_write_string("\r\n");
+    legacy_serial_write_string("Test floppy @ ");
+    legacy_serial_write_hex32(base);
+    legacy_serial_write_string("-");
+    legacy_serial_write_hex32(end);
+    legacy_serial_write_string(" sectors=");
+    legacy_serial_write_u32(legacy_floppy_sectors);
+    legacy_serial_write_string(" runs=");
+    legacy_serial_write_u32(legacy_floppy_runs);
+    legacy_serial_write_string("\r\n");
 }
 
 int legacy_floppy_present(void) { return legacy_floppy_rom_linear != 0u; }

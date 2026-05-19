@@ -1,12 +1,12 @@
 #include "app/legacy/legacy_service.h"
 
-#include "bios_serial.h"
 #include "app/legacy/legacy_boot.h"
 #include "app/legacy/legacy_debug.h"
 #include "app/legacy/legacy_int13.h"
 #include "app/legacy/legacy_int15.h"
 #include "app/legacy/legacy_keyboard.h"
 #include "app/legacy/legacy_misc.h"
+#include "app/legacy/legacy_platform.h"
 #include "app/legacy/legacy_rm.h"
 #include "app/legacy/legacy_thunk.h"
 #include "app/legacy/legacy_timer.h"
@@ -24,11 +24,11 @@ void legacy_service_init(const struct legacy_service_context* context) {
 void bios_rm_service(unsigned int vector, struct rm_int13_frame* f) {
     legacy_timer_update();
     if (0 && vector != 0x16 && vector != 0x10) {
-        serial_write_string("bios_rm_service=");
-        serial_write_hex8(vector & 0xffu);
-        serial_write_string(", ah=");
-        serial_write_hex8(f->ax >> 8);
-        serial_write_string("\r\n");
+        legacy_serial_write_string("bios_rm_service=");
+        legacy_serial_write_hex8(vector & 0xffu);
+        legacy_serial_write_string(", ah=");
+        legacy_serial_write_hex8(f->ax >> 8);
+        legacy_serial_write_string("\r\n");
     }
     switch (vector & 0xffu) {
         case 0x10:

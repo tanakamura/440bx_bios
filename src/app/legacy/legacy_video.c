@@ -1,5 +1,5 @@
-#include "bios_serial.h"
 #include "legacy_video.h"
+#include "legacy_platform.h"
 
 #define BDA_VIDEO_MODE 0x0449u
 #define BDA_VIDEO_COLS 0x044au
@@ -84,7 +84,7 @@ void legacy_int10_service(struct rm_int13_frame* f) {
     unsigned char ah = (unsigned char)(f->ax >> 8);
 
     if (ah == 0x0eu) {
-        serial_write_char((char)(f->ax & 0xffu));
+        legacy_serial_write_char((char)(f->ax & 0xffu));
         tty_advance((unsigned char)(f->ax & 0xffu));
         return;
     }

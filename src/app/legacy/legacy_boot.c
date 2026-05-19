@@ -1,9 +1,7 @@
 #include "app/legacy/legacy_boot.h"
 
-#include "bios_nvram.h"
-#include "bios_serial.h"
-#include "bios_storage.h"
 #include "app/legacy/legacy_floppy.h"
+#include "app/legacy/legacy_platform.h"
 
 #define BOOT_SECTOR_LINEAR 0x00007c00u
 
@@ -14,16 +12,16 @@ static int prepare_boot_sector_test_floppy(unsigned char* boot_drive) {
         return -1;
     }
     *boot_drive = 0x00u;
-    serial_write_string("Booting test floppy\r\n");
+    legacy_serial_write_string("Booting test floppy\r\n");
     return 0;
 }
 
 static int prepare_boot_sector_current(
     unsigned char* boot_drive, legacy_boot_record_success_fn record_success) {
-    if (bios_hdd_load_mbr_boot_sector(BOOT_SECTOR_LINEAR) == 0) {
+    if (legacy_hdd_load_mbr_boot_sector(BOOT_SECTOR_LINEAR) == 0) {
         *boot_drive = 0x80u;
         if (record_success != 0) {
-            record_success(bios_hdd_current_kind());
+            record_success(legacy_hdd_current_kind());
         }
         return 0;
     }
@@ -37,27 +35,27 @@ unsigned char legacy_prepare_boot_sector(
     if (prepare_boot_sector_test_floppy(&boot_drive) == 0) {
         return boot_drive;
     }
-    if (boot_priority == BIOS_NVRAM_BOOT_PRIORITY_IDE) {
-        if (bios_hdd_select_kind(BIOS_HDD_KIND_IDE) != 0u &&
+    if (boot_priority == LEGACY_BOOT_PRIORITY_IDE) {
+        if (legacy_hdd_select_kind(LEGACY_HDD_KIND_IDE) != 0u &&
             prepare_boot_sector_current(&boot_drive, record_success) == 0) {
             return boot_drive;
         }
-    } else if (boot_priority == BIOS_NVRAM_BOOT_PRIORITY_USB) {
-        if (bios_hdd_select_kind(BIOS_HDD_KIND_USB) != 0u &&
+    } else if (boot_priority == LEGACY_BOOT_PRIORITY_USB) {
+        if (legacy_hdd_select_kind(LEGACY_HDD_KIND_USB) != 0u &&
             prepare_boot_sector_current(&boot_drive, record_success) == 0) {
             return boot_drive;
         }
     } else {
-        if (bios_hdd_select_kind(BIOS_HDD_KIND_IDE) != 0u &&
+        if (legacy_hdd_select_kind(LEGACY_HDD_KIND_IDE) != 0u &&
             prepare_boot_sector_current(&boot_drive, record_success) == 0) {
             return boot_drive;
         }
-        if (bios_hdd_select_kind(BIOS_HDD_KIND_USB) != 0u &&
+        if (legacy_hdd_select_kind(LEGACY_HDD_KIND_USB) != 0u &&
             prepare_boot_sector_current(&boot_drive, record_success) == 0) {
             return boot_drive;
         }
     }
-    serial_write_string("No bootable HDD MBR\r\n");
+    legacy_serial_write_string("No bootable HDD MBR\r\n");
     for (;;) {
         __asm__ volatile("hlt");
     }

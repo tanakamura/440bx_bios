@@ -1,7 +1,6 @@
-#include "bios_serial.h"
-#include "bios_storage.h"
 #include "legacy_floppy.h"
 #include "legacy_int13.h"
+#include "legacy_platform.h"
 
 struct rm_dap {
     unsigned char size;
@@ -130,12 +129,12 @@ static void floppy_service(struct rm_int13_frame* f,
 }
 
 static void hdd_params(struct rm_int13_frame* f) {
-    struct bios_hdd_geometry geometry;
+    struct legacy_hdd_geometry geometry;
     unsigned int max_cyl;
     unsigned int max_head;
     unsigned int spt;
 
-    bios_hdd_get_geometry(&geometry);
+    legacy_hdd_get_geometry(&geometry);
     max_cyl = geometry.cylinders - 1u;
     max_head = geometry.heads - 1u;
     spt = geometry.sectors_per_track;
@@ -148,7 +147,7 @@ static void hdd_params(struct rm_int13_frame* f) {
 }
 
 static void hdd_chs_rw(struct rm_int13_frame* f, unsigned char ah) {
-    struct bios_hdd_geometry geometry;
+    struct legacy_hdd_geometry geometry;
     unsigned int count = (unsigned char)f->ax;
     unsigned int cylinder =
         ((unsigned int)(f->cx >> 8) | (((unsigned int)f->cx & 0x00c0u) << 2));
@@ -157,7 +156,7 @@ static void hdd_chs_rw(struct rm_int13_frame* f, unsigned char ah) {
     unsigned int lba;
     unsigned int dest;
 
-    bios_hdd_get_geometry(&geometry);
+    legacy_hdd_get_geometry(&geometry);
     if (ah != 0x02u || sector == 0u || count == 0u || head >= geometry.heads ||
         cylinder >= geometry.cylinders) {
         f->ax = 0x0100u;
@@ -168,7 +167,7 @@ static void hdd_chs_rw(struct rm_int13_frame* f, unsigned char ah) {
     lba = ((cylinder * geometry.heads) + head) * geometry.sectors_per_track +
           sector - 1u;
     dest = rm_seg_off_to_linear(f->es, f->bx);
-    if (bios_hdd_read_sectors(lba, count, dest) != 0) {
+    if (legacy_hdd_read_sectors(lba, count, dest) != 0) {
         f->ax = 0x0100u;
         rm_set_cf(f);
         return;
@@ -182,19 +181,19 @@ static void hdd_ext_read(struct rm_int13_frame* f) {
     unsigned int dest;
 
     if (dap->size < 0x10u || dap->lba_high != 0u || dap->count == 0u) {
-        serial_write_string("13h:42 bad dap size=");
-        serial_write_hex8(dap->size);
-        serial_write_string(" cnt=");
-        serial_write_hex16(dap->count);
-        serial_write_string(" high=");
-        serial_write_hex32(dap->lba_high);
-        serial_write_string("\r\n");
+        legacy_serial_write_string("13h:42 bad dap size=");
+        legacy_serial_write_hex8(dap->size);
+        legacy_serial_write_string(" cnt=");
+        legacy_serial_write_hex16(dap->count);
+        legacy_serial_write_string(" high=");
+        legacy_serial_write_hex32(dap->lba_high);
+        legacy_serial_write_string("\r\n");
         f->ax = 0x0100u;
         rm_set_cf(f);
         return;
     }
     dest = rm_seg_off_to_linear(dap->seg, dap->off);
-    if (bios_hdd_read_sectors(dap->lba_low, dap->count, dest) != 0) {
+    if (legacy_hdd_read_sectors(dap->lba_low, dap->count, dest) != 0) {
         f->ax = 0x0100u;
         rm_set_cf(f);
         return;
@@ -206,10 +205,10 @@ static void hdd_ext_read(struct rm_int13_frame* f) {
 static void hdd_ext_params(struct rm_int13_frame* f) {
     struct rm_edd_params* p =
         (struct rm_edd_params*)rm_seg_off_to_linear(f->ds, f->si);
-    struct bios_hdd_geometry geometry;
+    struct legacy_hdd_geometry geometry;
     unsigned int fill_size;
 
-    bios_hdd_get_geometry(&geometry);
+    legacy_hdd_get_geometry(&geometry);
     if (p->size < 0x1au) {
         f->ax = 0x0100u;
         rm_set_cf(f);
@@ -239,14 +238,14 @@ static void hdd_ext_params(struct rm_int13_frame* f) {
 static void hdd_service(struct rm_int13_frame* f) {
     unsigned char ah = (unsigned char)(f->ax >> 8);
     unsigned char dl = (unsigned char)f->dx;
-    struct bios_hdd_geometry geometry;
+    struct legacy_hdd_geometry geometry;
 
-    if (dl != 0x80u || !bios_hdd_is_present()) {
+    if (dl != 0x80u || !legacy_hdd_is_present()) {
         f->ax = 0x0100u;
         rm_set_cf(f);
         return;
     }
-    bios_hdd_get_geometry(&geometry);
+    legacy_hdd_get_geometry(&geometry);
 
     switch (ah) {
         case 0x00u:

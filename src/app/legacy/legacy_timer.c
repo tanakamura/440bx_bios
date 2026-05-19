@@ -1,6 +1,6 @@
 #include "app/legacy/legacy_timer.h"
 
-#include "bios_io.h"
+#include "app/legacy/legacy_io.h"
 
 #define IA32_APIC_BASE 0x0000001bu
 #define APIC_BASE_ENABLE 0x00000800u

@@ -1,4 +1,4 @@
-#include "bios_io.h"
+#include "app/legacy/legacy_io.h"
 #include "legacy_keyboard.h"
 
 #define BDA_KBD_FLAGS1 0x0417u
