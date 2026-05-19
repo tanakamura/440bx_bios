@@ -219,7 +219,7 @@ genrom: $(GENROM_BINS)
 romtest: romtest.asm
 	nasm -f bin $< -o $@
 
-test: stdtest.img usbmbr.img linuxprobe.img linuxprobe_raw.img qemu_flat_test_bios.bin qemu_legacy_test_bios.bin qemu_legacy_genrom.bin
+test: stdtest.img usbmbr.img linuxprobe.img linuxprobe_raw.img qemu_flat_test_bios.bin qemu_legacy_test_bios.bin qemu_legacy_genrom.bin qemu_linux_genrom.bin
 	python3 $(TEST_SCRIPTS)/run_qemu_tests.py
 
 -include $(DEPS)

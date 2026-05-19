@@ -18,6 +18,7 @@ void bios_stage_context_load(struct bios_stage_context* context,
 
     context->total_bytes = total_bytes;
     context->vgabios_blob_linear = 0u;
+    context->linux_loader_blob_linear = 0u;
     context->test_elf_blob_linear = 0u;
     context->rsdp_linear = 0u;
     context->acpi_pm1_evt = 0u;
@@ -49,10 +50,23 @@ void bios_stage_context_load(struct bios_stage_context* context,
     if (blob != 0u) {
         context->vgabios_blob_linear = blob;
     }
+    blob = payload_blob_ptr(context->shared_service,
+                            SHARED_PAYLOAD_ID_LINUX_LOADER_APP);
+    if (blob != 0u) {
+        context->linux_loader_blob_linear = blob;
+    }
     blob = payload_blob_ptr(context->shared_service, SHARED_PAYLOAD_ID_TEST_ELF);
     if (blob != 0u) {
         context->test_elf_blob_linear = blob;
     }
+}
+
+unsigned int bios_stage_context_payload_blob(
+    const struct bios_stage_context* context, unsigned int payload_id) {
+    if (context == 0) {
+        return 0u;
+    }
+    return payload_blob_ptr(context->shared_service, payload_id);
 }
 
 blob_expand_fn bios_stage_context_blob_expand(
@@ -60,6 +74,15 @@ blob_expand_fn bios_stage_context_blob_expand(
     if (context->shared_service != 0 &&
         context->shared_service->blob_expand != 0u) {
         return (blob_expand_fn)context->shared_service->blob_expand;
+    }
+    return 0;
+}
+
+blob_load_fn bios_stage_context_blob_load(
+    const struct bios_stage_context* context) {
+    if (context->shared_service != 0 &&
+        context->shared_service->blob_load != 0u) {
+        return (blob_load_fn)context->shared_service->blob_load;
     }
     return 0;
 }

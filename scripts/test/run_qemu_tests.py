@@ -137,6 +137,27 @@ def main() -> int:
                 "LINUXPROBE",
             ],
         )
+        genrom_linuxprobe_ok = run_case(
+            "custombios-genrom-linuxprobe",
+            [
+                "qemu-system-i386",
+                "-m", "32m",
+                "-bios", str(ROOT / "qemu_linux_genrom.bin"),
+                "-M", "pc",
+                "-serial", "stdio",
+                "-monitor", "none",
+                "-nographic",
+                "-no-reboot",
+                "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
+                "-drive", f"if=ide,format=raw,file={linuxprobe_img}",
+            ],
+            [
+                "Linux app @ 000f0000",
+                "Linux part1 start=",
+                "Boot Linux entry=00100000",
+                "LINUXPROBE",
+            ],
+        )
         linuxprobe_raw_ok = run_case(
             "custombios-linuxprobe-raw",
             [
@@ -204,7 +225,7 @@ def main() -> int:
             ],
         )
     return 0 if (std_ok and ideboot_ok and genrom_ideboot_ok and linuxprobe_ok and
-                 linuxprobe_raw_ok and usbmbr_ok and
+                 genrom_linuxprobe_ok and linuxprobe_raw_ok and usbmbr_ok and
                  legacy_floppy_ok) else 1
 
 
