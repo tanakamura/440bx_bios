@@ -38,7 +38,7 @@ src/
     p2b98_xv/
       stage1/
         start.asm
-        start.ld
+        stage1.ld
         bootblock.c
       stage2/
         stage2.c
@@ -49,7 +49,7 @@ src/
     qemu/
       stage1/
         qemu_start.asm
-        qemu.ld
+        stage1.ld
       stage2/
         stage2.c
         stage2.ld
