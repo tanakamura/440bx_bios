@@ -1,12 +1,11 @@
 #include "bios_acpi_runtime.h"
 #include "bios_benchmark.h"
 #include "bios_io.h"
-#include "bios_maintenance.h"
 #include "bios_memtest.h"
 #include "bios_memory.h"
-#include "bios_nvram.h"
 #include "bios_rtc.h"
 #include "bios_serial.h"
+#include "bios_settings.h"
 #include "bios_shadow.h"
 #include "bios_stage_context.h"
 #include "bios_storage.h"
@@ -27,12 +26,7 @@ extern unsigned char __bss_start[];
 extern unsigned char __bss_end[];
 
 static struct bios_stage_context bios_stage;
-static unsigned char bios_nvram_flags0 = BIOS_NVRAM_FLAGS0_DEFAULT;
-static unsigned char bios_boot_priority = BIOS_NVRAM_BOOT_PRIORITY_DEFAULT;
-static unsigned char bios_linux_vmlinux_partition = 0;
-static unsigned char bios_enable_memtest = 0;
-static unsigned char bios_run_test_blob = 0;
-static char bios_linux_cmdline_suffix[BIOS_NVRAM_CMDLINE_MAX];
+static struct bios_settings bios_settings;
 static const unsigned short bios_ebda_segment = 0x0000u;
 static const unsigned short bios_dos_base_mem_kb = 640u;
 static unsigned char bios_boot_drive = 0x80u;
@@ -42,83 +36,6 @@ static void zero_bss(void) {
     while (p < __bss_end) {
         *p++ = 0u;
     }
-}
-
-static int nvram_enable_extended_cmos(void) {
-    return bios_nvram_enable_extended_cmos();
-}
-
-static void nvram_init_defaults(void) {
-    bios_nvram_init_defaults();
-}
-
-static void nvram_load_settings(void) {
-    unsigned int i;
-    struct bios_nvram_settings settings;
-
-    bios_nvram_load_settings(&settings);
-    bios_nvram_flags0 = settings.flags0;
-    bios_boot_priority = settings.boot_priority;
-    bios_linux_vmlinux_partition = settings.vmlinux_partition;
-    bios_enable_memtest = settings.enable_memtest;
-    bios_run_test_blob = settings.run_test_blob;
-    for (i = 0; i < BIOS_NVRAM_CMDLINE_MAX; ++i) {
-        bios_linux_cmdline_suffix[i] = settings.linux_cmdline_suffix[i];
-        if (settings.linux_cmdline_suffix[i] == '\0') {
-            break;
-        }
-    }
-    bios_linux_cmdline_suffix[BIOS_NVRAM_CMDLINE_MAX - 1u] = '\0';
-}
-
-static void nvram_save_partition(unsigned char part) {
-    bios_nvram_save_partition(part);
-}
-
-static void nvram_save_flags0(unsigned char flags0) {
-    bios_nvram_save_flags0(flags0);
-}
-
-static void nvram_consume_test_blob_request(void) {
-    if ((bios_nvram_flags0 & BIOS_NVRAM_FLAGS0_RUN_TEST_BLOB) == 0u) {
-        return;
-    }
-    bios_nvram_flags0 =
-        (unsigned char)(bios_nvram_flags0 & ~BIOS_NVRAM_FLAGS0_RUN_TEST_BLOB);
-    bios_run_test_blob = 0u;
-    nvram_save_flags0(bios_nvram_flags0);
-    serial_write_string("Test blob request consumed\r\n");
-}
-
-static void nvram_save_boot_priority(unsigned char priority) {
-    bios_nvram_save_boot_priority(priority);
-}
-
-static void nvram_save_cmdline_suffix(const char* text) {
-    bios_nvram_save_cmdline_suffix(text);
-}
-
-static void nvram_reset_defaults(void) {
-    if (nvram_enable_extended_cmos() == 0) {
-        nvram_init_defaults();
-    }
-}
-
-static void maintenance_prompt(void) {
-    struct bios_maintenance_config config;
-
-    config.flags0 = &bios_nvram_flags0;
-    config.boot_priority = &bios_boot_priority;
-    config.vmlinux_partition = &bios_linux_vmlinux_partition;
-    config.enable_memtest = &bios_enable_memtest;
-    config.run_test_blob = &bios_run_test_blob;
-    config.linux_cmdline_suffix = bios_linux_cmdline_suffix;
-    config.save_partition = nvram_save_partition;
-    config.save_flags0 = nvram_save_flags0;
-    config.save_boot_priority = nvram_save_boot_priority;
-    config.save_cmdline_suffix = nvram_save_cmdline_suffix;
-    config.reset_defaults = nvram_reset_defaults;
-    bios_maintenance_prompt(&config);
 }
 
 static void cpu_serialize(void) {
@@ -233,7 +150,7 @@ static void install_legacy_platform_ops(void) {
 }
 
 static void prepare_linux_platform(void) {
-    bios_rtc_prepare_for_linux(nvram_enable_extended_cmos);
+    bios_rtc_prepare_for_linux(bios_nvram_enable_extended_cmos);
     bios_acpi_install_for_linux(
         bios_stage.rsdp_linear, bios_stage.acpi_pm1_evt,
         bios_stage.acpi_pm1_cnt, bios_stage.acpi_gpe0,
@@ -242,13 +159,15 @@ static void prepare_linux_platform(void) {
 
 static void fill_linux_loader_config(struct linux_loader_config* config) {
     config->total_bytes = bios_stage.total_bytes;
-    config->boot_priority = bios_boot_priority;
-    config->vmlinux_partition = bios_linux_vmlinux_partition;
+    config->boot_priority = bios_settings.boot_priority;
+    config->vmlinux_partition = bios_settings.vmlinux_partition;
     config->enable_serial_console =
-        (bios_nvram_flags0 & BIOS_NVRAM_FLAGS0_SERIAL_CONSOLE) != 0u ? 1u : 0u;
+        (bios_settings.flags0 & BIOS_NVRAM_FLAGS0_SERIAL_CONSOLE) != 0u ? 1u
+                                                                        : 0u;
     config->enable_vesa_1024_768 =
-        (bios_nvram_flags0 & BIOS_NVRAM_FLAGS0_VESA_1024_768) != 0u ? 1u : 0u;
-    config->cmdline_suffix = bios_linux_cmdline_suffix;
+        (bios_settings.flags0 & BIOS_NVRAM_FLAGS0_VESA_1024_768) != 0u ? 1u
+                                                                       : 0u;
+    config->cmdline_suffix = bios_settings.linux_cmdline_suffix;
     config->prepare_platform = prepare_linux_platform;
     config->init_vgabios = init_vgabios_for_linux;
     config->record_boot_success = nvram_record_boot_success;
@@ -278,7 +197,7 @@ static void install_bios_thunks(void) {
     config.hdd_present = bios_hdd_is_present();
     config.base_mem_kb = bios_dos_base_mem_kb;
     config.ebda_segment = bios_ebda_segment;
-    config.boot_priority = bios_boot_priority;
+    config.boot_priority = bios_settings.boot_priority;
     config.record_boot_success = nvram_record_boot_success;
     config.boot_pm32 = bios_boot_freedos_pm32;
     config.install_shadow = install_bios_shadow;
@@ -287,7 +206,7 @@ static void install_bios_thunks(void) {
 
 static void prepare_boot_sector(void) {
     bios_boot_drive = legacy_prepare_boot_sector(
-        bios_boot_priority, nvram_record_boot_success);
+        bios_settings.boot_priority, nvram_record_boot_success);
 }
 
 static void install_boot_drive(void) {
@@ -376,17 +295,7 @@ static void run_test_elf_blob(void) {
 }
 
 static void nvram_record_boot_success(unsigned char kind) {
-    if (bios_boot_priority != BIOS_NVRAM_BOOT_PRIORITY_AUTO) {
-        return;
-    }
-    if (kind != BIOS_HDD_KIND_IDE && kind != BIOS_HDD_KIND_USB) {
-        return;
-    }
-    bios_boot_priority = kind;
-    nvram_save_boot_priority(kind);
-    serial_write_string("boot priority learned=");
-    serial_write_u32(kind);
-    serial_write_string("\r\n");
+    bios_settings_record_boot_success(&bios_settings, kind);
 }
 
 static int try_boot_linux(void) {
@@ -402,7 +311,7 @@ void postcar_resume(unsigned int total_bytes, unsigned int aux_blob_linear) {
     (void)aux_blob_linear;
     bios_stage_context_load(&bios_stage, total_bytes);
     storage_set_scratch_base(bios_top_reserved_base());
-    nvram_load_settings();
+    bios_settings_load(&bios_settings);
     install_legacy_platform_ops();
     legacy_floppy_probe();
     outb(0x80, POST_DRAM_STACK);
@@ -415,10 +324,11 @@ void postcar_resume(unsigned int total_bytes, unsigned int aux_blob_linear) {
     serial_write_string("Usable DRAM: ");
     serial_write_u32(total_bytes >> 10);
     serial_write_string("K\r\n");
-    bios_memtest_run_optional(bios_enable_memtest, bios_stage.total_bytes,
+    bios_memtest_run_optional(bios_settings.enable_memtest,
+                              bios_stage.total_bytes,
                               bios_stage.shared_service);
-    if (bios_run_test_blob != 0u) {
-        nvram_consume_test_blob_request();
+    if (bios_settings.run_test_blob != 0u) {
+        bios_settings_consume_test_blob_request(&bios_settings);
         run_test_elf_blob();
         serial_write_string("Test blob halted\r\n");
         for (;;) {
@@ -426,7 +336,7 @@ void postcar_resume(unsigned int total_bytes, unsigned int aux_blob_linear) {
         }
     }
     if (bios_stage.maintenance_requested != 0u) {
-        maintenance_prompt();
+        bios_settings_maintenance_prompt(&bios_settings);
     }
     storage_scan(total_bytes);
     install_bios_thunks();

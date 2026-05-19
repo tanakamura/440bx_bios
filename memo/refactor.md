@@ -587,6 +587,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - Linux 起動直前の ACPI PM event clear / SCI enable は `bios_acpi_runtime.*` へ分離済み。stage3 は stage2 由来の RSDP/PM port/flag を渡すだけ。
 - manual bandwidth benchmark は `bios_benchmark.*` へ分離済み。stage3 main flow からは fallback diagnostic として呼ぶだけ。
 - shared service table / boot context / payload manifest の stage3 decode は `bios_stage_context.*` へ分離済み。`bios_main.c` は `struct bios_stage_context` を保持して各 module へ渡すだけ。
+- NVRAM 設定 state / maintenance prompt glue / boot priority learn は `bios_settings.*` へ分離済み。`bios_main.c` は `struct bios_settings` を各 app config に渡すだけ。
 
 ## 決定事項
 
