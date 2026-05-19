@@ -71,4 +71,15 @@ typedef void (*blob_shadow_entry_fn)(const void* blob, void* stage, void* dst,
                                      unsigned int aux_blob_linear,
                                      unsigned int bios_entry);
 
+static inline unsigned int blob_load_addr_or(const void* blob,
+                                             unsigned int fallback) {
+    const struct blob_header* hdr = (const struct blob_header*)blob;
+    if (hdr != 0 && hdr->magic == BLOB_MAGIC && hdr->version == BLOB_VERSION &&
+        (hdr->flags & BLOB_FLAG_HAS_LOAD_ADDR) != 0u &&
+        hdr->load_addr != 0u) {
+        return hdr->load_addr;
+    }
+    return fallback;
+}
+
 #endif

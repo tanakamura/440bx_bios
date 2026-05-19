@@ -336,6 +336,7 @@ __attribute__((section(".stage2.entry"), used)) void stage2_entry(
     const void* stage3_blob = 0;
     blob_expand_fn expand = 0;
     unsigned int blob_stage = 0u;
+    unsigned int stage3_load;
     struct blob_status status;
     int rc;
 
@@ -369,7 +370,8 @@ __attribute__((section(".stage2.entry"), used)) void stage2_entry(
             __asm__ volatile("hlt");
         }
     }
-    rc = expand(stage3_blob, (void*)blob_stage, (void*)BIOS_LOAD_LINEAR,
+    stage3_load = blob_load_addr_or(stage3_blob, BIOS_LOAD_LINEAR);
+    rc = expand(stage3_blob, (void*)blob_stage, (void*)stage3_load,
                 BIOS_LOAD_CAPACITY, &status, total_bytes);
     if (rc != 0) {
         serial_write_string("\r\nstage3 load failed rc=");
@@ -387,7 +389,7 @@ __attribute__((section(".stage2.entry"), used)) void stage2_entry(
         }
     }
     serial_write_string("\r\nstage3 copied\r\n");
-    ((bios_entry_fn)BIOS32_ENTRY)(total_bytes, aux_linear);
+    ((bios_entry_fn)stage3_load)(total_bytes, aux_linear);
     for (;;) {
         __asm__ volatile("hlt");
     }

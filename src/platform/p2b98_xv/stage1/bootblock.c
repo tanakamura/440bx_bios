@@ -696,6 +696,7 @@ static void enter_stage2(unsigned int total_bytes) {
         shared_service_from_total(total_bytes);
     blob_expand_fn expand = 0;
     unsigned int blob_stage = 0u;
+    unsigned int stage2_load;
     const unsigned char* blob = rom_high_ptr(__stage2_blob_start);
     struct shared_payload_entry* stage2_payload;
     int rc;
@@ -714,7 +715,8 @@ static void enter_stage2(unsigned int total_bytes) {
         die_with_post(0xef);
     }
 
-    rc = expand(blob, (void*)blob_stage, (void*)STAGE2_LOAD_LINEAR,
+    stage2_load = blob_load_addr_or(blob, STAGE2_LOAD_LINEAR);
+    rc = expand(blob, (void*)blob_stage, (void*)stage2_load,
                 STAGE2_LOAD_CAPACITY, &status, total_bytes);
     if (rc != 0) {
         serial_write_string("\r\nstage2 load failed rc=");
@@ -730,7 +732,7 @@ static void enter_stage2(unsigned int total_bytes) {
     }
 
     serial_write_string("\r\nstage2 copied\r\n");
-    ((stage2_entry_fn)STAGE2_ENTRY)(total_bytes, 0u);
+    ((stage2_entry_fn)stage2_load)(total_bytes, 0u);
     die_with_post(0xef);
 }
 

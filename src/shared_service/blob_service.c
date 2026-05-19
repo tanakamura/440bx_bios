@@ -446,6 +446,8 @@ BLOBSVC void blob_shadow_load_and_enter(const void* blob, void* stage,
     if (payload != 0) {
         blob = (const void*)payload->blob_ptr;
     }
+    bios_entry = blob_load_addr_or(blob, bios_entry);
+    dst = (unsigned char*)bios_entry;
 
     p = (volatile unsigned int*)dst;
     end = (volatile unsigned int*)((unsigned int)dst + dst_capacity);
