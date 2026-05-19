@@ -40,8 +40,9 @@ static void payload_add(struct shared_payload_manifest* manifest,
 }
 
 void qemu_install_shared_service_table(unsigned int total_bytes,
-                                       unsigned int stack_top) {
-    unsigned int table_linear = stack_top;
+                                       unsigned int stack_top,
+                                       unsigned int service_base) {
+    unsigned int table_linear = shared_table_base_from_total(total_bytes);
     unsigned int ptr_slot = shared_table_pointer_slot(total_bytes);
     struct shared_service_table* table =
         (struct shared_service_table*)table_linear;
@@ -49,7 +50,7 @@ void qemu_install_shared_service_table(unsigned int total_bytes,
     struct shared_boot_context* ctx;
     unsigned int i;
 
-    for (i = 0; i < 4096u; ++i) {
+    for (i = 0; i < SHARED_TABLE_BYTES; ++i) {
         ((volatile unsigned char*)table_linear)[i] = 0u;
     }
 
@@ -62,11 +63,11 @@ void qemu_install_shared_service_table(unsigned int total_bytes,
     table->version = SHARED_SERVICE_VERSION;
     table->size = sizeof(*table);
     table->total_dram_bytes = total_bytes;
-    table->service_base = BLOB_SERVICE_LINEAR;
+    table->service_base = service_base;
     table->service_size =
         (unsigned int)(__blob_service_end - __blob_service_start);
     table->table_linear = table_linear;
-    table->table_size = 4096u;
+    table->table_size = SHARED_TABLE_BYTES;
     table->stack_top = stack_top;
     table->heap_base = shared_align_up((unsigned int)(ctx + 1), 16u);
     table->heap_free_list = 0u;
@@ -74,7 +75,7 @@ void qemu_install_shared_service_table(unsigned int total_bytes,
     table->boot_context_ptr = (unsigned int)ctx;
     table->payload_manifest_ptr = (unsigned int)manifest;
     table->blob_expand =
-        BLOB_SERVICE_LINEAR +
+        service_base +
         ((unsigned int)blob_expand_service - (unsigned int)__blob_service_start);
 
     manifest->magic = SHARED_PAYLOAD_MAGIC;

@@ -570,7 +570,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 
 ## 現在の移行状態
 
-- P2B98-XV stage1 と QEMU stage1 は DRAM 末尾に shared service table / boot context / payload manifest を置き、DRAM 最後 4 byte の pointer から辿れる。
+- P2B98-XV stage1 と QEMU stage1 は DRAM 末尾に shared service code / shared service table / boot context / payload manifest を置き、DRAM 最後 4 byte の pointer から辿れる。stack 初期値は shared service code の直前に置く。
 - stage2 は `blob_expand` と stage3 payload を shared service table から使う。payload pointer の旧 aux fallback は削除済み。
 - blob 展開中の maintenance key は blob service が DRAM 末尾の shared service table pointer から boot context を辿り、`SHARED_BOOT_FLAG_MAINTENANCE_REQUESTED` を直接立てる。旧 aux dword 配列は削除済み。
 - stage3 は VGA BIOS / test ELF payload と `blob_expand` を shared service table から使う。旧 aux fallback と固定 `BLOB_SERVICE_LINEAR` fallback は削除済み。

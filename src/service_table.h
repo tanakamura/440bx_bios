@@ -9,6 +9,7 @@
 #define SHARED_BOOT_CONTEXT_VERSION 1u
 
 #define SHARED_PAYLOAD_MAX 16u
+#define SHARED_TABLE_BYTES 4096u
 
 #define SHARED_PAYLOAD_ID_STAGE2 1u
 #define SHARED_PAYLOAD_ID_STAGE3 2u
@@ -104,6 +105,16 @@ static inline unsigned int shared_align_up(unsigned int value,
 
 static inline unsigned int shared_table_pointer_slot(unsigned int total_bytes) {
     return (total_bytes & ~3u) - 4u;
+}
+
+static inline unsigned int shared_table_base_from_total(
+    unsigned int total_bytes) {
+    return (total_bytes & ~0xfffu) - SHARED_TABLE_BYTES;
+}
+
+static inline unsigned int shared_service_base_from_table(
+    unsigned int table_base, unsigned int service_size) {
+    return (table_base - shared_align_up(service_size, 16u)) & ~0x0fu;
 }
 
 static inline struct shared_service_table* shared_service_from_total(

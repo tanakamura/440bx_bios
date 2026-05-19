@@ -787,6 +787,10 @@ static unsigned int bios_top_reserved_base(void) {
 }
 
 static unsigned int bios_pm_stack_top(void) {
+    if (bios_shared_service_global != 0 &&
+        bios_shared_service_global->stack_top != 0u) {
+        return bios_shared_service_global->stack_top;
+    }
     if (bios_total_bytes_global >= 0x00300000u) {
         return (bios_total_bytes_global & ~0xfffu) - 0x1000u;
     }

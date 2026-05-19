@@ -3,9 +3,9 @@ bits 16
 %define CODE_SEL 0x08
 %define DATA_SEL 0x10
 %define ROM_HIGH_DELTA 0xFFF00000
-%define BLOB_SERVICE_LINEAR 0x00180000
 %define BLOB_STAGE_LINEAR 0x00380000
 %define BLOB_STATUS_SIZE 20
+%define SHARED_TABLE_BYTES 0x1000
 %define STAGE2_LOAD_LINEAR 0x00080000
 %define STAGE2_LOAD_CAPACITY 0x00010000
 %define STAGE2_ENTRY 0x00080000
@@ -61,20 +61,30 @@ qemu_pm_entry:
     mov fs, ax
     mov gs, ax
     mov ss, ax
-    mov esp, QEMU_TOTAL_BYTES - 0x1000
+    mov eax, QEMU_TOTAL_BYTES
+    and eax, 0xfffff000
+    sub eax, SHARED_TABLE_BYTES
+    mov ebx, __blob_service_end
+    sub ebx, __blob_service_start
+    add ebx, 15
+    and ebx, 0xfffffff0
+    sub eax, ebx
+    mov esp, eax
+    mov ebp, eax
 
     mov esi, __blob_service_start + ROM_HIGH_DELTA
-    mov edi, BLOB_SERVICE_LINEAR
+    mov edi, ebp
     mov ecx, __blob_service_end
     sub ecx, __blob_service_start
     rep movsb
     xor eax, eax
     cpuid
 
-    push dword QEMU_TOTAL_BYTES - 0x1000
+    push ebp
+    push ebp
     push dword QEMU_TOTAL_BYTES
     call qemu_install_shared_service_table
-    add esp, 8
+    add esp, 12
 
     sub esp, BLOB_STATUS_SIZE
     mov ebx, esp
@@ -88,7 +98,7 @@ qemu_pm_entry:
     push dword __stage2_blob_start + ROM_HIGH_DELTA
     mov eax, blob_shadow_load_and_enter
     sub eax, __blob_service_start
-    add eax, BLOB_SERVICE_LINEAR
+    add eax, ebp
     call eax
 .hang:
     hlt
