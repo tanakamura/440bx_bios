@@ -81,18 +81,24 @@ void qemu_install_shared_service_table(unsigned int total_bytes,
     table->blob_stage = blob_stage;
     table->blob_stage_size = BLOB_STAGE_CAPACITY;
 
-    manifest->magic = SHARED_PAYLOAD_MAGIC;
-    manifest->version = SHARED_PAYLOAD_VERSION;
-    manifest->entry_count = 0u;
-    payload_add(manifest, SHARED_PAYLOAD_ID_STAGE2, SHARED_PAYLOAD_TYPE_BLZ4,
-                0u, rom_high_ptr(__stage2_blob_start),
-                rom_high_ptr(__stage2_blob_end));
-    payload_add(manifest, SHARED_PAYLOAD_ID_STAGE3, SHARED_PAYLOAD_TYPE_BLZ4,
-                0u, rom_high_ptr(__bios_blob_start),
-                rom_high_ptr(__bios_blob_end));
-    payload_add(manifest, SHARED_PAYLOAD_ID_TEST_ELF, SHARED_PAYLOAD_TYPE_BLZ4,
-                0u, rom_high_ptr(__test_elf_blob_start),
-                rom_high_ptr(__test_elf_blob_end));
+    if (shared_payload_manifest_from_rom_directory(manifest, 0xfffc0000u) !=
+        0) {
+        manifest->magic = SHARED_PAYLOAD_MAGIC;
+        manifest->version = SHARED_PAYLOAD_VERSION;
+        manifest->entry_count = 0u;
+        payload_add(manifest, SHARED_PAYLOAD_ID_STAGE2,
+                    SHARED_PAYLOAD_TYPE_BLZ4, 0u,
+                    rom_high_ptr(__stage2_blob_start),
+                    rom_high_ptr(__stage2_blob_end));
+        payload_add(manifest, SHARED_PAYLOAD_ID_STAGE3,
+                    SHARED_PAYLOAD_TYPE_BLZ4, 0u,
+                    rom_high_ptr(__bios_blob_start),
+                    rom_high_ptr(__bios_blob_end));
+        payload_add(manifest, SHARED_PAYLOAD_ID_TEST_ELF,
+                    SHARED_PAYLOAD_TYPE_BLZ4, 0u,
+                    rom_high_ptr(__test_elf_blob_start),
+                    rom_high_ptr(__test_elf_blob_end));
+    }
 
     ctx->magic = SHARED_BOOT_CONTEXT_MAGIC;
     ctx->version = SHARED_BOOT_CONTEXT_VERSION;

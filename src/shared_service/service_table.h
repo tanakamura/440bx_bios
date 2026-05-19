@@ -18,9 +18,17 @@
 #define SHARED_PAYLOAD_ID_VGABIOS 5u
 #define SHARED_PAYLOAD_ID_DSDT 6u
 #define SHARED_PAYLOAD_ID_TEST_ELF 7u
+#define SHARED_PAYLOAD_ID_SELFTEST_APP 8u
+#define SHARED_PAYLOAD_ID_TEST_FLOPPY 9u
 
 #define SHARED_PAYLOAD_TYPE_BLZ4 1u
 #define SHARED_PAYLOAD_TYPE_APP 2u
+#define SHARED_PAYLOAD_TYPE_RAW 3u
+
+#define SHARED_ROM_DIRECTORY_MAGIC 0x304d5242u
+#define SHARED_ROM_DIRECTORY_VERSION 1u
+#define SHARED_ROM_DIRECTORY_ENTRY_MAX SHARED_PAYLOAD_MAX
+#define SHARED_ROM_SIZE (256u * 1024u)
 
 #define SHARED_BOOT_FLAG_SHADOW_READY 0x00000001u
 #define SHARED_BOOT_FLAG_MAINTENANCE_REQUESTED 0x00000002u
@@ -44,6 +52,28 @@ struct shared_payload_manifest {
     unsigned int entry_count;
     unsigned int reserved;
     struct shared_payload_entry entries[SHARED_PAYLOAD_MAX];
+};
+
+struct shared_rom_payload_directory {
+    unsigned int magic;
+    unsigned int version;
+    unsigned int header_size;
+    unsigned int entry_size;
+    unsigned int entry_count;
+    unsigned int payload_area_start;
+    unsigned int payload_area_end;
+    unsigned int stage1_start;
+};
+
+struct shared_rom_payload_directory_entry {
+    unsigned int id;
+    unsigned int type;
+    unsigned int flags;
+    unsigned int rom_offset;
+    unsigned int blob_size;
+    unsigned int slot_size;
+    unsigned int load_addr;
+    unsigned int reserved;
 };
 
 struct shared_boot_context {
@@ -154,6 +184,57 @@ static inline struct shared_payload_entry* shared_payload_find(
         if (manifest->entries[i].id == id) {
             return &manifest->entries[i];
         }
+    }
+    return 0;
+}
+
+static inline int shared_payload_manifest_from_rom_directory(
+    struct shared_payload_manifest* manifest, unsigned int rom_high_base) {
+    const struct shared_rom_payload_directory* dir =
+        (const struct shared_rom_payload_directory*)rom_high_base;
+    const unsigned char* rom = (const unsigned char*)rom_high_base;
+    unsigned int i;
+
+    if (manifest == 0 || dir->magic != SHARED_ROM_DIRECTORY_MAGIC ||
+        dir->version != SHARED_ROM_DIRECTORY_VERSION ||
+        dir->header_size < sizeof(*dir) ||
+        dir->entry_size < sizeof(struct shared_rom_payload_directory_entry) ||
+        dir->entry_count > SHARED_ROM_DIRECTORY_ENTRY_MAX ||
+        dir->payload_area_start < dir->header_size ||
+        dir->payload_area_end > SHARED_ROM_SIZE ||
+        dir->payload_area_start > dir->payload_area_end ||
+        dir->stage1_start > SHARED_ROM_SIZE ||
+        dir->payload_area_end > dir->stage1_start) {
+        return -1;
+    }
+
+    manifest->magic = SHARED_PAYLOAD_MAGIC;
+    manifest->version = SHARED_PAYLOAD_VERSION;
+    manifest->entry_count = 0u;
+    manifest->reserved = 0u;
+
+    for (i = 0; i < dir->entry_count; ++i) {
+        const struct shared_rom_payload_directory_entry* src =
+            (const struct shared_rom_payload_directory_entry*)(
+                rom + dir->header_size + i * dir->entry_size);
+        struct shared_payload_entry* dst;
+
+        if (src->id == 0u || src->blob_size == 0u ||
+            src->rom_offset < dir->payload_area_start ||
+            src->rom_offset > dir->payload_area_end ||
+            src->blob_size > dir->payload_area_end - src->rom_offset ||
+            src->slot_size < src->blob_size ||
+            manifest->entry_count >= SHARED_PAYLOAD_MAX) {
+            return -1;
+        }
+
+        dst = &manifest->entries[manifest->entry_count++];
+        dst->id = src->id;
+        dst->type = src->type;
+        dst->flags = src->flags;
+        dst->blob_ptr = rom_high_base + src->rom_offset;
+        dst->blob_size = src->blob_size;
+        dst->slot_size = src->slot_size;
     }
     return 0;
 }

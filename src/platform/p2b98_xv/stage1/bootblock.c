@@ -644,23 +644,32 @@ static void install_shared_service_table(unsigned int total_bytes,
     table->blob_stage = blob_stage;
     table->blob_stage_size = BLOB_STAGE_CAPACITY;
 
-    manifest->magic = SHARED_PAYLOAD_MAGIC;
-    manifest->version = SHARED_PAYLOAD_VERSION;
-    manifest->entry_count = 0u;
-    payload_add(manifest, SHARED_PAYLOAD_ID_STAGE2, SHARED_PAYLOAD_TYPE_BLZ4,
-                0u, rom_high_ptr(__stage2_blob_start),
-                rom_high_ptr(__stage2_blob_end));
-    payload_add(manifest, SHARED_PAYLOAD_ID_STAGE3, SHARED_PAYLOAD_TYPE_BLZ4,
-                0u, rom_high_ptr(__bios_blob_start),
-                rom_high_ptr(__bios_blob_end));
-    payload_add(manifest, SHARED_PAYLOAD_ID_DSDT, SHARED_PAYLOAD_TYPE_BLZ4, 0u,
-                rom_high_ptr(__dsdt_blob_start), rom_high_ptr(__dsdt_blob_end));
-    payload_add(manifest, SHARED_PAYLOAD_ID_VGABIOS, SHARED_PAYLOAD_TYPE_BLZ4,
-                0u, rom_high_ptr(__vgabios_blob_start),
-                rom_high_ptr(__vgabios_blob_end));
-    payload_add(manifest, SHARED_PAYLOAD_ID_TEST_ELF, SHARED_PAYLOAD_TYPE_BLZ4,
-                0u, rom_high_ptr(__test_elf_blob_start),
-                rom_high_ptr(__test_elf_blob_end));
+    if (shared_payload_manifest_from_rom_directory(manifest, 0xfffc0000u) !=
+        0) {
+        manifest->magic = SHARED_PAYLOAD_MAGIC;
+        manifest->version = SHARED_PAYLOAD_VERSION;
+        manifest->entry_count = 0u;
+        payload_add(manifest, SHARED_PAYLOAD_ID_STAGE2,
+                    SHARED_PAYLOAD_TYPE_BLZ4, 0u,
+                    rom_high_ptr(__stage2_blob_start),
+                    rom_high_ptr(__stage2_blob_end));
+        payload_add(manifest, SHARED_PAYLOAD_ID_STAGE3,
+                    SHARED_PAYLOAD_TYPE_BLZ4, 0u,
+                    rom_high_ptr(__bios_blob_start),
+                    rom_high_ptr(__bios_blob_end));
+        payload_add(manifest, SHARED_PAYLOAD_ID_DSDT,
+                    SHARED_PAYLOAD_TYPE_BLZ4, 0u,
+                    rom_high_ptr(__dsdt_blob_start),
+                    rom_high_ptr(__dsdt_blob_end));
+        payload_add(manifest, SHARED_PAYLOAD_ID_VGABIOS,
+                    SHARED_PAYLOAD_TYPE_BLZ4, 0u,
+                    rom_high_ptr(__vgabios_blob_start),
+                    rom_high_ptr(__vgabios_blob_end));
+        payload_add(manifest, SHARED_PAYLOAD_ID_TEST_ELF,
+                    SHARED_PAYLOAD_TYPE_BLZ4, 0u,
+                    rom_high_ptr(__test_elf_blob_start),
+                    rom_high_ptr(__test_elf_blob_end));
+    }
 
     ctx->magic = SHARED_BOOT_CONTEXT_MAGIC;
     ctx->version = SHARED_BOOT_CONTEXT_VERSION;
@@ -668,9 +677,14 @@ static void install_shared_service_table(unsigned int total_bytes,
     ctx->total_dram_bytes = total_bytes;
     ctx->flags = SHARED_BOOT_FLAG_PLATFORM_P2B98_XV;
     ctx->platform_id = SHARED_BOOT_FLAG_PLATFORM_P2B98_XV;
-    ctx->acpi_input_ptr = (unsigned int)rom_high_ptr(__dsdt_blob_start);
-    ctx->acpi_input_size =
-        (unsigned int)(__dsdt_blob_end - __dsdt_blob_start);
+    {
+        struct shared_payload_entry* dsdt_payload =
+            shared_payload_find(table, SHARED_PAYLOAD_ID_DSDT);
+        if (dsdt_payload != 0) {
+            ctx->acpi_input_ptr = dsdt_payload->blob_ptr;
+            ctx->acpi_input_size = dsdt_payload->blob_size;
+        }
+    }
 
     *(volatile unsigned int*)ptr_slot = (unsigned int)table;
 }

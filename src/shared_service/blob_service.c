@@ -433,11 +433,19 @@ BLOBSVC void blob_shadow_load_and_enter(const void* blob, void* stage,
                                         unsigned int fdos_blob_linear,
                                         unsigned int bios_entry) {
     typedef void (*bios_entry_fn)(unsigned int, unsigned int);
+    struct shared_service_table* service;
+    struct shared_payload_entry* payload;
     volatile unsigned int* p;
     volatile unsigned int* end;
     int rc;
 
     blob_enable_ef_shadow();
+
+    service = shared_service_from_total(total_bytes);
+    payload = shared_payload_find(service, SHARED_PAYLOAD_ID_STAGE2);
+    if (payload != 0) {
+        blob = (const void*)payload->blob_ptr;
+    }
 
     p = (volatile unsigned int*)dst;
     end = (volatile unsigned int*)((unsigned int)dst + dst_capacity);

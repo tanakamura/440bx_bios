@@ -683,7 +683,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - S3/uACPI selftest source は `src/app/selftest/s3test/` へ移動済み。生成物は互換のため引き続き `src/s3test.elf` / `src/test_elf_blob.bin`。
 - stage3 の実体出力は `stage3.elf` / `stage3.bin` / `stage3_blob.bin` へ移行済み。互換のため `bios.elf` / `bios.bin` / `bios_blob.bin` は alias として残している。
 - BLZ4 blob header は `load_addr` と `BLOB_FLAG_HAS_LOAD_ADDR` を持つ。現状は stage2 / stage3 blob 生成時に load address を埋め、既存 loader は互換のため caller 指定 destination へ展開している。
-- `scripts/build/gen_rom.py` は追加済み。blob list から payload directory 付き ROM を生成できるが、既存 `start` / `qemu_bios.bin` target への切り替えと stage1 の directory parse は未完了。
+- `scripts/build/gen_rom.py` は追加済み。blob list から payload directory 付き ROM を生成できる。stage1 は ROM 先頭の payload directory を読んで manifest を作れるようになったが、既存 `start` / `qemu_bios.bin` target はまだ linker symbol 方式で生成している。
 - board/profile ごとの blob list は `platform/qemu/*.blobs` と `platform/p2b98_xv/*.blobs` に追加済み。現状は次段の入力定義であり、Makefile からはまだ使っていない。
 
 ## 決定事項
