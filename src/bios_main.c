@@ -1,6 +1,7 @@
 #include "acpi_tables.h"
 #include "bios_io.h"
 #include "bios_maintenance.h"
+#include "bios_memtest.h"
 #include "bios_memory.h"
 #include "bios_nvram.h"
 #include "bios_pci.h"
@@ -50,16 +51,6 @@ static const unsigned short bios_ebda_segment = 0x0000u;
 static const unsigned short bios_dos_base_mem_kb = 640u;
 static unsigned char bios_boot_drive = 0x80u;
 
-#define BIOS_MTRR_SAVE_MAX 8u
-struct bios_mtrr_saved_state {
-    unsigned char count;
-    unsigned long long def_type;
-    unsigned long long base[BIOS_MTRR_SAVE_MAX];
-    unsigned long long mask[BIOS_MTRR_SAVE_MAX];
-};
-
-static struct bios_mtrr_saved_state bios_memtest_mtrr_saved;
-
 static unsigned int tsc_low(void);
 static void acpi_install_for_linux(void);
 
@@ -89,13 +80,8 @@ static void wrmsr64(unsigned int msr, unsigned int lo, unsigned int hi) {
 #define IA32_MTRR_FIX4K_E8000 0x26du
 #define IA32_MTRR_FIX4K_F0000 0x26eu
 #define IA32_MTRR_FIX4K_F8000 0x26fu
-#define IA32_MTRRCAP 0x0feu
-#define IA32_MTRR_PHYSBASE0 0x200u
-#define IA32_MTRR_PHYSMASK0 0x201u
 #define IA32_MTRR_DEF_TYPE 0x2ffu
-#define MTRR_DEF_TYPE_TYPE_MASK 0x000000ffu
 #define MTRR_DEF_TYPE_E 0x00000800u
-#define MTRR_PHYSMASK_VALID 0x00000800u
 
 static int nvram_enable_extended_cmos(void) {
     return bios_nvram_enable_extended_cmos();
@@ -254,60 +240,6 @@ static void enable_shadow_wb_mtrrs(void) {
     wrmsr64(IA32_MTRR_DEF_TYPE, def_lo, def_hi);
     cache_enable_after_mtrr_update();
     serial_write_string("MTRR shadow C-F WB\r\n");
-}
-
-static unsigned char mtrr_variable_count(void) {
-    unsigned int count = (unsigned int)(rdmsr64(IA32_MTRRCAP) & 0xffu);
-    if (count > BIOS_MTRR_SAVE_MAX) {
-        count = BIOS_MTRR_SAVE_MAX;
-    }
-    return (unsigned char)count;
-}
-
-static void mtrr_save_and_uc_1m_plus(struct bios_mtrr_saved_state* saved) {
-    unsigned int i;
-    unsigned int def_lo;
-    unsigned int def_hi;
-
-    saved->count = mtrr_variable_count();
-    saved->def_type = rdmsr64(IA32_MTRR_DEF_TYPE);
-    for (i = 0u; i < saved->count; ++i) {
-        saved->base[i] = rdmsr64(IA32_MTRR_PHYSBASE0 + i * 2u);
-        saved->mask[i] = rdmsr64(IA32_MTRR_PHYSMASK0 + i * 2u);
-    }
-
-    def_lo = (unsigned int)saved->def_type;
-    def_hi = (unsigned int)(saved->def_type >> 32);
-
-    cache_disable_for_mtrr_update();
-    wrmsr64(IA32_MTRR_DEF_TYPE, def_lo & ~MTRR_DEF_TYPE_E, def_hi);
-    for (i = 0u; i < saved->count; ++i) {
-        unsigned int mask_lo =
-            (unsigned int)saved->mask[i] & ~MTRR_PHYSMASK_VALID;
-        unsigned int mask_hi = (unsigned int)(saved->mask[i] >> 32);
-        wrmsr64(IA32_MTRR_PHYSMASK0 + i * 2u, mask_lo, mask_hi);
-    }
-    wrmsr64(IA32_MTRR_DEF_TYPE, def_lo & ~MTRR_DEF_TYPE_TYPE_MASK, def_hi);
-    cache_enable_after_mtrr_update();
-}
-
-static void mtrr_restore_saved(const struct bios_mtrr_saved_state* saved) {
-    unsigned int i;
-    unsigned int def_lo = (unsigned int)saved->def_type;
-    unsigned int def_hi = (unsigned int)(saved->def_type >> 32);
-
-    cache_disable_for_mtrr_update();
-    wrmsr64(IA32_MTRR_DEF_TYPE, def_lo & ~MTRR_DEF_TYPE_E, def_hi);
-    for (i = 0u; i < saved->count; ++i) {
-        wrmsr64(IA32_MTRR_PHYSBASE0 + i * 2u,
-                (unsigned int)saved->base[i],
-                (unsigned int)(saved->base[i] >> 32));
-        wrmsr64(IA32_MTRR_PHYSMASK0 + i * 2u,
-                (unsigned int)saved->mask[i],
-                (unsigned int)(saved->mask[i] >> 32));
-    }
-    wrmsr64(IA32_MTRR_DEF_TYPE, def_lo, def_hi);
-    cache_enable_after_mtrr_update();
 }
 
 static void enable_shadow_dram(void) {
@@ -597,8 +529,6 @@ static void install_bios_thunks(void) {
     legacy_runtime_init(&config);
 }
 
-#define BIOS_MEMTEST_START 0x00100000u
-#define BIOS_MEMTEST_MARK_STEP 0x00100000u
 static void prepare_boot_sector(void) {
     bios_boot_drive = legacy_prepare_boot_sector(
         bios_boot_priority, nvram_record_boot_success);
@@ -625,125 +555,6 @@ static unsigned int bios_pm_stack_top(void) {
 
 static void install_pm_stack_top(void) {
     legacy_install_pm_stack_top(bios_pm_stack_top());
-}
-
-static unsigned int bios_extended_usable_end(void) {
-    return bios_memory_extended_usable_end(bios_total_bytes_global);
-}
-
-static void bios_memtest_print_kib_ok(unsigned int bytes) {
-    unsigned int kib = bytes >> 10;
-    unsigned int divisor = 1000000u;
-
-    while (divisor != 0u) {
-        serial_write_char((char)('0' + ((kib / divisor) % 10u)));
-        divisor /= 10u;
-    }
-    serial_write_string(" KiB OK");
-}
-
-static void bios_memtest_progress(unsigned int addr, unsigned int* next_mark) {
-    while (addr >= *next_mark) {
-        serial_write_char('\r');
-        bios_memtest_print_kib_ok(*next_mark);
-        *next_mark += BIOS_MEMTEST_MARK_STEP;
-    }
-}
-
-static unsigned int bios_memtest_skip_end(unsigned int addr) {
-    if (bios_shared_service_global != 0 &&
-        bios_shared_service_global->service_base != 0u &&
-        addr >= bios_shared_service_global->service_base &&
-        addr < bios_shared_service_global->service_base +
-                   bios_shared_service_global->service_size) {
-        return bios_shared_service_global->service_base +
-               bios_shared_service_global->service_size;
-    }
-    if (bios_shared_service_global != 0 &&
-        bios_shared_service_global->blob_stage != 0u &&
-        bios_shared_service_global->blob_stage_size != 0u &&
-        addr >= bios_shared_service_global->blob_stage &&
-        addr < bios_shared_service_global->blob_stage +
-                   bios_shared_service_global->blob_stage_size) {
-        return bios_shared_service_global->blob_stage +
-               bios_shared_service_global->blob_stage_size;
-    }
-    return addr;
-}
-
-static int bios_memtest_range_uncached(unsigned int end) {
-    unsigned int addr;
-    unsigned int next_mark = BIOS_MEMTEST_START + BIOS_MEMTEST_MARK_STEP;
-
-    if (end <= BIOS_MEMTEST_START) {
-        return 0;
-    }
-
-    bios_memtest_print_kib_ok(BIOS_MEMTEST_START);
-    for (addr = BIOS_MEMTEST_START; addr + 4u <= end;) {
-        unsigned int skip_end = bios_memtest_skip_end(addr);
-        if (skip_end != addr) {
-            addr = skip_end;
-            bios_memtest_progress(addr, &next_mark);
-            continue;
-        }
-        *(volatile unsigned int*)addr = addr ^ 0xa5a55a5au;
-        addr += 4u;
-        bios_memtest_progress(addr, &next_mark);
-    }
-    for (addr = BIOS_MEMTEST_START; addr + 4u <= end;) {
-        unsigned int expected;
-        unsigned int got;
-        unsigned int skip_end = bios_memtest_skip_end(addr);
-        if (skip_end != addr) {
-            addr = skip_end;
-            continue;
-        }
-        expected = addr ^ 0xa5a55a5au;
-        got = *(volatile unsigned int*)addr;
-        if (got != expected) {
-            serial_write_string("\r\nMemTest fail @ ");
-            serial_write_hex32(addr);
-            serial_write_string(" got=");
-            serial_write_hex32(got);
-            serial_write_string(" exp=");
-            serial_write_hex32(expected);
-            serial_write_string("\r\n");
-            return -1;
-        }
-        *(volatile unsigned int*)addr = ~expected;
-        addr += 4u;
-    }
-    serial_write_string("\r\n");
-    return 0;
-}
-
-static void bios_run_optional_memtest(void) {
-    unsigned int end;
-    int rc;
-
-    if (bios_enable_memtest == 0u) {
-        return;
-    }
-
-    end = bios_extended_usable_end();
-    serial_write_string("Memtest UC ");
-    serial_write_hex32(BIOS_MEMTEST_START);
-    serial_write_string("-");
-    serial_write_hex32(end);
-    serial_write_string("\r\n");
-
-    mtrr_save_and_uc_1m_plus(&bios_memtest_mtrr_saved);
-    rc = bios_memtest_range_uncached(end);
-    mtrr_restore_saved(&bios_memtest_mtrr_saved);
-
-    if (rc != 0) {
-        outb(0x80, POST_DRAM_TEST_FAIL);
-        for (;;) {
-            __asm__ volatile("hlt");
-        }
-    }
-    serial_write_string("Memtest ok\r\n");
 }
 
 static void acpi_clear_pm_events(unsigned int pm1_evt, unsigned int gpe0,
@@ -1054,7 +865,8 @@ void postcar_resume(unsigned int total_bytes, unsigned int aux_blob_linear) {
     serial_write_string("Usable DRAM: ");
     serial_write_u32(total_bytes >> 10);
     serial_write_string("K\r\n");
-    bios_run_optional_memtest();
+    bios_memtest_run_optional(bios_enable_memtest, bios_total_bytes_global,
+                              bios_shared_service_global);
     if (bios_run_test_blob != 0u) {
         nvram_consume_test_blob_request();
         run_test_elf_blob();

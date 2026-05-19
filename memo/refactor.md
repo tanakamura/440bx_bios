@@ -582,6 +582,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - Linux kernel/initrd loader と Linux boot params/VBE setup は `app/linux_loader/` へ移動済み。serial/storage/E820 は `linux_loader_config` callback 経由になり、stage3 は NVRAM 設定と ACPI/RTC/VBIOS/storage/memory callback を渡す glue だけ持つ。
 - NVRAM raw access と設定 decode/save は `bios_nvram.*` へ分離済み。`bios_main.c` には stage3 global へ反映する薄い glue だけ残っている。
 - maintenance prompt は `bios_maintenance.*` へ分離済み。`bios_main.c` は NVRAM 設定ポインタと save callback を渡すだけ。
+- optional memtest とその一時 MTRR UC 化は `bios_memtest.*` へ分離済み。`bios_main.c` は enable flag / DRAM size / shared service table を渡すだけ。
 
 ## 決定事項
 
