@@ -376,9 +376,71 @@ blob_size
 slot_size
 ```
 
-`id` は `stage2`, `stage3`, `legacy_app`, `linux_loader_app`, `selftest_app`, `vgabios`, `dsdt`, `test_floppy` など。`blob_ptr` は BLZ4 blob か app blob を指す。app blob のロードアドレスは app blob 先頭の `load_addr` を使う。
+`id` は `stage2`, `stage3`, `legacy_app`, `linux_loader_app`, `selftest_app`, `vgabios`, `dsdt`, `test_floppy` など。`blob_ptr` は BLZ4 blob か app blob を指す。ロードアドレスを持つ blob は blob header の `load_addr` を使う。
 
 `slot_size` は ROM 上でその payload に予約した最大サイズ。テスト時は `blob_size <= slot_size` の範囲で payload を書き換えてよい。BLZ4 内に CRC があるので、directory 側に payload CRC は持たせない。directory 自体には header checksum を持たせる。
+
+## build system
+
+Makefile は手書き header 依存をやめ、compiler generated dependency を使う。
+
+- C compile は `-MMD -MP` で `.d` を生成し、各 Makefile が `-include $(OBJS:.o=.d)` する。
+- asm 依存も可能なら `nasm -M` 相当で生成する。難しければ asm は当面明示依存を最小限に残すが、C header 依存は手で書かない。
+- top-level `src/Makefile` は orchestration だけに寄せる。stage/app ごとの object list、linker script、link rule は各 directory の Makefile に持たせる。
+- stage/app の build artifact は各 directory 配下または共通 `build/<target>/...` に出し、root `src/` 直下の object 増殖を止める。
+- 外部互換の target 名 `make -C src start qemu_bios.bin test` は維持する。
+
+stage ごとの単位:
+
+- `platform/p2b98_xv/stage1/Makefile` は `stage1.elf` を作る。linker script も同 directory に置く。
+- `platform/p2b98_xv/stage2/Makefile` は `stage2.elf` を作る。
+- `platform/qemu/stage1/Makefile` は `stage1.elf` を作る。
+- `platform/qemu/stage2/Makefile` は `stage2.elf` を作る。
+- `stage3/Makefile` は `stage3.elf` を作る。
+- `app/legacy/Makefile`, `app/linux_loader/Makefile`, `app/selftest/.../Makefile` はそれぞれ独立 ELF を作る。
+
+各 ELF は自分の linker script で load address / entry / section を決める。ROM へ詰める処理は linker script ではなく `gen_rom.py` に寄せる。
+
+## ROM generation
+
+ROM image は blob list から `scripts/build/gen_rom.py` で作る。
+
+blob list は 1 行 1 payload とする。
+
+```
+<payload type>,<filename>
+```
+
+例:
+
+```
+stage2,platform/p2b98_xv/stage2/stage2.elf
+stage3,stage3/stage3.elf
+vgabios,../images/gbsmc.088
+stage1,platform/p2b98_xv/stage1/stage1.elf
+```
+
+`gen_rom.py` の責務:
+
+- blob list を読み、payload directory を作って ROM 先頭側に入れる。
+- blob list に書かれた payload を ROM payload area に詰める。
+- path が ELF なら `objcopy -O binary` 相当で loadable binary だけ取り出す。
+- ELF の load address は program header から取得し、blob header の `load_addr` に入れる。
+- raw binary で load address が不要な payload は `HAS_LOAD_ADDR` を立てない。
+- `stage1` だけは special payload として ROM 末尾に置く。reset vector を含むため、通常 payload area に詰めない。
+- `stage1` 以外は payload directory に登録する。stage1 が起動後に directory を読み、shared service table 上の payload manifest へコピーする。
+- ROM 末尾 8 byte の `rom_free_first`, `rom_free_end` descriptor は `gen_rom.py` が最終 ROM 配置から埋める。
+
+blob list は build matrix ごとに持つ。
+
+- `platform/qemu/legacy.blobs`
+- `platform/qemu/selftest.blobs`
+- `platform/qemu/linux.blobs`
+- `platform/p2b98_xv/legacy.blobs`
+- `platform/p2b98_xv/selftest.blobs`
+- `platform/p2b98_xv/linux.blobs`
+
+top-level target は board/profile を選んで対応する blob list を `gen_rom.py` に渡す。これにより「どの ROM に何を入れるか」を linker script から切り離す。
 
 ### legacy test media
 
@@ -395,20 +457,37 @@ legacy BIOS service のテスト用に `test_floppy` payload を予約する。
 - `vgabios` や `selftest_app` は legacy app に含まれているわけではない。同じ ROM payload area に並ぶ別 payload。
 - FreeDOS など大きい floppy image を使う場合は、legacy ROM に `test_floppy` slot を大きく取り、そこへ差し替える。
 
-## app blob format
+## blob format
 
-app blob は既存 BLZ4 blob の先頭に 4 byte の load address を追加する。
+BLZ4 blob header に flags と load address を持たせる。
 
 ```
-offset  size  name
-0x00    4     load_addr
-0x04    ...   BLZ4 blob
+flags:
+  BLOB_FLAG_LZ4_BLOCKS
+  BLOB_FLAG_HAS_LOAD_ADDR
+
+header:
+  magic
+  header_size
+  version
+  flags
+  load_addr
+  uncompressed_size
+  compressed_size
+  block_size
+  block_count
+  block_table_off
+  data_off
+  uncompressed_crc32
+  compressed_crc32
 ```
 
-CRC と block retry は BLZ4 blob 側の既存機構を使う。stage3 は `load_addr` を読み、`0x04` 以降の BLZ4 blob を `load_addr` へ展開して app を起動する。
+CRC と block retry は既存の block 機構を使う。`BLOB_FLAG_HAS_LOAD_ADDR` が立っている blob は `load_addr` に展開する。立っていない blob は caller が destination を指定する。
 
 原則:
 
+- `stage2`, `stage3`, `legacy`, `linux_loader`, `selftest` は `BLOB_FLAG_HAS_LOAD_ADDR` を持つ。
+- `vgabios`, `dsdt`, `test_floppy` は原則 `BLOB_FLAG_HAS_LOAD_ADDR` を持たない。展開先は stage/app 側が決める。
 - `legacy` と `linux_loader` の `load_addr` は `0x000F0000`。
 - 他 app の `load_addr` は app ごとに決める。
 - stage3 と overlap しないように、原則 `0x00200000` 未満に置く。
@@ -437,7 +516,7 @@ shared service tail 配置:
 
 app ABI:
 
-- app blob format は上記 `app blob format` に従う。
+- app blob format は上記 `blob format` の `BLOB_FLAG_HAS_LOAD_ADDR` に従う。
 - stage3 は `load_addr` へ app を展開して起動する。
 - stage3 との overlap を避けるため、原則として app は `0x00200000` 未満に置く。
 - `legacy` と `linux_loader` は `0x000F0000` でよい。

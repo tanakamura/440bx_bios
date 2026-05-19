@@ -3,7 +3,8 @@ LD := ld
 OBJCOPY := objcopy
 LIBGCC := $(shell $(CC) -m32 -print-libgcc-file-name)
 CPPFLAGS := -I. -Istage3 -Ilib/x86 -Ilib/pci -Ilib/serial -Ilib/storage
-CFLAGS := -O2 -m32 -march=pentium2 -ffreestanding -fno-pic -fno-pie -fno-stack-protector -fstack-usage -Wstack-usage=256 -nostdlib -nostartfiles -nodefaultlibs -Wall -Wextra
+DEPFLAGS := -MMD -MP
+CFLAGS := -O2 -m32 -march=pentium2 -ffreestanding -fno-pic -fno-pie -fno-stack-protector -fstack-usage -Wstack-usage=256 -nostdlib -nostartfiles -nodefaultlibs -Wall -Wextra $(DEPFLAGS)
 NASMFLAGS := -I.
 OBJCOPY_ELF_FLAGS := -I binary -O elf32-i386 -B i386
 BUILD_SCRIPTS := ../scripts/build
@@ -15,6 +16,22 @@ UACPI_SRC_NAMES := tables types uacpi utilities interpreter opcodes namespace \
 	stdlib shareable opregion default_handlers io notify sleep registers \
 	resources event mutex osi
 UACPI_OBJS := $(addsuffix .o,$(addprefix uacpi_,$(UACPI_SRC_NAMES)))
+CORE_C_OBJS := bootblock.o stage2.o qemu_stage2.o acpi_tables.o blob_service.o \
+	l2_service.o qemu_stage1.o stage3_entry.o stage3_runtime.o \
+	bios_acpi_runtime.o bios_benchmark.o bios_legacy.o bios_linux.o \
+	bios_maintenance.o bios_memtest.o bios_memory.o bios_nvram.o \
+	bios_rtc.o bios_selftest.o bios_serial.o bios_settings.o \
+	bios_shadow.o bios_stage_context.o bios_pci.o bios_storage.o \
+	linux_loader.o legacy_bda.o legacy_boot.o legacy_debug.o \
+	legacy_floppy.o legacy_int13.o legacy_int15.o legacy_keyboard.o \
+	legacy_misc.o legacy_platform.o legacy_runtime.o legacy_service.o \
+	legacy_thunk.o legacy_timer.o legacy_time.o legacy_video.o
+SELFTEST_C_OBJS := s3test.o s3test_uacpi.o $(UACPI_OBJS)
+C_DEP_OBJS := $(CORE_C_OBJS) $(SELFTEST_C_OBJS)
+DEPS := $(C_DEP_OBJS:.o=.d)
+
+COMPILE_C = $(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+COMPILE_UACPI_C = $(CC) $(UACPI_CPPFLAGS) $(UACPI_CFLAGS) -c $< -o $@
 
 post_code.h post_code.inc ../specs/POST_CODE.md: post_code.def $(BUILD_SCRIPTS)/gen_post_codes.py
 	python3 $(BUILD_SCRIPTS)/gen_post_codes.py
@@ -80,13 +97,13 @@ linuxprobe.img linuxprobe_raw.img: linuxprobe.elf $(BUILD_SCRIPTS)/gen_linuxprob
 	python3 $(BUILD_SCRIPTS)/gen_linuxprobe_img.py
 
 s3test.o: app/selftest/s3test/s3test.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+	$(COMPILE_C)
 
-s3test_uacpi.o: app/selftest/s3test/s3test_uacpi.c app/selftest/s3test/uacpi_config.h
-	$(CC) $(UACPI_CPPFLAGS) $(UACPI_CFLAGS) -c $< -o $@
+s3test_uacpi.o: app/selftest/s3test/s3test_uacpi.c
+	$(COMPILE_UACPI_C)
 
-uacpi_%.o: ../uACPI/source/%.c app/selftest/s3test/uacpi_config.h
-	$(CC) $(UACPI_CPPFLAGS) $(UACPI_CFLAGS) -c $< -o $@
+uacpi_%.o: ../uACPI/source/%.c
+	$(COMPILE_UACPI_C)
 
 s3test.elf: s3test.o s3test_uacpi.o $(UACPI_OBJS) app/selftest/s3test/s3test.ld
 	$(LD) -m elf_i386 --gc-sections -T app/selftest/s3test/s3test.ld -Map s3test.map -o $@ s3test.o s3test_uacpi.o $(UACPI_OBJS) $(LIBGCC)
@@ -244,23 +261,23 @@ start_legacy_test: start_legacy test_floppy_blob.bin $(BUILD_SCRIPTS)/patch_rom_
 start_asm.o: platform/p2b98_xv/stage1/start.asm post_code.inc
 	nasm $(NASMFLAGS) -f elf32 $< -o $@
 
-bootblock.o: platform/p2b98_xv/stage1/bootblock.c post_code.h blob.h shared_service/service_table.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+bootblock.o: platform/p2b98_xv/stage1/bootblock.c
+	$(COMPILE_C)
 
-stage2.o: platform/p2b98_xv/stage2/stage2.c acpi_tables.h blob.h shared_service/service_table.h platform/p2b98_xv/stage2/l2_service.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+stage2.o: platform/p2b98_xv/stage2/stage2.c
+	$(COMPILE_C)
 
-qemu_stage2.o: platform/qemu/stage2/stage2.c acpi_tables.h blob.h shared_service/service_table.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+qemu_stage2.o: platform/qemu/stage2/stage2.c
+	$(COMPILE_C)
 
-acpi_tables.o: acpi_tables.c acpi_tables.h lib/x86/bios_memory.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+acpi_tables.o: acpi_tables.c
+	$(COMPILE_C)
 
-blob_service.o: shared_service/blob_service.c blob.h shared_service/service_table.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+blob_service.o: shared_service/blob_service.c
+	$(COMPILE_C)
 
-l2_service.o: platform/p2b98_xv/stage2/l2_service.c platform/p2b98_xv/stage2/l2_service.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+l2_service.o: platform/p2b98_xv/stage2/l2_service.c
+	$(COMPILE_C)
 
 qemu_stage2.elf: qemu_stage2.o acpi_tables.o platform/qemu/stage2/stage2.ld
 	$(LD) -m elf_i386 -T platform/qemu/stage2/stage2.ld -Map qemu_stage2.map -o $@ qemu_stage2.o acpi_tables.o
@@ -271,110 +288,110 @@ bios16.o: app/legacy/bios16.asm post_code.inc
 qemu_start.o: platform/qemu/stage1/qemu_start.asm
 	nasm $(NASMFLAGS) -f elf32 $< -o $@
 
-qemu_stage1.o: platform/qemu/stage1/qemu_stage1.c blob.h shared_service/service_table.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+qemu_stage1.o: platform/qemu/stage1/qemu_stage1.c
+	$(COMPILE_C)
 
-stage3_entry.o: stage3/entry.c stage3/stage3.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+stage3_entry.o: stage3/entry.c
+	$(COMPILE_C)
 
-stage3_runtime.o: stage3/stage3.c stage3/stage3.h post_code.h stage3/bios_benchmark.h lib/x86/bios_io.h stage3/bios_legacy.h stage3/bios_linux.h stage3/bios_memtest.h lib/x86/bios_memory.h stage3/bios_selftest.h lib/serial/bios_serial.h stage3/bios_settings.h stage3/bios_shadow.h stage3/bios_stage_context.h lib/storage/bios_storage.h app/legacy/legacy_floppy.h app/legacy/legacy_thunk.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+stage3_runtime.o: stage3/stage3.c
+	$(COMPILE_C)
 
-bios_acpi_runtime.o: stage3/bios_acpi_runtime.c stage3/bios_acpi_runtime.h acpi_tables.h lib/x86/bios_io.h lib/serial/bios_serial.h shared_service/service_table.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+bios_acpi_runtime.o: stage3/bios_acpi_runtime.c
+	$(COMPILE_C)
 
-bios_benchmark.o: stage3/bios_benchmark.c stage3/bios_benchmark.h lib/serial/bios_serial.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+bios_benchmark.o: stage3/bios_benchmark.c
+	$(COMPILE_C)
 
-bios_legacy.o: stage3/bios_legacy.c stage3/bios_legacy.h lib/x86/bios_memory.h lib/x86/bios_rtc.h lib/serial/bios_serial.h lib/storage/bios_storage.h app/legacy/legacy_boot.h app/legacy/legacy_floppy.h app/legacy/legacy_platform.h app/legacy/legacy_runtime.h app/legacy/legacy_thunk.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+bios_legacy.o: stage3/bios_legacy.c
+	$(COMPILE_C)
 
-bios_linux.o: stage3/bios_linux.c stage3/bios_linux.h stage3/bios_acpi_runtime.h lib/x86/bios_memory.h lib/x86/bios_nvram.h lib/x86/bios_rtc.h lib/serial/bios_serial.h stage3/bios_settings.h stage3/bios_stage_context.h lib/storage/bios_storage.h app/linux_loader/linux_loader.h app/legacy/legacy_thunk.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+bios_linux.o: stage3/bios_linux.c
+	$(COMPILE_C)
 
-bios_maintenance.o: stage3/bios_maintenance.c stage3/bios_maintenance.h lib/x86/bios_io.h lib/x86/bios_nvram.h lib/serial/bios_serial.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+bios_maintenance.o: stage3/bios_maintenance.c
+	$(COMPILE_C)
 
-bios_memtest.o: stage3/bios_memtest.c stage3/bios_memtest.h lib/x86/bios_io.h lib/x86/bios_memory.h lib/serial/bios_serial.h post_code.h shared_service/service_table.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+bios_memtest.o: stage3/bios_memtest.c
+	$(COMPILE_C)
 
-bios_memory.o: lib/x86/bios_memory.c lib/x86/bios_memory.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+bios_memory.o: lib/x86/bios_memory.c
+	$(COMPILE_C)
 
-bios_nvram.o: lib/x86/bios_nvram.c lib/x86/bios_nvram.h lib/x86/bios_io.h lib/pci/bios_pci.h lib/serial/bios_serial.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+bios_nvram.o: lib/x86/bios_nvram.c
+	$(COMPILE_C)
 
-bios_rtc.o: lib/x86/bios_rtc.c lib/x86/bios_io.h lib/x86/bios_rtc.h lib/serial/bios_serial.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+bios_rtc.o: lib/x86/bios_rtc.c
+	$(COMPILE_C)
 
-bios_selftest.o: stage3/bios_selftest.c stage3/bios_selftest.h stage3/bios_linux.h lib/serial/bios_serial.h stage3/bios_stage_context.h lib/storage/bios_storage.h app/linux_loader/linux_loader.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+bios_selftest.o: stage3/bios_selftest.c
+	$(COMPILE_C)
 
-bios_serial.o: lib/serial/bios_serial.c lib/x86/bios_io.h lib/serial/bios_serial.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+bios_serial.o: lib/serial/bios_serial.c
+	$(COMPILE_C)
 
-bios_settings.o: stage3/bios_settings.c stage3/bios_settings.h stage3/bios_maintenance.h lib/x86/bios_nvram.h lib/serial/bios_serial.h lib/storage/bios_storage.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+bios_settings.o: stage3/bios_settings.c
+	$(COMPILE_C)
 
-bios_shadow.o: stage3/bios_shadow.c stage3/bios_shadow.h blob.h lib/x86/bios_io.h lib/pci/bios_pci.h lib/serial/bios_serial.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+bios_shadow.o: stage3/bios_shadow.c
+	$(COMPILE_C)
 
-bios_stage_context.o: stage3/bios_stage_context.c stage3/bios_stage_context.h blob.h shared_service/service_table.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+bios_stage_context.o: stage3/bios_stage_context.c
+	$(COMPILE_C)
 
-bios_pci.o: lib/pci/bios_pci.c lib/x86/bios_io.h lib/pci/bios_pci.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+bios_pci.o: lib/pci/bios_pci.c
+	$(COMPILE_C)
 
-bios_storage.o: lib/storage/bios_storage.c post_code.h lib/x86/bios_io.h lib/pci/bios_pci.h lib/serial/bios_serial.h lib/storage/bios_storage.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+bios_storage.o: lib/storage/bios_storage.c
+	$(COMPILE_C)
 
-linux_loader.o: app/linux_loader/linux_loader.c app/linux_loader/linux_loader.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+linux_loader.o: app/linux_loader/linux_loader.c
+	$(COMPILE_C)
 
-legacy_floppy.o: app/legacy/legacy_floppy.c app/legacy/legacy_floppy.h app/legacy/legacy_platform.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+legacy_floppy.o: app/legacy/legacy_floppy.c
+	$(COMPILE_C)
 
-legacy_bda.o: app/legacy/legacy_bda.c app/legacy/legacy_bda.h app/legacy/legacy_keyboard.h app/legacy/legacy_video.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+legacy_bda.o: app/legacy/legacy_bda.c
+	$(COMPILE_C)
 
-legacy_boot.o: app/legacy/legacy_boot.c app/legacy/legacy_boot.h app/legacy/legacy_floppy.h app/legacy/legacy_platform.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+legacy_boot.o: app/legacy/legacy_boot.c
+	$(COMPILE_C)
 
-legacy_debug.o: app/legacy/legacy_debug.c app/legacy/legacy_debug.h app/legacy/legacy_rm.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+legacy_debug.o: app/legacy/legacy_debug.c
+	$(COMPILE_C)
 
-legacy_int13.o: app/legacy/legacy_int13.c app/legacy/legacy_floppy.h app/legacy/legacy_int13.h app/legacy/legacy_platform.h app/legacy/legacy_rm.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+legacy_int13.o: app/legacy/legacy_int13.c
+	$(COMPILE_C)
 
-legacy_int15.o: app/legacy/legacy_int15.c app/legacy/legacy_int15.h app/legacy/legacy_platform.h app/legacy/legacy_rm.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+legacy_int15.o: app/legacy/legacy_int15.c
+	$(COMPILE_C)
 
-legacy_keyboard.o: app/legacy/legacy_keyboard.c app/legacy/legacy_io.h app/legacy/legacy_keyboard.h app/legacy/legacy_rm.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+legacy_keyboard.o: app/legacy/legacy_keyboard.c
+	$(COMPILE_C)
 
-legacy_misc.o: app/legacy/legacy_misc.c app/legacy/legacy_misc.h app/legacy/legacy_rm.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+legacy_misc.o: app/legacy/legacy_misc.c
+	$(COMPILE_C)
 
-legacy_platform.o: app/legacy/legacy_platform.c app/legacy/legacy_platform.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+legacy_platform.o: app/legacy/legacy_platform.c
+	$(COMPILE_C)
 
-legacy_runtime.o: app/legacy/legacy_runtime.c app/legacy/legacy_runtime.h app/legacy/legacy_service.h app/legacy/legacy_thunk.h app/legacy/legacy_timer.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+legacy_runtime.o: app/legacy/legacy_runtime.c
+	$(COMPILE_C)
 
-legacy_service.o: app/legacy/legacy_service.c app/legacy/legacy_boot.h app/legacy/legacy_debug.h app/legacy/legacy_int13.h app/legacy/legacy_int15.h app/legacy/legacy_keyboard.h app/legacy/legacy_misc.h app/legacy/legacy_platform.h app/legacy/legacy_rm.h app/legacy/legacy_service.h app/legacy/legacy_thunk.h app/legacy/legacy_timer.h app/legacy/legacy_time.h app/legacy/legacy_video.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+legacy_service.o: app/legacy/legacy_service.c
+	$(COMPILE_C)
 
-legacy_thunk.o: app/legacy/legacy_thunk.c app/legacy/legacy_bda.h app/legacy/legacy_thunk.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+legacy_thunk.o: app/legacy/legacy_thunk.c
+	$(COMPILE_C)
 
-legacy_timer.o: app/legacy/legacy_timer.c app/legacy/legacy_io.h app/legacy/legacy_timer.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+legacy_timer.o: app/legacy/legacy_timer.c
+	$(COMPILE_C)
 
-legacy_time.o: app/legacy/legacy_time.c app/legacy/legacy_platform.h app/legacy/legacy_rm.h app/legacy/legacy_time.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+legacy_time.o: app/legacy/legacy_time.c
+	$(COMPILE_C)
 
-legacy_video.o: app/legacy/legacy_video.c app/legacy/legacy_platform.h app/legacy/legacy_rm.h app/legacy/legacy_video.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+legacy_video.o: app/legacy/legacy_video.c
+	$(COMPILE_C)
 
 romtest: romtest.asm
 	nasm -f bin $< -o $@
@@ -382,7 +399,9 @@ romtest: romtest.asm
 test: stdtest.img usbmbr.img linuxprobe.img linuxprobe_raw.img qemu_flat_test_bios.bin qemu_legacy_test_bios.bin
 	python3 $(TEST_SCRIPTS)/run_qemu_tests.py
 
+-include $(DEPS)
+
 clean:
-	rm -f start start_legacy start_legacy_test start.elf start_legacy.elf linuxprobe.elf *.map *.o *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc
+	rm -f start start_legacy start_legacy_test start.elf start_legacy.elf linuxprobe.elf *.map *.o *.d *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc
 
 install-all: install-xrecv-exe install-mem-dmp-exe install-flashutil-exe
