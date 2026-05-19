@@ -188,6 +188,7 @@ stage2 が使う DSDT などの board 固有 ACPI 入力はここでは別扱い
 - selftest profile は現状まだ `test_elf_blob` に依存している。build matrix の「selftest の app 用 payload なし」を実装するには、先に `selftest_app` を stage3 から切り出す必要がある。
 - stage3 main flow は `stage3/stage3.*` へ分離済み。`stage3/entry.c` は legacy asm entry からの BSS clear と stage3 run wrapper だけを持つ。
 - stage3 専用 glue のうち context/settings/maintenance/memtest/selftest/benchmark/ACPI runtime/legacy/Linux/shadow は `src/stage3/` へ移動済み。
+- low-level helper のうち x86 I/O/memory/RTC/NVRAM、PCI、serial、storage は `src/lib/` へ移動済み。ファイル名/API は移行中のため一旦 `bios_*` のまま。
 
 ## メモリマップ
 

@@ -2,7 +2,7 @@ CC := gcc
 LD := ld
 OBJCOPY := objcopy
 LIBGCC := $(shell $(CC) -m32 -print-libgcc-file-name)
-CPPFLAGS := -I. -Istage3
+CPPFLAGS := -I. -Istage3 -Ilib/x86 -Ilib/pci -Ilib/serial -Ilib/storage
 CFLAGS := -O2 -m32 -march=pentium2 -ffreestanding -fno-pic -fno-pie -fno-stack-protector -fstack-usage -Wstack-usage=256 -nostdlib -nostartfiles -nodefaultlibs -Wall -Wextra
 NASMFLAGS := -I.
 OBJCOPY_ELF_FLAGS := -I binary -O elf32-i386 -B i386
@@ -244,7 +244,7 @@ start_legacy_test: start_legacy test_floppy_blob.bin $(BUILD_SCRIPTS)/patch_rom_
 start_asm.o: platform/p2b98_xv/stage1/start.asm post_code.inc
 	nasm $(NASMFLAGS) -f elf32 $< -o $@
 
-bootblock.o: platform/p2b98_xv/stage1/bootblock.c post_code.h blob.h shared_service/service_table.h bios_nvram.h
+bootblock.o: platform/p2b98_xv/stage1/bootblock.c post_code.h blob.h shared_service/service_table.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 stage2.o: platform/p2b98_xv/stage2/stage2.c acpi_tables.h blob.h shared_service/service_table.h platform/p2b98_xv/stage2/l2_service.h
@@ -253,7 +253,7 @@ stage2.o: platform/p2b98_xv/stage2/stage2.c acpi_tables.h blob.h shared_service/
 qemu_stage2.o: platform/qemu/stage2/stage2.c acpi_tables.h blob.h shared_service/service_table.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-acpi_tables.o: acpi_tables.c acpi_tables.h bios_memory.h
+acpi_tables.o: acpi_tables.c acpi_tables.h lib/x86/bios_memory.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 blob_service.o: shared_service/blob_service.c blob.h shared_service/service_table.h
@@ -277,55 +277,55 @@ qemu_stage1.o: platform/qemu/stage1/qemu_stage1.c blob.h shared_service/service_
 stage3_entry.o: stage3/entry.c stage3/stage3.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-stage3_runtime.o: stage3/stage3.c stage3/stage3.h post_code.h stage3/bios_benchmark.h bios_io.h stage3/bios_legacy.h stage3/bios_linux.h stage3/bios_memtest.h bios_memory.h stage3/bios_selftest.h bios_serial.h stage3/bios_settings.h stage3/bios_shadow.h stage3/bios_stage_context.h bios_storage.h app/legacy/legacy_floppy.h app/legacy/legacy_thunk.h
+stage3_runtime.o: stage3/stage3.c stage3/stage3.h post_code.h stage3/bios_benchmark.h lib/x86/bios_io.h stage3/bios_legacy.h stage3/bios_linux.h stage3/bios_memtest.h lib/x86/bios_memory.h stage3/bios_selftest.h lib/serial/bios_serial.h stage3/bios_settings.h stage3/bios_shadow.h stage3/bios_stage_context.h lib/storage/bios_storage.h app/legacy/legacy_floppy.h app/legacy/legacy_thunk.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-bios_acpi_runtime.o: stage3/bios_acpi_runtime.c stage3/bios_acpi_runtime.h acpi_tables.h bios_io.h bios_serial.h shared_service/service_table.h
+bios_acpi_runtime.o: stage3/bios_acpi_runtime.c stage3/bios_acpi_runtime.h acpi_tables.h lib/x86/bios_io.h lib/serial/bios_serial.h shared_service/service_table.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-bios_benchmark.o: stage3/bios_benchmark.c stage3/bios_benchmark.h bios_serial.h
+bios_benchmark.o: stage3/bios_benchmark.c stage3/bios_benchmark.h lib/serial/bios_serial.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-bios_legacy.o: stage3/bios_legacy.c stage3/bios_legacy.h bios_memory.h bios_rtc.h bios_serial.h bios_storage.h app/legacy/legacy_boot.h app/legacy/legacy_floppy.h app/legacy/legacy_platform.h app/legacy/legacy_runtime.h app/legacy/legacy_thunk.h
+bios_legacy.o: stage3/bios_legacy.c stage3/bios_legacy.h lib/x86/bios_memory.h lib/x86/bios_rtc.h lib/serial/bios_serial.h lib/storage/bios_storage.h app/legacy/legacy_boot.h app/legacy/legacy_floppy.h app/legacy/legacy_platform.h app/legacy/legacy_runtime.h app/legacy/legacy_thunk.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-bios_linux.o: stage3/bios_linux.c stage3/bios_linux.h stage3/bios_acpi_runtime.h bios_memory.h bios_nvram.h bios_rtc.h bios_serial.h stage3/bios_settings.h stage3/bios_stage_context.h bios_storage.h app/linux_loader/linux_loader.h app/legacy/legacy_thunk.h
+bios_linux.o: stage3/bios_linux.c stage3/bios_linux.h stage3/bios_acpi_runtime.h lib/x86/bios_memory.h lib/x86/bios_nvram.h lib/x86/bios_rtc.h lib/serial/bios_serial.h stage3/bios_settings.h stage3/bios_stage_context.h lib/storage/bios_storage.h app/linux_loader/linux_loader.h app/legacy/legacy_thunk.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-bios_maintenance.o: stage3/bios_maintenance.c stage3/bios_maintenance.h bios_io.h bios_nvram.h bios_serial.h
+bios_maintenance.o: stage3/bios_maintenance.c stage3/bios_maintenance.h lib/x86/bios_io.h lib/x86/bios_nvram.h lib/serial/bios_serial.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-bios_memtest.o: stage3/bios_memtest.c stage3/bios_memtest.h bios_io.h bios_memory.h bios_serial.h post_code.h shared_service/service_table.h
+bios_memtest.o: stage3/bios_memtest.c stage3/bios_memtest.h lib/x86/bios_io.h lib/x86/bios_memory.h lib/serial/bios_serial.h post_code.h shared_service/service_table.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-bios_memory.o: bios_memory.c bios_memory.h
+bios_memory.o: lib/x86/bios_memory.c lib/x86/bios_memory.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-bios_nvram.o: bios_nvram.c bios_nvram.h bios_io.h bios_pci.h bios_serial.h
+bios_nvram.o: lib/x86/bios_nvram.c lib/x86/bios_nvram.h lib/x86/bios_io.h lib/pci/bios_pci.h lib/serial/bios_serial.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-bios_rtc.o: bios_rtc.c bios_io.h bios_rtc.h bios_serial.h
+bios_rtc.o: lib/x86/bios_rtc.c lib/x86/bios_io.h lib/x86/bios_rtc.h lib/serial/bios_serial.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-bios_selftest.o: stage3/bios_selftest.c stage3/bios_selftest.h stage3/bios_linux.h bios_serial.h stage3/bios_stage_context.h bios_storage.h app/linux_loader/linux_loader.h
+bios_selftest.o: stage3/bios_selftest.c stage3/bios_selftest.h stage3/bios_linux.h lib/serial/bios_serial.h stage3/bios_stage_context.h lib/storage/bios_storage.h app/linux_loader/linux_loader.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-bios_serial.o: bios_serial.c bios_io.h bios_serial.h
+bios_serial.o: lib/serial/bios_serial.c lib/x86/bios_io.h lib/serial/bios_serial.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-bios_settings.o: stage3/bios_settings.c stage3/bios_settings.h stage3/bios_maintenance.h bios_nvram.h bios_serial.h bios_storage.h
+bios_settings.o: stage3/bios_settings.c stage3/bios_settings.h stage3/bios_maintenance.h lib/x86/bios_nvram.h lib/serial/bios_serial.h lib/storage/bios_storage.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-bios_shadow.o: stage3/bios_shadow.c stage3/bios_shadow.h blob.h bios_io.h bios_pci.h bios_serial.h
+bios_shadow.o: stage3/bios_shadow.c stage3/bios_shadow.h blob.h lib/x86/bios_io.h lib/pci/bios_pci.h lib/serial/bios_serial.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 bios_stage_context.o: stage3/bios_stage_context.c stage3/bios_stage_context.h blob.h shared_service/service_table.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-bios_pci.o: bios_pci.c bios_io.h bios_pci.h
+bios_pci.o: lib/pci/bios_pci.c lib/x86/bios_io.h lib/pci/bios_pci.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-bios_storage.o: bios_storage.c post_code.h bios_io.h bios_pci.h bios_serial.h bios_storage.h
+bios_storage.o: lib/storage/bios_storage.c post_code.h lib/x86/bios_io.h lib/pci/bios_pci.h lib/serial/bios_serial.h lib/storage/bios_storage.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 linux_loader.o: app/linux_loader/linux_loader.c app/linux_loader/linux_loader.h
