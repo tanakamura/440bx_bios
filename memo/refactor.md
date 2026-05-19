@@ -179,7 +179,7 @@ stage2 が使う DSDT などの board 固有 ACPI 入力はここでは別扱い
 - legacy profile は optional payload を link せず、必要な test media だけ ROM free area へ後差しする。
 - `app/legacy/bios16.asm` と legacy service の一部は `app/legacy/` へ移動済み。現状は `legacy_floppy`, BDA 初期化, INT 10h/11h/12h/13h/15h/16h/17h/1Ah/60h が legacy 側 module になっている。
 - `bios_rm_service` dispatcher と thunk/IVT/DPT 設置は `app/legacy/` へ移動済み。現状は同一 ELF に link し、stage3 が `legacy_service_init()` で context を渡している。
-- E820/memory map は `bios_memory.*`、RTC は `bios_rtc.*` へ分離済み。ただし shared service table 経由ではなく、まだ同一 ELF に直接 link している。
+- E820/memory map は `bios_memory.*`、RTC は `bios_rtc.*` へ分離済み。legacy service からは `legacy_platform_ops` callback 経由で呼ぶ。
 - selftest profile は現状まだ `test_elf_blob` に依存している。build matrix の「selftest の app 用 payload なし」を実装するには、先に `selftest_app` を stage3 から切り出す必要がある。
 
 ## メモリマップ
@@ -468,8 +468,8 @@ legacy app 切り出し方針:
 - `app/legacy/bios16.asm` から呼ぶ `bios_rm_service` は `app/legacy/legacy_service.c` 側に移動済み。ただし同一 ELF 内 symbol 参照であり、app blob として独立 link しているわけではない。
 - thunk/IVT/DPT 設置は `legacy_thunk.*` に移動済み。stage3 はまだ `install_bios_shadow` callback を渡している。
 - INT19 boot sector 選択は `legacy_boot.*` に移動済み。ただし FreeDOS へ落ちる protected-mode-to-real-mode jump は `bios16.asm` の `bios_boot_freedos_pm32` symbol を同一 ELF 参照している。
-- INT13 HDD path は `bios_storage` の global state を直接参照する。legacy app 独立後は、legacy app が storage scan するか、shared service table 経由の block device service にする。
-- INT15 E820 は `bios_memory.*` へ分離済み。ただし legacy app 独立後は E820 provider を boot context/service として渡す必要がある。
+- INT13 HDD path は `legacy_platform_ops` 経由になった。legacy app 単体 blob 化では、この callback の実装を app 側 storage scan または shared service table 経由 block device service に差し替える。
+- INT15 E820 は `legacy_platform_ops` 経由になった。legacy app 単体 blob 化では、この callback の実装を boot context/service 由来の E820 provider に差し替える。
 - RTC read/write は `bios_rtc.*`、INT 1Ah 本体は `legacy_time.*`、PIT/tick counter は `legacy_timer.*` へ分離済み。
 
 ### linux_loader
@@ -578,7 +578,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - stage3 は VGA BIOS / test ELF payload と `blob_expand` を shared service table から使う。旧 aux fallback と固定 `BLOB_SERVICE_LINEAR` fallback は削除済み。
 - ACPI table 構築は stage2 へ移動済み。P2B98-XV stage2 は DSDT blob を展開して RSDT/FADT/FACS/RSDP を作る。QEMU stage2 は fw_cfg の ACPI tables を取得/patch して RSDP を作る。stage3 は board 非依存の ACPI PM event clear / SCI enable だけを持つ。
 - legacy BIOS service の dispatcher / thunk / timer / runtime glue は `app/legacy/` へ移動済み。ただし legacy app 単体 blob 化と `0x000F0000` 配置は未完了。
-- legacy service は serial/storage/RTC などの stage3 直参照を `legacy_platform_ops` callback table 経由へ寄せた。残る大きな直結は app としての entry/link/load ABI と `legacy_int15` の memory map helper。
+- legacy service は serial/storage/RTC/E820 などの stage3 直参照を `legacy_platform_ops` callback table 経由へ寄せた。残る大きな直結は app としての entry/link/load ABI。
 - Linux kernel/initrd loader と Linux boot params/VBE setup は `app/linux_loader/` へ移動済み。stage3 は NVRAM 設定と ACPI/RTC/VBIOS callback を渡す glue だけ持つ。
 
 ## 決定事項

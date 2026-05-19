@@ -308,7 +308,7 @@ legacy_debug.o: app/legacy/legacy_debug.c app/legacy/legacy_debug.h app/legacy/l
 legacy_int13.o: app/legacy/legacy_int13.c app/legacy/legacy_floppy.h app/legacy/legacy_int13.h app/legacy/legacy_platform.h app/legacy/legacy_rm.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-legacy_int15.o: app/legacy/legacy_int15.c bios_memory.h app/legacy/legacy_int15.h app/legacy/legacy_rm.h
+legacy_int15.o: app/legacy/legacy_int15.c app/legacy/legacy_int15.h app/legacy/legacy_platform.h app/legacy/legacy_rm.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 legacy_keyboard.o: app/legacy/legacy_keyboard.c app/legacy/legacy_io.h app/legacy/legacy_keyboard.h app/legacy/legacy_rm.h

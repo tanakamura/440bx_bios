@@ -755,6 +755,31 @@ static void legacy_hdd_get_geometry_cb(struct legacy_hdd_geometry* geometry) {
     geometry->sectors_per_track = bios_geometry.sectors_per_track;
 }
 
+static unsigned int
+legacy_memory_extended_usable_end_cb(unsigned int total_bytes) {
+    return bios_memory_extended_usable_end(total_bytes);
+}
+
+static unsigned int legacy_memory_e820_entry_count_cb(unsigned int total_bytes) {
+    return bios_memory_e820_entry_count(total_bytes);
+}
+
+static int legacy_memory_e820_get_entry_cb(unsigned int total_bytes,
+                                           unsigned int index,
+                                           struct legacy_e820_entry* entry) {
+    struct e820_entry bios_entry;
+
+    if (bios_memory_e820_get_entry(total_bytes, index, &bios_entry) != 0) {
+        return -1;
+    }
+    entry->base_low = bios_entry.base_low;
+    entry->base_high = bios_entry.base_high;
+    entry->length_low = bios_entry.length_low;
+    entry->length_high = bios_entry.length_high;
+    entry->type = bios_entry.type;
+    return 0;
+}
+
 static void install_legacy_platform_ops(void) {
     struct legacy_platform_ops ops = {0};
 
@@ -774,6 +799,9 @@ static void install_legacy_platform_ops(void) {
     ops.rtc_read_date_bcd = bios_rtc_read_date_bcd;
     ops.rtc_set_time_bcd = bios_rtc_set_time_bcd;
     ops.rtc_set_date_bcd = bios_rtc_set_date_bcd;
+    ops.memory_extended_usable_end = legacy_memory_extended_usable_end_cb;
+    ops.memory_e820_entry_count = legacy_memory_e820_entry_count_cb;
+    ops.memory_e820_get_entry = legacy_memory_e820_get_entry_cb;
     legacy_platform_init(&ops);
 }
 

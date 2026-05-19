@@ -126,3 +126,25 @@ int legacy_rtc_set_date_bcd(unsigned char year_bcd, unsigned char mon_bcd,
     }
     return legacy_ops.rtc_set_date_bcd(year_bcd, mon_bcd, day_bcd);
 }
+
+unsigned int legacy_memory_extended_usable_end(unsigned int total_bytes) {
+    if (legacy_ops.memory_extended_usable_end == 0) {
+        return 0u;
+    }
+    return legacy_ops.memory_extended_usable_end(total_bytes);
+}
+
+unsigned int legacy_memory_e820_entry_count(unsigned int total_bytes) {
+    if (legacy_ops.memory_e820_entry_count == 0) {
+        return 0u;
+    }
+    return legacy_ops.memory_e820_entry_count(total_bytes);
+}
+
+int legacy_memory_e820_get_entry(unsigned int total_bytes, unsigned int index,
+                                 struct legacy_e820_entry* entry) {
+    if (legacy_ops.memory_e820_get_entry == 0) {
+        return -1;
+    }
+    return legacy_ops.memory_e820_get_entry(total_bytes, index, entry);
+}

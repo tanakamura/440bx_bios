@@ -1,5 +1,5 @@
-#include "bios_memory.h"
 #include "legacy_int15.h"
+#include "legacy_platform.h"
 
 #define E820_SMAP 0x534d4150u
 
@@ -34,8 +34,8 @@ static void rm_return_edx32(struct rm_int13_frame* f, unsigned int value) {
 
 static void int15_e820(struct rm_int13_frame* f, unsigned int total_bytes) {
     unsigned int index = f->ebx32;
-    unsigned int count = bios_memory_e820_entry_count(total_bytes);
-    struct e820_entry* entry;
+    unsigned int count = legacy_memory_e820_entry_count(total_bytes);
+    struct legacy_e820_entry* entry;
 
     if (f->edx32 != E820_SMAP || f->ecx32 < sizeof(*entry) || index >= count) {
         rm_return_eax32(f, 0x00008600u);
@@ -43,8 +43,8 @@ static void int15_e820(struct rm_int13_frame* f, unsigned int total_bytes) {
         return;
     }
 
-    entry = (struct e820_entry*)rm_seg_off_to_linear(f->es, f->di);
-    if (bios_memory_e820_get_entry(total_bytes, index, entry) != 0) {
+    entry = (struct legacy_e820_entry*)rm_seg_off_to_linear(f->es, f->di);
+    if (legacy_memory_e820_get_entry(total_bytes, index, entry) != 0) {
         rm_return_eax32(f, 0x00008600u);
         rm_set_cf(f);
         return;
@@ -64,7 +64,7 @@ void legacy_int15_service(struct rm_int13_frame* f, unsigned int total_bytes) {
     }
     if ((unsigned char)(f->ax >> 8) == 0x88u) {
         unsigned int kb = 0u;
-        unsigned int usable_end = bios_memory_extended_usable_end(total_bytes);
+        unsigned int usable_end = legacy_memory_extended_usable_end(total_bytes);
         if (usable_end > 0x00100000u) {
             kb = (usable_end - 0x00100000u) >> 10;
             if (kb > 0xffffu) {
@@ -76,7 +76,7 @@ void legacy_int15_service(struct rm_int13_frame* f, unsigned int total_bytes) {
         return;
     }
     if (f->ax == 0xe801u) {
-        unsigned int usable_end = bios_memory_extended_usable_end(total_bytes);
+        unsigned int usable_end = legacy_memory_extended_usable_end(total_bytes);
         unsigned int below16m_kb = 0u;
         unsigned int above16m_64k = 0u;
         if (usable_end > 0x00100000u) {

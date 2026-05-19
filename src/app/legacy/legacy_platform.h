@@ -16,6 +16,14 @@ struct legacy_hdd_geometry {
     unsigned short sectors_per_track;
 };
 
+struct legacy_e820_entry {
+    unsigned int base_low;
+    unsigned int base_high;
+    unsigned int length_low;
+    unsigned int length_high;
+    unsigned int type;
+} __attribute__((packed));
+
 struct legacy_platform_ops {
     void (*serial_write_char)(char c);
     void (*serial_write_string)(const char* s);
@@ -38,6 +46,10 @@ struct legacy_platform_ops {
                             unsigned char sec_bcd);
     int (*rtc_set_date_bcd)(unsigned char year_bcd, unsigned char mon_bcd,
                             unsigned char day_bcd);
+    unsigned int (*memory_extended_usable_end)(unsigned int total_bytes);
+    unsigned int (*memory_e820_entry_count)(unsigned int total_bytes);
+    int (*memory_e820_get_entry)(unsigned int total_bytes, unsigned int index,
+                                 struct legacy_e820_entry* entry);
 };
 
 void legacy_platform_init(const struct legacy_platform_ops* ops);
@@ -62,5 +74,9 @@ int legacy_rtc_set_time_bcd(unsigned char hour_bcd, unsigned char min_bcd,
                             unsigned char sec_bcd);
 int legacy_rtc_set_date_bcd(unsigned char year_bcd, unsigned char mon_bcd,
                             unsigned char day_bcd);
+unsigned int legacy_memory_extended_usable_end(unsigned int total_bytes);
+unsigned int legacy_memory_e820_entry_count(unsigned int total_bytes);
+int legacy_memory_e820_get_entry(unsigned int total_bytes, unsigned int index,
+                                 struct legacy_e820_entry* entry);
 
 #endif
