@@ -288,30 +288,6 @@ qemu_start.o: platform/qemu/stage1/qemu_start.asm
 qemu_stage1.o: platform/qemu/stage1/qemu_stage1.c
 	$(COMPILE_C)
 
-stage3_entry.o: stage3/entry.c
-	$(COMPILE_C)
-
-stage3_runtime.o: stage3/stage3.c
-	$(COMPILE_C)
-
-bios_acpi_runtime.o: stage3/bios_acpi_runtime.c
-	$(COMPILE_C)
-
-bios_benchmark.o: stage3/bios_benchmark.c
-	$(COMPILE_C)
-
-bios_legacy.o: stage3/bios_legacy.c
-	$(COMPILE_C)
-
-bios_linux.o: stage3/bios_linux.c
-	$(COMPILE_C)
-
-bios_maintenance.o: stage3/bios_maintenance.c
-	$(COMPILE_C)
-
-bios_memtest.o: stage3/bios_memtest.c
-	$(COMPILE_C)
-
 bios_memory.o: lib/x86/bios_memory.c
 	$(COMPILE_C)
 
@@ -321,19 +297,7 @@ bios_nvram.o: lib/x86/bios_nvram.c
 bios_rtc.o: lib/x86/bios_rtc.c
 	$(COMPILE_C)
 
-bios_selftest.o: stage3/bios_selftest.c
-	$(COMPILE_C)
-
 bios_serial.o: lib/serial/bios_serial.c
-	$(COMPILE_C)
-
-bios_settings.o: stage3/bios_settings.c
-	$(COMPILE_C)
-
-bios_shadow.o: stage3/bios_shadow.c
-	$(COMPILE_C)
-
-bios_stage_context.o: stage3/bios_stage_context.c
 	$(COMPILE_C)
 
 bios_pci.o: lib/pci/bios_pci.c

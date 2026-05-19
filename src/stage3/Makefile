@@ -13,3 +13,12 @@ stage3.elf: $(STAGE3_OBJS) $(STAGE3_APP_OBJS) stage3/stage3.ld
 
 $(STAGE3_DIR_ELF): stage3.elf
 	cp $< $@
+
+stage3_entry.o: stage3/entry.c
+	$(COMPILE_C)
+
+stage3_runtime.o: stage3/stage3.c
+	$(COMPILE_C)
+
+bios_%.o: stage3/bios_%.c
+	$(COMPILE_C)
