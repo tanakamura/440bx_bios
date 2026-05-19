@@ -285,6 +285,7 @@ static void enable_platform_pm_io(struct shared_boot_context* boot_ctx) {
 static void install_real_acpi_tables(unsigned int total_bytes,
                                      struct shared_boot_context* boot_ctx,
                                      blob_expand_fn expand,
+                                     blob_load_fn load,
                                      unsigned int blob_stage) {
     unsigned int dsdt_blob = 0u;
     unsigned int base = acpi_table_base_for_total(total_bytes);
@@ -296,8 +297,8 @@ static void install_real_acpi_tables(unsigned int total_bytes,
     if (boot_ctx != 0) {
         dsdt_blob = boot_ctx->acpi_input_ptr;
     }
-    if (dsdt_blob == 0u || cap <= 0x1000u || expand == 0 ||
-        blob_stage == 0u) {
+    if (cap <= 0x1000u ||
+        (load == 0 && (dsdt_blob == 0u || expand == 0 || blob_stage == 0u))) {
         serial_write_string("ACPI real tables skipped\r\n");
         return;
     }
@@ -305,8 +306,13 @@ static void install_real_acpi_tables(unsigned int total_bytes,
     serial_write_string("ACPI real DSDT @ ");
     serial_write_hex32(base);
     serial_write_string("...");
-    rc = expand((const void*)dsdt_blob, (void*)blob_stage, (void*)dsdt,
-                cap - 0x1000u, &status, total_bytes);
+    if (load != 0) {
+        rc = load(SHARED_PAYLOAD_ID_DSDT, (void*)dsdt, cap - 0x1000u, &dsdt,
+                  &status, total_bytes);
+    } else {
+        rc = expand((const void*)dsdt_blob, (void*)blob_stage, (void*)dsdt,
+                    cap - 0x1000u, &status, total_bytes);
+    }
     serial_write_string("\r\n");
     if (rc != 0) {
         serial_write_string("ACPI DSDT blob failed rc=");
@@ -361,7 +367,7 @@ __attribute__((section(".stage2.entry"), used)) void stage2_entry(
     if (boot_ctx != 0) {
         boot_ctx->flags |= SHARED_BOOT_FLAG_SHADOW_READY;
     }
-    install_real_acpi_tables(total_bytes, boot_ctx, expand, blob_stage);
+    install_real_acpi_tables(total_bytes, boot_ctx, expand, load, blob_stage);
 
     serial_write_string("Load stage3 @ 00200000...\r\n");
     if (load != 0) {

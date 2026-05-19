@@ -662,6 +662,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - shared service code と table ABI は `src/shared_service/` へ移動済み。
 - stage2 は `blob_expand` と stage3 payload を shared service table から使う。payload pointer の旧 aux fallback は削除済み。
 - shared service table の `blob_load` は実装済み。stage1/stage2 は次 stage payload の検索、header `load_addr` 適用、展開 staging の選択を `blob_load` に委譲する。互換 fallback として直接 `blob_expand` 経路は残す。
+- P2B98-XV stage2 の DSDT 展開も `blob_load` 経由へ移行済み。stage2 が直接 staging buffer を選ぶ箇所は fallback に縮小した。
 - blob 展開用 staging/scratch は固定低位アドレスではなく、DRAM 末尾に予約した `blob_stage` を shared service table 経由で渡す。まだ heap allocate/free ではない。
 - blob 展開中の maintenance key は blob service が DRAM 末尾の shared service table pointer から boot context を辿り、`SHARED_BOOT_FLAG_MAINTENANCE_REQUESTED` を直接立てる。旧 aux dword 配列は削除済み。
 - stage3 は VGA BIOS / test ELF payload と `blob_expand` を shared service table から使う。旧 aux fallback と固定 `BLOB_SERVICE_LINEAR` fallback は削除済み。
