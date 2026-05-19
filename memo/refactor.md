@@ -683,9 +683,10 @@ payload blob の場所は boot context ではなく、shared service table の `
 - S3/uACPI selftest source は `src/app/selftest/s3test/` へ移動済み。生成物は互換のため引き続き `src/s3test.elf` / `src/test_elf_blob.bin`。
 - stage3 の実体出力は `stage3.elf` / `stage3.bin` / `stage3_blob.bin` へ移行済み。互換のため `bios.elf` / `bios.bin` / `bios_blob.bin` は alias として残している。
 - BLZ4 blob header は `load_addr` と `BLOB_FLAG_HAS_LOAD_ADDR` を持つ。stage2 / stage3 blob 生成時に load address を埋め、stage1/stage2 は header の load address を優先して展開する。互換のため load address がない blob は caller 指定 destination へ展開する。
-- `scripts/build/gen_rom.py` は追加済み。blob list から payload directory 付き ROM を生成できる。stage1 は ROM 先頭の payload directory を読んで manifest を作れるようになったが、既存 `start` / `qemu_bios.bin` target はまだ linker symbol 方式で生成している。
-- board/profile ごとの blob list は `platform/qemu/*.blobs` と `platform/p2b98_xv/*.blobs` に追加済み。現状は次段の入力定義であり、Makefile からはまだ使っていない。
+- `scripts/build/gen_rom.py` は追加済み。blob list から payload directory 付き ROM を生成できる。stage1 は ROM 先頭の payload directory を読んで manifest を作れる。`make -C src genrom` で board/profile 6 種の gen_rom 版 ROM を生成できるが、既存 `start` / `qemu_bios.bin` target はまだ linker symbol 方式で生成している。
+- board/profile ごとの blob list は `platform/qemu/*.blobs` と `platform/p2b98_xv/*.blobs` に追加済み。`genrom` target はこの blob list を入力にする。
 - `.blobsvc` は ROM payload area から stage1 tail 側へ移動済み。payload area は stage2/stage3/app/blob 用に寄せ、stage1 が必要とする shared service code は stage1 image の一部として持つ。
+- gen_rom 用に stage directory 配下の ELF alias を作る target を追加済み。stage1 ELF は payload symbol なしでも link できるようにし、`gen_rom.py` は stage1 ELF の alloc section だけを ROM 末尾へ overlay して payload directory を壊さない。
 
 ## 決定事項
 

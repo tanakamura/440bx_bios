@@ -36,6 +36,19 @@ PAYLOAD_TYPE_BLZ4 = 1
 PAYLOAD_TYPE_APP = 2
 PAYLOAD_TYPE_RAW = 3
 
+SHF_ALLOC = 0x2
+SHT_PROGBITS = 1
+
+STAGE1_EXCLUDED_SECTIONS = {
+    ".rom_anchor",
+    ".rom_free_descriptor",
+    ".biosblob",
+    ".stage2blob",
+    ".dsdtblob",
+    ".vgabiosblob",
+    ".testelfblob",
+}
+
 
 def align_up(value: int, align: int) -> int:
     return (value + align - 1) & ~(align - 1)
@@ -93,12 +106,81 @@ def extract_elf_load_image(data: bytes) -> tuple[bytes, int]:
     return bytes(image), base
 
 
+def read_c_string(data: bytes, off: int) -> str:
+    end = data.find(b"\0", off)
+    if end < 0:
+        end = len(data)
+    return data[off:end].decode("ascii", "replace")
+
+
+def extract_stage1_overlays(data: bytes) -> list[tuple[int, bytes]]:
+    if not is_elf32(data):
+        raise ValueError("not an ELF32 file")
+    if data[5] != 1:
+        raise ValueError("only little-endian ELF32 is supported")
+
+    shoff = read_u32(data, 32)
+    shentsize = read_u16(data, 46)
+    shnum = read_u16(data, 48)
+    shstrndx = read_u16(data, 50)
+    if shentsize < 40 or shstrndx >= shnum:
+        raise ValueError("bad ELF section table")
+
+    shstr_off = shoff + shstrndx * shentsize
+    if shstr_off + 40 > len(data):
+        raise ValueError("ELF section string table header is truncated")
+    strtab_off = read_u32(data, shstr_off + 16)
+    strtab_size = read_u32(data, shstr_off + 20)
+    if strtab_off + strtab_size > len(data):
+        raise ValueError("ELF section string table is truncated")
+    strtab = data[strtab_off:strtab_off + strtab_size]
+
+    overlays: list[tuple[int, bytes]] = []
+    for i in range(shnum):
+        off = shoff + i * shentsize
+        if off + 40 > len(data):
+            raise ValueError("ELF section header is truncated")
+        name_off = read_u32(data, off)
+        sh_type = read_u32(data, off + 4)
+        sh_flags = read_u32(data, off + 8)
+        sh_addr = read_u32(data, off + 12)
+        sh_offset = read_u32(data, off + 16)
+        sh_size = read_u32(data, off + 20)
+        name = read_c_string(strtab, name_off) if name_off < len(strtab) else ""
+
+        if (sh_flags & SHF_ALLOC) == 0 or sh_type != SHT_PROGBITS:
+            continue
+        if sh_size == 0 or name in STAGE1_EXCLUDED_SECTIONS:
+            continue
+        if sh_addr < ROM_LOW_BASE or sh_addr >= ROM_LOW_BASE + ROM_SIZE:
+            continue
+        if sh_offset + sh_size > len(data):
+            raise ValueError(f"stage1 section {name} is truncated")
+        rom_off = sh_addr - ROM_LOW_BASE
+        if rom_off + sh_size > ROM_SIZE:
+            raise ValueError(f"stage1 section {name} exceeds ROM")
+        overlays.append((rom_off, data[sh_offset:sh_offset + sh_size]))
+
+    if not overlays:
+        raise ValueError("stage1 ELF has no ROM overlay sections")
+    return overlays
+
+
 def read_payload(path: Path) -> tuple[bytes, int | None]:
     data = path.read_bytes()
     if is_elf32(data):
         image, load_addr = extract_elf_load_image(data)
         return image, load_addr
     return data, None
+
+
+def read_stage1_overlays(path: Path) -> list[tuple[int, bytes]]:
+    data = path.read_bytes()
+    if is_elf32(data):
+        return extract_stage1_overlays(data)
+    if len(data) > ROM_SIZE - DIRECTORY_BYTES - 8:
+        raise ValueError("raw stage1 image is too large")
+    return [(ROM_SIZE - 8 - len(data), data)]
 
 
 def resolve_payload_path(list_path: Path, name: str) -> Path:
@@ -148,18 +230,15 @@ def build_rom(entries: list[tuple[str, Path]]) -> bytes:
         raise ValueError("blob list must contain exactly one stage1 entry")
 
     for kind, path in entries:
-        data, load_addr = read_payload(path)
         if kind == "stage1":
-            if load_addr is not None and ROM_LOW_BASE <= load_addr < 0x00100000:
-                off = load_addr - ROM_LOW_BASE
-            else:
-                off = ROM_SIZE - len(data)
-            if off < DIRECTORY_BYTES or off + len(data) > ROM_SIZE:
-                raise ValueError("stage1 does not fit at the end of ROM")
-            rom[off:off + len(data)] = data
-            stage1_start = min(stage1_start, off)
+            for off, data in read_stage1_overlays(path):
+                if off < DIRECTORY_BYTES or off + len(data) > ROM_SIZE - 8:
+                    raise ValueError("stage1 does not fit at the end of ROM")
+                rom[off:off + len(data)] = data
+                stage1_start = min(stage1_start, off)
             continue
 
+        data, load_addr = read_payload(path)
         payload_id = PAYLOAD_IDS[kind]
         payload_type = PAYLOAD_TYPE_RAW if kind == "test_floppy" else PAYLOAD_TYPE_BLZ4
         if payload_type == PAYLOAD_TYPE_BLZ4:

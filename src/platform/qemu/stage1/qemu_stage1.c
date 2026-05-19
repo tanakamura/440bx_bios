@@ -3,12 +3,12 @@
 
 #define ROM_HIGH_DELTA 0xfff00000u
 
-extern unsigned char __bios_blob_start[];
-extern unsigned char __bios_blob_end[];
-extern unsigned char __stage2_blob_start[];
-extern unsigned char __stage2_blob_end[];
-extern unsigned char __test_elf_blob_start[];
-extern unsigned char __test_elf_blob_end[];
+extern unsigned char __bios_blob_start[] __attribute__((weak));
+extern unsigned char __bios_blob_end[] __attribute__((weak));
+extern unsigned char __stage2_blob_start[] __attribute__((weak));
+extern unsigned char __stage2_blob_end[] __attribute__((weak));
+extern unsigned char __test_elf_blob_start[] __attribute__((weak));
+extern unsigned char __test_elf_blob_end[] __attribute__((weak));
 extern unsigned char __blob_service_start[];
 extern unsigned char __blob_service_end[];
 extern int blob_expand_service(const void* blob, void* stage, void* dst,

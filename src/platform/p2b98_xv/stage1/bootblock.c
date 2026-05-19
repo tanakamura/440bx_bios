@@ -58,16 +58,16 @@ static inline unsigned int inl(unsigned short port) {
 
 extern void postcar_transition(unsigned int stack_top, unsigned int mtrr_mask,
                                unsigned int total_bytes, unsigned int gdtr_ptr);
-extern unsigned char __bios_blob_start[];
-extern unsigned char __bios_blob_end[];
-extern unsigned char __stage2_blob_start[];
-extern unsigned char __stage2_blob_end[];
-extern unsigned char __dsdt_blob_start[];
-extern unsigned char __dsdt_blob_end[];
-extern unsigned char __vgabios_blob_start[];
-extern unsigned char __vgabios_blob_end[];
-extern unsigned char __test_elf_blob_start[];
-extern unsigned char __test_elf_blob_end[];
+extern unsigned char __bios_blob_start[] __attribute__((weak));
+extern unsigned char __bios_blob_end[] __attribute__((weak));
+extern unsigned char __stage2_blob_start[] __attribute__((weak));
+extern unsigned char __stage2_blob_end[] __attribute__((weak));
+extern unsigned char __dsdt_blob_start[] __attribute__((weak));
+extern unsigned char __dsdt_blob_end[] __attribute__((weak));
+extern unsigned char __vgabios_blob_start[] __attribute__((weak));
+extern unsigned char __vgabios_blob_end[] __attribute__((weak));
+extern unsigned char __test_elf_blob_start[] __attribute__((weak));
+extern unsigned char __test_elf_blob_end[] __attribute__((weak));
 extern unsigned char __blob_service_start[];
 extern unsigned char __blob_service_end[];
 extern int blob_expand_service(const void* blob, void* stage, void* dst,
@@ -697,7 +697,7 @@ static void enter_stage2(unsigned int total_bytes) {
     blob_expand_fn expand = 0;
     unsigned int blob_stage = 0u;
     unsigned int stage2_load;
-    const unsigned char* blob = rom_high_ptr(__stage2_blob_start);
+    const unsigned char* blob = 0;
     struct shared_payload_entry* stage2_payload;
     int rc;
 
@@ -709,7 +709,11 @@ static void enter_stage2(unsigned int total_bytes) {
             blob = (const unsigned char*)stage2_payload->blob_ptr;
         }
     }
-    if (expand == 0 || blob_stage == 0u ||
+    if (blob == 0 &&
+        (unsigned int)__stage2_blob_start != (unsigned int)__stage2_blob_end) {
+        blob = rom_high_ptr(__stage2_blob_start);
+    }
+    if (blob == 0 || expand == 0 || blob_stage == 0u ||
         service->blob_stage_size < BLOB_STAGE_CAPACITY) {
         serial_write_string("blobsvc missing\r\n");
         die_with_post(0xef);

@@ -13,7 +13,6 @@ bits 16
 
 global qemu_start
 
-extern __stage2_blob_start
 extern __blob_service_start
 extern __blob_service_end
 extern blob_shadow_load_and_enter
@@ -98,7 +97,7 @@ qemu_pm_entry:
     push dword STAGE2_LOAD_CAPACITY
     push dword STAGE2_LOAD_LINEAR
     push esi
-    push dword __stage2_blob_start + ROM_HIGH_DELTA
+    push dword 0
     mov eax, blob_shadow_load_and_enter
     sub eax, __blob_service_start
     add eax, ebp

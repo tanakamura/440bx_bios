@@ -32,6 +32,16 @@ DEPS := $(C_DEP_OBJS:.o=.d)
 
 COMPILE_C = $(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 COMPILE_UACPI_C = $(CC) $(UACPI_CPPFLAGS) $(UACPI_CFLAGS) -c $< -o $@
+P2B_STAGE1_ELF := platform/p2b98_xv/stage1/stage1.elf
+P2B_STAGE2_ELF := platform/p2b98_xv/stage2/stage2.elf
+QEMU_STAGE1_ELF := platform/qemu/stage1/stage1.elf
+QEMU_STAGE2_ELF := platform/qemu/stage2/stage2.elf
+STAGE3_DIR_ELF := stage3/stage3.elf
+GENROM_STAGE_ELFS := $(P2B_STAGE1_ELF) $(P2B_STAGE2_ELF) \
+	$(QEMU_STAGE1_ELF) $(QEMU_STAGE2_ELF) $(STAGE3_DIR_ELF)
+GENROM_BINS := p2b98_xv_legacy_genrom.bin p2b98_xv_selftest_genrom.bin \
+	p2b98_xv_linux_genrom.bin qemu_legacy_genrom.bin \
+	qemu_selftest_genrom.bin qemu_linux_genrom.bin
 
 post_code.h post_code.inc ../specs/POST_CODE.md: post_code.def $(BUILD_SCRIPTS)/gen_post_codes.py
 	python3 $(BUILD_SCRIPTS)/gen_post_codes.py
@@ -234,6 +244,9 @@ bios.elf: stage3.elf
 stage2.elf: stage2.o l2_service.o acpi_tables.o platform/p2b98_xv/stage2/stage2.ld
 	$(LD) -m elf_i386 -T platform/p2b98_xv/stage2/stage2.ld -Map stage2.map -o $@ stage2.o l2_service.o acpi_tables.o
 
+$(P2B_STAGE2_ELF): stage2.elf
+	cp $< $@
+
 qemu_bios.bin: qemu_start.elf
 	$(OBJCOPY) -O binary $< $@
 	truncate -s 262144 $@
@@ -259,6 +272,14 @@ qemu_legacy_test_bios.bin: qemu_legacy_bios.bin test_floppy_blob.bin $(BUILD_SCR
 	cp qemu_legacy_bios.bin $@
 	python3 $(BUILD_SCRIPTS)/patch_rom_free.py $@ test_floppy_blob.bin
 
+genrom: $(GENROM_BINS)
+
+p2b98_xv_%_genrom.bin: platform/p2b98_xv/%.blobs $(GENROM_STAGE_ELFS) dsdt.aml ../images/gbsmc.088 $(BUILD_SCRIPTS)/gen_rom.py $(BUILD_SCRIPTS)/gen_blob.py
+	python3 $(BUILD_SCRIPTS)/gen_rom.py $< $@
+
+qemu_%_genrom.bin: platform/qemu/%.blobs $(GENROM_STAGE_ELFS) dsdt.aml ../images/gbsmc.088 $(BUILD_SCRIPTS)/gen_rom.py $(BUILD_SCRIPTS)/gen_blob.py
+	python3 $(BUILD_SCRIPTS)/gen_rom.py $< $@
+
 start_legacy: start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o platform/p2b98_xv/stage1/stage1.ld
 	$(LD) -m elf_i386 -T platform/p2b98_xv/stage1/stage1.ld -Map start_legacy.map -o start_legacy.elf start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o
 	$(OBJCOPY) -O binary --pad-to 0x100000 --gap-fill 0x90 start_legacy.elf $@
@@ -272,6 +293,9 @@ start_asm.o: platform/p2b98_xv/stage1/start.asm post_code.inc
 
 bootblock.o: platform/p2b98_xv/stage1/bootblock.c
 	$(COMPILE_C)
+
+$(P2B_STAGE1_ELF): start_asm.o bootblock.o blob_service.o platform/p2b98_xv/stage1/stage1.ld
+	$(LD) -m elf_i386 -T platform/p2b98_xv/stage1/stage1.ld -Map platform/p2b98_xv/stage1/stage1.map -o $@ start_asm.o bootblock.o blob_service.o
 
 stage2.o: platform/p2b98_xv/stage2/stage2.c
 	$(COMPILE_C)
@@ -299,6 +323,12 @@ qemu_start.o: platform/qemu/stage1/qemu_start.asm
 
 qemu_stage1.o: platform/qemu/stage1/qemu_stage1.c
 	$(COMPILE_C)
+
+$(QEMU_STAGE1_ELF): qemu_start.o qemu_stage1.o blob_service.o platform/qemu/stage1/stage1.ld
+	$(LD) -m elf_i386 -T platform/qemu/stage1/stage1.ld -Map platform/qemu/stage1/stage1.map -o $@ qemu_start.o qemu_stage1.o blob_service.o
+
+$(QEMU_STAGE2_ELF): qemu_stage2.elf
+	cp $< $@
 
 stage3_entry.o: stage3/entry.c
 	$(COMPILE_C)
@@ -402,6 +432,9 @@ legacy_time.o: app/legacy/legacy_time.c
 legacy_video.o: app/legacy/legacy_video.c
 	$(COMPILE_C)
 
+$(STAGE3_DIR_ELF): stage3.elf
+	cp $< $@
+
 romtest: romtest.asm
 	nasm -f bin $< -o $@
 
@@ -411,6 +444,6 @@ test: stdtest.img usbmbr.img linuxprobe.img linuxprobe_raw.img qemu_flat_test_bi
 -include $(DEPS)
 
 clean:
-	rm -f start start_legacy start_legacy_test start.elf start_legacy.elf linuxprobe.elf *.map *.o *.d *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc
+	rm -f start start_legacy start_legacy_test start.elf start_legacy.elf linuxprobe.elf *.map *.o *.d *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc $(GENROM_STAGE_ELFS) platform/p2b98_xv/stage1/*.map platform/qemu/stage1/*.map
 
 install-all: install-xrecv-exe install-mem-dmp-exe install-flashutil-exe
