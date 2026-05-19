@@ -10,13 +10,6 @@ SECTIONS
         *(.entry)
     }
 
-    . = 0x00200080;
-
-    .qentry :
-    {
-        *(.qentry)
-    }
-
     . = ALIGN(16);
 
     .text :

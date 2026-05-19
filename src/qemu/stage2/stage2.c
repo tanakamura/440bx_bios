@@ -224,6 +224,11 @@ static void install_qemu_acpi_tables(unsigned int total_bytes,
     }
     if (boot_ctx != 0) {
         boot_ctx->rsdp_linear = ACPI_RSDP_LINEAR;
+        boot_ctx->acpi_pm1_evt = QEMU_ACPI_PM_BASE;
+        boot_ctx->acpi_pm1_cnt = QEMU_ACPI_PM_BASE + 4u;
+        boot_ctx->acpi_gpe0 = QEMU_ACPI_PM_BASE + 0x0cu;
+        boot_ctx->acpi_gpe0_len = ACPI_GPE0_LEN;
+        boot_ctx->acpi_flags = 0u;
     }
     serial_write_string("ACPI qemu tables ok\r\n");
 }
@@ -289,7 +294,7 @@ __attribute__((section(".stage2.entry"), used)) void qemu_stage2_entry(
     }
 
     serial_write_string("\r\nqemu stage3 copied\r\n");
-    ((bios_entry_fn)BIOS32_QEMU_ENTRY)(total_bytes, aux_linear);
+    ((bios_entry_fn)BIOS32_ENTRY)(total_bytes, aux_linear);
     for (;;) {
         __asm__ volatile("hlt");
     }

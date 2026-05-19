@@ -26,6 +26,8 @@
 #define SHARED_BOOT_FLAG_PLATFORM_QEMU 0x00000100u
 #define SHARED_BOOT_FLAG_PLATFORM_P2B98_XV 0x00000200u
 
+#define SHARED_BOOT_ACPI_FLAG_ENABLE_SCI 0x00000001u
+
 struct shared_payload_entry {
     unsigned int id;
     unsigned int type;
@@ -59,6 +61,11 @@ struct shared_boot_context {
     unsigned int pci_mem_limit;
     unsigned int pci_prefetch_mem_base;
     unsigned int pci_prefetch_mem_limit;
+    unsigned int acpi_pm1_evt;
+    unsigned int acpi_pm1_cnt;
+    unsigned int acpi_gpe0;
+    unsigned int acpi_gpe0_len;
+    unsigned int acpi_flags;
 };
 
 struct shared_service_table {

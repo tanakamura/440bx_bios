@@ -153,7 +153,7 @@ def main() -> int:
             ],
             [
                 "BIOS HDD80 USB",
-                "QEMU boot drive=80",
+                "Booting drive=80",
                 "USBMBR",
                 "TIMEROK",
                 "INT60OK",
@@ -176,7 +176,7 @@ def main() -> int:
             [
                 "Test floppy @",
                 "Booting test floppy",
-                "QEMU boot drive=00",
+                "Booting drive=00",
                 "SQ",
             ],
         )

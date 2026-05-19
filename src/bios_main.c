@@ -16,8 +16,6 @@
 #include "post_code.h"
 
 void bios32_entry_c(unsigned int total_bytes, unsigned int aux_blob_linear);
-__attribute__((section(".qentry"))) void bios32_qemu_entry(
-    unsigned int total_bytes, unsigned int aux_blob_linear);
 extern void bios_boot_freedos_pm32(void);
 extern void bios_call_vgabios_init_pm32(void);
 extern unsigned int bios_call_vbe_mode_info_pm32(unsigned int mode);
@@ -29,10 +27,14 @@ static unsigned int bios_total_bytes_global = 0;
 static unsigned int bios_vgabios_blob_linear_global = 0;
 static unsigned int bios_test_elf_blob_linear_global = 0;
 static unsigned int bios_rsdp_linear_global = 0;
+static unsigned int bios_acpi_pm1_evt_global = 0;
+static unsigned int bios_acpi_pm1_cnt_global = 0;
+static unsigned int bios_acpi_gpe0_global = 0;
+static unsigned int bios_acpi_gpe0_len_global = 0;
+static unsigned int bios_acpi_flags_global = 0;
 static struct shared_service_table* bios_shared_service_global = 0;
 static unsigned char bios_vgabios_shadow_ready = 0;
 static unsigned char bios_vgabios_initialized = 0;
-static unsigned char bios_qemu_mode = 0;
 static unsigned char bios_maintenance_requested = 0;
 static unsigned char bios_shadow_ready = 0;
 static unsigned char bios_nvram_flags0 = BIOS_NVRAM_FLAGS0_DEFAULT;
@@ -911,533 +913,6 @@ static void bios_run_optional_memtest(void) {
     serial_write_string("Memtest ok\r\n");
 }
 
-#if 0
-/* ACPI table construction is owned by stage2.  Keep the old stage3 builder
- * disabled until the stage split is fully settled. */
-#define ACPI_RSDP_LINEAR 0x0009fc00u
-#define ACPI_EBDA_SEGMENT 0x9fc0u
-#define ACPI_TABLE_RESERVED_OFFSET 0x00080000u
-#define ACPI_LOW_TABLE_LINEAR 0x000d0000u
-#define ACPI_LOW_TABLE_CAPACITY 0x00010000u
-#define FW_CFG_PORT_SEL 0x0510u
-#define FW_CFG_PORT_DATA 0x0511u
-#define FW_CFG_SIGNATURE 0x0000u
-#define FW_CFG_FILE_DIR 0x0019u
-#define FW_CFG_MAX_FILE_PATH 56u
-#define QEMU_ACPI_PM_BASE 0x0000b000u
-#define ACPI_REAL_PM1_EVT 0x0000e400u
-#define ACPI_REAL_PM1_CNT 0x0000e404u
-#define ACPI_REAL_GPE0 0x0000e40cu
-#define ACPI_GPE0_LEN 4u
-#define ACPI_REAL_PCI_DEV 7u
-#define ACPI_REAL_PCI_FN 3u
-#define ACPI_PM1_CNT_SCI_EN 0x0001u
-
-struct acpi_table_ref {
-    unsigned int sig;
-    unsigned int addr;
-    unsigned int len;
-};
-
-static unsigned int acpi_sig(const char* s) {
-    return (unsigned int)(unsigned char)s[0] |
-           ((unsigned int)(unsigned char)s[1] << 8) |
-           ((unsigned int)(unsigned char)s[2] << 16) |
-           ((unsigned int)(unsigned char)s[3] << 24);
-}
-
-static unsigned int acpi_get32(const unsigned char* p) {
-    return (unsigned int)p[0] | ((unsigned int)p[1] << 8) |
-           ((unsigned int)p[2] << 16) | ((unsigned int)p[3] << 24);
-}
-
-static void acpi_put16(unsigned char* p, unsigned short value) {
-    p[0] = (unsigned char)value;
-    p[1] = (unsigned char)(value >> 8);
-}
-
-static void acpi_put32(unsigned char* p, unsigned int value) {
-    p[0] = (unsigned char)value;
-    p[1] = (unsigned char)(value >> 8);
-    p[2] = (unsigned char)(value >> 16);
-    p[3] = (unsigned char)(value >> 24);
-}
-
-static void acpi_put64(unsigned char* p, unsigned int value) {
-    acpi_put32(p, value);
-    acpi_put32(p + 4, 0u);
-}
-
-static void acpi_write_bytes(unsigned char* dst, const char* src,
-                             unsigned int len) {
-    unsigned int i;
-    for (i = 0; i < len; ++i) {
-        dst[i] = (unsigned char)src[i];
-    }
-}
-
-static int acpi_name_eq(const char* a, const char* b) {
-    while (*a != '\0' || *b != '\0') {
-        if (*a != *b) {
-            return 0;
-        }
-        ++a;
-        ++b;
-    }
-    return 1;
-}
-
-static unsigned char acpi_checksum(const unsigned char* p, unsigned int len) {
-    unsigned int sum = 0u;
-    unsigned int i;
-    for (i = 0; i < len; ++i) {
-        sum += p[i];
-    }
-    return (unsigned char)(0u - sum);
-}
-
-static void acpi_fix_table_checksum(unsigned char* table) {
-    unsigned int len = acpi_get32(table + 4);
-    table[9] = 0u;
-    table[9] = acpi_checksum(table, len);
-}
-
-static unsigned int acpi_table_base(void) {
-    unsigned int top = bios_top_reserved_base();
-    if (top >= 0x00100000u &&
-        bios_total_bytes_global >= top + BIOS_TOP_RESERVED_SIZE) {
-        return top + ACPI_TABLE_RESERVED_OFFSET;
-    }
-    return ACPI_LOW_TABLE_LINEAR;
-}
-
-static unsigned int acpi_table_capacity(void) {
-    unsigned int top = bios_top_reserved_base();
-    if (top >= 0x00100000u &&
-        bios_total_bytes_global >= top + BIOS_TOP_RESERVED_SIZE) {
-        return BIOS_TOP_RESERVED_SIZE - ACPI_TABLE_RESERVED_OFFSET;
-    }
-    return ACPI_LOW_TABLE_CAPACITY;
-}
-
-static void acpi_install_rsdp(const char* oem_id, unsigned int rsdt_addr) {
-    unsigned char* rsdp = (unsigned char*)ACPI_RSDP_LINEAR;
-    volatile unsigned short* ebda = (volatile unsigned short*)0x0000040eu;
-
-    bios_memset(rsdp, 0u, 20u);
-    acpi_write_bytes(rsdp + 0, "RSD PTR ", 8u);
-    acpi_write_bytes(rsdp + 9, oem_id, 6u);
-    rsdp[15] = 0u;
-    acpi_put32(rsdp + 16, rsdt_addr);
-    rsdp[8] = acpi_checksum(rsdp, 20u);
-    *ebda = ACPI_EBDA_SEGMENT;
-}
-
-static void acpi_build_header(unsigned char* table, const char* sig,
-                              unsigned int len, unsigned char rev,
-                              const char* oem_id, const char* table_id) {
-    bios_memset(table, 0u, len);
-    acpi_write_bytes(table + 0, sig, 4u);
-    acpi_put32(table + 4, len);
-    table[8] = rev;
-    acpi_write_bytes(table + 10, oem_id, 6u);
-    acpi_write_bytes(table + 16, table_id, 8u);
-    acpi_put32(table + 24, 0x00000001u);
-    acpi_write_bytes(table + 28, "440B", 4u);
-    acpi_put32(table + 32, 0x00000001u);
-}
-
-static void acpi_build_real_fadt(unsigned char* fadt, unsigned int facs,
-                                 unsigned int dsdt) {
-    acpi_build_header(fadt, "FACP", 0x74u, 1u, "ASUS  ", "P2B98-XV");
-    acpi_put32(fadt + 24, 0x58582e31u);
-    acpi_write_bytes(fadt + 28, "ASUS", 4u);
-    acpi_put32(fadt + 32, 0x31303030u);
-    acpi_put32(fadt + 36, facs);
-    acpi_put32(fadt + 40, dsdt);
-    acpi_put16(fadt + 46, 9u);
-    acpi_put32(fadt + 48, 0u);
-    fadt[52] = 0u;
-    fadt[53] = 0u;
-    acpi_put32(fadt + 56, 0x0000e400u);
-    acpi_put32(fadt + 64, 0x0000e404u);
-    acpi_put32(fadt + 76, 0x0000e408u);
-    acpi_put32(fadt + 80, 0x0000e40cu);
-    fadt[88] = 4u;
-    fadt[89] = 2u;
-    fadt[91] = 4u;
-    fadt[92] = 4u;
-    acpi_put16(fadt + 96, 0x005au);
-    acpi_put16(fadt + 98, 0x0384u);
-    fadt[104] = 1u;
-    fadt[106] = 0x0du;
-    acpi_put32(fadt + 112, 0x000000a5u);
-    acpi_fix_table_checksum(fadt);
-}
-
-static void acpi_patch_qemu_fadt_io(unsigned char* fadt) {
-    unsigned int pm1_evt = acpi_get32(fadt + 56);
-    unsigned int pm1_ctl = acpi_get32(fadt + 64);
-    unsigned int pm_tmr = acpi_get32(fadt + 76);
-    unsigned int gpe0 = acpi_get32(fadt + 80);
-
-    if (pm1_evt < 0x100u) {
-        acpi_put32(fadt + 56, QEMU_ACPI_PM_BASE + pm1_evt);
-    }
-    if (pm1_ctl < 0x100u) {
-        acpi_put32(fadt + 64, QEMU_ACPI_PM_BASE + pm1_ctl);
-    }
-    if (pm_tmr < 0x100u) {
-        acpi_put32(fadt + 76, QEMU_ACPI_PM_BASE + pm_tmr);
-    }
-    if (gpe0 != 0u && gpe0 < 0x100u) {
-        acpi_put32(fadt + 80, QEMU_ACPI_PM_BASE + gpe0);
-    }
-}
-
-static void acpi_build_real_tables(unsigned int base, unsigned int dsdt,
-                                   unsigned int dsdt_size) {
-    unsigned char* rsdt = (unsigned char*)base;
-    unsigned char* fadt = (unsigned char*)(base + 0x0100u);
-    unsigned char* facs = (unsigned char*)(base + 0x0200u);
-    unsigned int fadt_addr = base + 0x0100u;
-    unsigned int facs_addr = base + 0x0200u;
-
-    (void)dsdt_size;
-    acpi_build_header(rsdt, "RSDT", 40u, 1u, "ASUS  ", "P2B98-XV");
-    acpi_put32(rsdt + 36, fadt_addr);
-    acpi_fix_table_checksum(rsdt);
-
-    bios_memset(facs, 0u, 64u);
-    acpi_write_bytes(facs, "FACS", 4u);
-    acpi_put32(facs + 4, 64u);
-
-    acpi_build_real_fadt(fadt, facs_addr, dsdt);
-    acpi_install_rsdp("ASUS  ", base);
-}
-
-static int acpi_install_real_dsdt_blob(void) {
-    unsigned int base = acpi_table_base();
-    unsigned int cap = acpi_table_capacity();
-    unsigned int dsdt = base + 0x1000u;
-    blob_expand_fn expand = bios_blob_expand_fn();
-    struct blob_status status;
-    int rc;
-
-    if (bios_dsdt_blob_linear_global == 0u || cap <= 0x1000u) {
-        return -1;
-    }
-
-    serial_write_string("ACPI real DSDT @ ");
-    serial_write_hex32(base);
-    serial_write_string("...");
-    rc = expand((const void*)bios_dsdt_blob_linear_global,
-                (void*)BLOB_STAGE_LINEAR, (void*)dsdt, cap - 0x1000u, &status);
-    serial_write_string("\r\n");
-    if (rc != 0) {
-        serial_write_string("ACPI DSDT blob failed rc=");
-        serial_write_hex8((unsigned char)rc);
-        serial_write_string(" block=");
-        serial_write_hex32(status.block);
-        serial_write_string("\r\n");
-        return -1;
-    }
-
-    acpi_build_real_tables(base, dsdt, status.output_size);
-    serial_write_string("ACPI real tables ok\r\n");
-    return 0;
-}
-
-static void fwcfg_select(unsigned short selector) {
-    outw(FW_CFG_PORT_SEL, selector);
-}
-
-static unsigned char fwcfg_read8(void) { return inb(FW_CFG_PORT_DATA); }
-
-static unsigned short fwcfg_read_be16(void) {
-    unsigned short hi = fwcfg_read8();
-    unsigned short lo = fwcfg_read8();
-    return (unsigned short)((hi << 8) | lo);
-}
-
-static unsigned int fwcfg_read_be32(void) {
-    unsigned int b0 = fwcfg_read8();
-    unsigned int b1 = fwcfg_read8();
-    unsigned int b2 = fwcfg_read8();
-    unsigned int b3 = fwcfg_read8();
-    return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
-}
-
-static int fwcfg_signature_ok(void) {
-    fwcfg_select(FW_CFG_SIGNATURE);
-    return fwcfg_read8() == 'Q' && fwcfg_read8() == 'E' &&
-           fwcfg_read8() == 'M' && fwcfg_read8() == 'U';
-}
-
-static int fwcfg_find_file(const char* name, unsigned short* selector,
-                           unsigned int* size) {
-    unsigned int count;
-    unsigned int i;
-
-    if (!fwcfg_signature_ok()) {
-        return -1;
-    }
-    fwcfg_select(FW_CFG_FILE_DIR);
-    count = fwcfg_read_be32();
-    for (i = 0; i < count; ++i) {
-        unsigned int file_size = fwcfg_read_be32();
-        unsigned short file_select = fwcfg_read_be16();
-        char file_name[FW_CFG_MAX_FILE_PATH];
-        unsigned int j;
-
-        (void)fwcfg_read_be16();
-        for (j = 0; j < FW_CFG_MAX_FILE_PATH; ++j) {
-            file_name[j] = (char)fwcfg_read8();
-        }
-        file_name[FW_CFG_MAX_FILE_PATH - 1u] = '\0';
-        if (acpi_name_eq(file_name, name)) {
-            *selector = file_select;
-            *size = file_size;
-            return 0;
-        }
-    }
-    return -1;
-}
-
-static void acpi_enable_qemu_pm_io(void) {
-    if (pci_read32(0, 1, 3, 0x00) != 0x71138086u) {
-        return;
-    }
-    pci_write32(0, 1, 3, 0x40, QEMU_ACPI_PM_BASE | 0x00000001u);
-    pci_write8(0, 1, 3, 0x80, 0x81u);
-    pci_write16(0, 1, 3, 0x04,
-                (unsigned short)(pci_read16(0, 1, 3, 0x04) | 0x0001u));
-}
-
-static void acpi_enable_real_pm_io(void) {
-    unsigned short cmd;
-    unsigned char misc;
-
-    if (pci_read32(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x00) !=
-        0x71138086u) {
-        serial_write_string("ACPI real PM dev missing\r\n");
-        return;
-    }
-
-    pci_write32(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x40,
-                ACPI_REAL_PM1_EVT | 0x00000001u);
-    misc = pci_read8(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x80);
-    pci_write8(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x80,
-               (unsigned char)(misc | 0x81u));
-    cmd = pci_read16(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x04);
-    pci_write16(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x04,
-                (unsigned short)(cmd | 0x0001u));
-
-    serial_write_string("ACPI real PM io pmb=");
-    serial_write_hex32(
-        pci_read32(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x40));
-    serial_write_string(" misc=");
-    serial_write_hex8(pci_read8(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x80));
-    serial_write_string(" cmd=");
-    serial_write_hex16(
-        pci_read16(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x04));
-    serial_write_string("\r\n");
-}
-
-static void acpi_enable_real_mode(void) {
-    unsigned short cnt = inw((unsigned short)ACPI_REAL_PM1_CNT);
-    if ((cnt & ACPI_PM1_CNT_SCI_EN) == 0u) {
-        outw((unsigned short)ACPI_REAL_PM1_CNT,
-             (unsigned short)(cnt | ACPI_PM1_CNT_SCI_EN));
-        cnt = inw((unsigned short)ACPI_REAL_PM1_CNT);
-    }
-    serial_write_string("ACPI real PM1 cnt=");
-    serial_write_hex16(cnt);
-    serial_write_string("\r\n");
-}
-
-static void fwcfg_read_file(unsigned short selector, void* dst,
-                            unsigned int size) {
-    unsigned char* p = (unsigned char*)dst;
-    unsigned int i;
-
-    fwcfg_select(selector);
-    for (i = 0; i < size; ++i) {
-        p[i] = fwcfg_read8();
-    }
-}
-
-static int acpi_should_rsdt_ref(unsigned int sig) {
-    if (sig == acpi_sig("RSDT") || sig == acpi_sig("XSDT") ||
-        sig == acpi_sig("FACS") || sig == acpi_sig("DSDT")) {
-        return 0;
-    }
-    return 1;
-}
-
-static int acpi_patch_qemu_tables(unsigned int base, unsigned int size) {
-    struct acpi_table_ref refs[32];
-    unsigned int ref_count = 0u;
-    unsigned int off = 0u;
-    unsigned char* rsdt = 0;
-    unsigned char* fadt = 0;
-    unsigned int rsdt_len = 0u;
-    unsigned int fadt_len = 0u;
-    unsigned int dsdt_addr = 0u;
-    unsigned int facs_addr = 0u;
-    unsigned int i;
-
-    while (off + 36u <= size) {
-        unsigned char* table = (unsigned char*)(base + off);
-        unsigned int sig = acpi_get32(table);
-        unsigned int len = acpi_get32(table + 4);
-        if (len < 36u || len > size - off) {
-            break;
-        }
-        if (sig == acpi_sig("RSDT")) {
-            rsdt = table;
-            rsdt_len = len;
-        } else if (sig == acpi_sig("FACP")) {
-            fadt = table;
-            fadt_len = len;
-        } else if (sig == acpi_sig("DSDT")) {
-            dsdt_addr = base + off;
-        } else if (sig == acpi_sig("FACS")) {
-            facs_addr = base + off;
-        }
-
-        if (acpi_should_rsdt_ref(sig) &&
-            ref_count < sizeof(refs) / sizeof(refs[0])) {
-            refs[ref_count].sig = sig;
-            refs[ref_count].addr = base + off;
-            refs[ref_count].len = len;
-            ++ref_count;
-        }
-        off += len;
-    }
-
-    if (rsdt == 0 || fadt == 0 || dsdt_addr == 0u) {
-        return -1;
-    }
-
-    acpi_patch_qemu_fadt_io(fadt);
-    if (fadt_len >= 44u) {
-        acpi_put32(fadt + 36, facs_addr);
-        acpi_put32(fadt + 40, dsdt_addr);
-    }
-    if (fadt_len >= 0x94u) {
-        acpi_put64(fadt + 0x84u, facs_addr);
-        acpi_put64(fadt + 0x8cu, dsdt_addr);
-    }
-    acpi_fix_table_checksum(fadt);
-
-    if (ref_count > (rsdt_len - 36u) / 4u) {
-        ref_count = (rsdt_len - 36u) / 4u;
-    }
-    acpi_put32(rsdt + 4, 36u + ref_count * 4u);
-    for (i = 0; i < ref_count; ++i) {
-        acpi_put32(rsdt + 36u + i * 4u, refs[i].addr);
-    }
-    acpi_fix_table_checksum(rsdt);
-
-    off = 0u;
-    while (off + 36u <= size) {
-        unsigned char* table = (unsigned char*)(base + off);
-        unsigned int sig = acpi_get32(table);
-        unsigned int len = acpi_get32(table + 4);
-        if (len < 36u || len > size - off) {
-            break;
-        }
-        if (sig != acpi_sig("FACS")) {
-            acpi_fix_table_checksum(table);
-        }
-        off += len;
-    }
-
-    acpi_install_rsdp("QEMU  ",
-                      base + (unsigned int)(rsdt - (unsigned char*)base));
-    return 0;
-}
-
-static int acpi_install_qemu_fwcfg(void) {
-    unsigned short selector;
-    unsigned int size;
-    unsigned int base = acpi_table_base();
-    unsigned int cap = acpi_table_capacity();
-
-    if (fwcfg_find_file("etc/acpi/tables", &selector, &size) != 0 ||
-        size == 0u || size > cap) {
-        return -1;
-    }
-    serial_write_string("ACPI qemu fw_cfg @ ");
-    serial_write_hex32(base);
-    serial_write_string(" size=");
-    serial_write_hex32(size);
-    serial_write_string("\r\n");
-    acpi_enable_qemu_pm_io();
-    fwcfg_read_file(selector, (void*)base, size);
-    if (acpi_patch_qemu_tables(base, size) != 0) {
-        serial_write_string("ACPI qemu patch failed\r\n");
-        return -1;
-    }
-    serial_write_string("ACPI qemu tables ok\r\n");
-    return 0;
-}
-
-#endif
-
-static void acpi_enable_qemu_pm_io_stage3(void) {
-    if (pci_read32(0, 1, 3, 0x00) != 0x71138086u) {
-        return;
-    }
-    pci_write32(0, 1, 3, 0x40, QEMU_ACPI_PM_BASE | 0x00000001u);
-    pci_write8(0, 1, 3, 0x80, 0x81u);
-    pci_write16(0, 1, 3, 0x04,
-                (unsigned short)(pci_read16(0, 1, 3, 0x04) | 0x0001u));
-}
-
-static void acpi_enable_real_pm_io(void) {
-    unsigned short cmd;
-    unsigned char misc;
-
-    if (pci_read32(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x00) !=
-        0x71138086u) {
-        serial_write_string("ACPI real PM dev missing\r\n");
-        return;
-    }
-
-    pci_write32(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x40,
-                ACPI_REAL_PM1_EVT | 0x00000001u);
-    misc = pci_read8(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x80);
-    pci_write8(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x80,
-               (unsigned char)(misc | 0x81u));
-    cmd = pci_read16(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x04);
-    pci_write16(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x04,
-                (unsigned short)(cmd | 0x0001u));
-
-    serial_write_string("ACPI real PM io pmb=");
-    serial_write_hex32(
-        pci_read32(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x40));
-    serial_write_string(" misc=");
-    serial_write_hex8(pci_read8(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x80));
-    serial_write_string(" cmd=");
-    serial_write_hex16(
-        pci_read16(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x04));
-    serial_write_string("\r\n");
-}
-
-static void acpi_enable_real_mode(void) {
-    unsigned short cnt = inw((unsigned short)ACPI_REAL_PM1_CNT);
-    if ((cnt & ACPI_PM1_CNT_SCI_EN) == 0u) {
-        outw((unsigned short)ACPI_REAL_PM1_CNT,
-             (unsigned short)(cnt | ACPI_PM1_CNT_SCI_EN));
-        cnt = inw((unsigned short)ACPI_REAL_PM1_CNT);
-    }
-    serial_write_string("ACPI real PM1 cnt=");
-    serial_write_hex16(cnt);
-    serial_write_string("\r\n");
-}
-
 static void acpi_clear_pm_events(unsigned int pm1_evt, unsigned int gpe0,
                                  unsigned int gpe0_len) {
     unsigned int half;
@@ -1474,6 +949,8 @@ static void acpi_clear_pm_events(unsigned int pm1_evt, unsigned int gpe0,
 }
 
 static void acpi_install_for_linux(void) {
+    unsigned short cnt;
+
     if (bios_rsdp_linear_global == 0u) {
         serial_write_string("ACPI tables missing\r\n");
         return;
@@ -1481,14 +958,19 @@ static void acpi_install_for_linux(void) {
     serial_write_string("ACPI RSDP=");
     serial_write_hex32(bios_rsdp_linear_global);
     serial_write_string("\r\n");
-    if (bios_qemu_mode) {
-        acpi_enable_qemu_pm_io_stage3();
-        acpi_clear_pm_events(QEMU_ACPI_PM_BASE, QEMU_ACPI_PM_BASE + 0x0cu,
-                             ACPI_GPE0_LEN);
-    } else {
-        acpi_enable_real_pm_io();
-        acpi_clear_pm_events(ACPI_REAL_PM1_EVT, ACPI_REAL_GPE0, ACPI_GPE0_LEN);
-        acpi_enable_real_mode();
+    acpi_clear_pm_events(bios_acpi_pm1_evt_global, bios_acpi_gpe0_global,
+                         bios_acpi_gpe0_len_global);
+    if ((bios_acpi_flags_global & SHARED_BOOT_ACPI_FLAG_ENABLE_SCI) != 0u &&
+        bios_acpi_pm1_cnt_global != 0u) {
+        cnt = inw((unsigned short)bios_acpi_pm1_cnt_global);
+        if ((cnt & ACPI_PM1_CNT_SCI_EN) == 0u) {
+            outw((unsigned short)bios_acpi_pm1_cnt_global,
+                 (unsigned short)(cnt | ACPI_PM1_CNT_SCI_EN));
+            cnt = inw((unsigned short)bios_acpi_pm1_cnt_global);
+        }
+        serial_write_string("ACPI PM1 cnt=");
+        serial_write_hex16(cnt);
+        serial_write_string("\r\n");
     }
 }
 
@@ -1500,9 +982,6 @@ static void run_test_elf_blob(void) {
     struct linux_loader_config linux_config;
     unsigned char* image = (unsigned char*)LINUX_LOADER_TEST_ELF_IMAGE_LINEAR;
     unsigned int entry_phys = 0u;
-    unsigned int pm1_evt = bios_qemu_mode ? QEMU_ACPI_PM_BASE : ACPI_REAL_PM1_EVT;
-    unsigned int pm1_cnt =
-        bios_qemu_mode ? (QEMU_ACPI_PM_BASE + 4u) : ACPI_REAL_PM1_CNT;
     unsigned int rc;
     int expand_rc;
 
@@ -1544,7 +1023,8 @@ static void run_test_elf_blob(void) {
     serial_write_string("\r\n");
     cpu_serialize();
     rc = ((test_elf_entry_fn)entry_phys)(
-        LINUX_LOADER_BOOT_PARAMS, LINUX_LOADER_RSDP_LINEAR, pm1_evt, pm1_cnt);
+        LINUX_LOADER_BOOT_PARAMS, LINUX_LOADER_RSDP_LINEAR,
+        bios_acpi_pm1_evt_global, bios_acpi_pm1_cnt_global);
     cpu_serialize();
     serial_write_string("Test ELF returned ");
     serial_write_hex32(rc);
@@ -1674,18 +1154,21 @@ static unsigned int bios_payload_blob_ptr(unsigned int payload_id) {
 }
 
 static void bios_load_stage_context(unsigned int total_bytes,
-                                    unsigned int aux_blob_linear,
-                                    unsigned char qemu_mode) {
+                                    unsigned int aux_blob_linear) {
     struct shared_boot_context* boot_ctx;
     const unsigned int* aux = (const unsigned int*)aux_blob_linear;
     unsigned int blob;
 
     bios_total_bytes_global = total_bytes;
-    bios_qemu_mode = qemu_mode;
     bios_shared_service_global = shared_service_from_total(total_bytes);
     bios_vgabios_blob_linear_global = 0u;
     bios_test_elf_blob_linear_global = 0u;
     bios_rsdp_linear_global = 0u;
+    bios_acpi_pm1_evt_global = 0u;
+    bios_acpi_pm1_cnt_global = 0u;
+    bios_acpi_gpe0_global = 0u;
+    bios_acpi_gpe0_len_global = 0u;
+    bios_acpi_flags_global = 0u;
     bios_maintenance_requested = 0u;
     bios_shadow_ready = 0u;
 
@@ -1697,13 +1180,12 @@ static void bios_load_stage_context(unsigned int total_bytes,
         if ((boot_ctx->flags & SHARED_BOOT_FLAG_SHADOW_READY) != 0u) {
             bios_shadow_ready = 1u;
         }
-        if ((boot_ctx->flags & SHARED_BOOT_FLAG_PLATFORM_QEMU) != 0u) {
-            bios_qemu_mode = 1u;
-        }
-        if ((boot_ctx->flags & SHARED_BOOT_FLAG_PLATFORM_P2B98_XV) != 0u) {
-            bios_qemu_mode = 0u;
-        }
         bios_rsdp_linear_global = boot_ctx->rsdp_linear;
+        bios_acpi_pm1_evt_global = boot_ctx->acpi_pm1_evt;
+        bios_acpi_pm1_cnt_global = boot_ctx->acpi_pm1_cnt;
+        bios_acpi_gpe0_global = boot_ctx->acpi_gpe0;
+        bios_acpi_gpe0_len_global = boot_ctx->acpi_gpe0_len;
+        bios_acpi_flags_global = boot_ctx->acpi_flags;
     }
 
     blob = bios_payload_blob_ptr(SHARED_PAYLOAD_ID_VGABIOS);
@@ -1734,7 +1216,7 @@ static void bios_load_stage_context(unsigned int total_bytes,
 void postcar_resume(unsigned int total_bytes, unsigned int aux_blob_linear) {
     volatile unsigned int stack_cookie = 0x13579bdfu;
 
-    bios_load_stage_context(total_bytes, aux_blob_linear, 0u);
+    bios_load_stage_context(total_bytes, aux_blob_linear);
     storage_set_scratch_base(bios_top_reserved_base());
     nvram_load_settings();
     legacy_floppy_probe();
@@ -1789,51 +1271,4 @@ void postcar_resume(unsigned int total_bytes, unsigned int aux_blob_linear) {
 void bios32_entry_c(unsigned int total_bytes, unsigned int aux_blob_linear) {
     zero_bss();
     postcar_resume(total_bytes, aux_blob_linear);
-}
-
-void bios32_qemu_entry(unsigned int total_bytes, unsigned int aux_blob_linear) {
-    volatile unsigned int stack_cookie = 0x2468ace0u;
-
-    zero_bss();
-    bios_load_stage_context(total_bytes, aux_blob_linear, 1u);
-    storage_set_scratch_base(bios_top_reserved_base());
-    nvram_load_settings();
-    legacy_floppy_probe();
-    serial_write_string("QEMU stage3 @ 00200000\r\n");
-    serial_write_string("QEMU stack @ ");
-    serial_write_hex32((unsigned int)&stack_cookie);
-    serial_write_string("\r\n");
-    bios_run_optional_memtest();
-    if (bios_run_test_blob != 0u) {
-        nvram_consume_test_blob_request();
-        run_test_elf_blob();
-        serial_write_string("QEMU test blob halted\r\n");
-        for (;;) {
-            __asm__ volatile("hlt");
-        }
-    }
-    if (bios_maintenance_requested != 0u) {
-        maintenance_prompt();
-    }
-    storage_scan(total_bytes);
-    install_bios_thunks();
-    install_boot_drive();
-    install_pm_stack_top();
-    install_vgabios_shadow();
-    if (try_boot_linux()) {
-        for (;;) {
-            __asm__ volatile("hlt");
-        }
-    }
-    prepare_boot_sector();
-    install_boot_drive();
-    serial_write_string("QEMU boot drive=");
-    serial_write_hex8(bios_boot_drive);
-    serial_write_string("...\r\n");
-    bios_boot_freedos_pm32();
-    serial_write_string("QEMU FreeDOS returned\r\n");
-    bandwidth_benchmarks(total_bytes);
-    for (;;) {
-        __asm__ volatile("hlt");
-    }
 }

@@ -16,8 +16,18 @@ static inline unsigned char inb(unsigned short port) {
     return value;
 }
 
+static inline void outw(unsigned short port, unsigned short value) {
+    __asm__ volatile("outw %0, %1" : : "a"(value), "Nd"(port));
+}
+
 static inline void outl(unsigned short port, unsigned int value) {
     __asm__ volatile("outl %0, %1" : : "a"(value), "Nd"(port));
+}
+
+static inline unsigned int inl(unsigned short port) {
+    unsigned int value;
+    __asm__ volatile("inl %1, %0" : "=a"(value) : "Nd"(port));
+    return value;
 }
 
 static void serial_write_char(char c) {
@@ -83,6 +93,30 @@ static void pci_write8(unsigned char bus, unsigned char dev, unsigned char fn,
                        unsigned char reg, unsigned char value) {
     outl(0x0cf8u, pci_addr(bus, dev, fn, reg));
     outb((unsigned short)(0x0cfcu + (reg & 3u)), value);
+}
+
+static void pci_write16(unsigned char bus, unsigned char dev, unsigned char fn,
+                        unsigned char reg, unsigned short value) {
+    outl(0x0cf8u, pci_addr(bus, dev, fn, reg));
+    outw((unsigned short)(0x0cfcu + (reg & 0x02u)), value);
+}
+
+static void pci_write32(unsigned char bus, unsigned char dev, unsigned char fn,
+                        unsigned char reg, unsigned int value) {
+    outl(0x0cf8u, pci_addr(bus, dev, fn, reg));
+    outl(0x0cfcu, value);
+}
+
+static unsigned int pci_read32(unsigned char bus, unsigned char dev,
+                               unsigned char fn, unsigned char reg) {
+    outl(0x0cf8u, pci_addr(bus, dev, fn, reg));
+    return inl(0x0cfcu);
+}
+
+static unsigned short pci_read16(unsigned char bus, unsigned char dev,
+                                 unsigned char fn, unsigned char reg) {
+    unsigned int value = pci_read32(bus, dev, fn, reg);
+    return (unsigned short)(value >> ((reg & 0x02u) * 8u));
 }
 
 static unsigned char pci_read8(unsigned char bus, unsigned char dev,
@@ -210,6 +244,44 @@ static void init_l2_cache(void) {
     serial_write_string("\r\n");
 }
 
+static void enable_platform_pm_io(struct shared_boot_context* boot_ctx) {
+    unsigned short cmd;
+    unsigned char misc;
+
+    if (pci_read32(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x00) !=
+        0x71138086u) {
+        serial_write_string("ACPI PM dev missing\r\n");
+        return;
+    }
+
+    pci_write32(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x40,
+                ACPI_REAL_PM1_EVT | 0x00000001u);
+    misc = pci_read8(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x80);
+    pci_write8(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x80,
+               (unsigned char)(misc | 0x81u));
+    cmd = pci_read16(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x04);
+    pci_write16(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x04,
+                (unsigned short)(cmd | 0x0001u));
+
+    if (boot_ctx != 0) {
+        boot_ctx->acpi_pm1_evt = ACPI_REAL_PM1_EVT;
+        boot_ctx->acpi_pm1_cnt = ACPI_REAL_PM1_CNT;
+        boot_ctx->acpi_gpe0 = ACPI_REAL_GPE0;
+        boot_ctx->acpi_gpe0_len = ACPI_GPE0_LEN;
+        boot_ctx->acpi_flags = SHARED_BOOT_ACPI_FLAG_ENABLE_SCI;
+    }
+
+    serial_write_string("ACPI PM io pmb=");
+    serial_write_hex32(
+        pci_read32(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x40));
+    serial_write_string(" misc=");
+    serial_write_hex8(pci_read8(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x80));
+    serial_write_string(" cmd=");
+    serial_write_hex16(
+        pci_read16(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x04));
+    serial_write_string("\r\n");
+}
+
 static void install_real_acpi_tables(unsigned int total_bytes,
                                      struct shared_boot_context* boot_ctx,
                                      volatile unsigned int* aux,
@@ -251,6 +323,7 @@ static void install_real_acpi_tables(unsigned int total_bytes,
     if (boot_ctx != 0) {
         boot_ctx->rsdp_linear = ACPI_RSDP_LINEAR;
     }
+    enable_platform_pm_io(boot_ctx);
     serial_write_string("ACPI real tables ok\r\n");
 }
 
