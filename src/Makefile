@@ -2,7 +2,7 @@ CC := gcc
 LD := ld
 OBJCOPY := objcopy
 LIBGCC := $(shell $(CC) -m32 -print-libgcc-file-name)
-CPPFLAGS := -I. -Istage3 -Ilib/x86 -Ilib/pci -Ilib/serial -Ilib/storage
+CPPFLAGS := -I. -Istage3 -Ilib/acpi -Ilib/x86 -Ilib/pci -Ilib/serial -Ilib/storage
 DEPFLAGS := -MMD -MP
 CFLAGS := -O2 -m32 -march=pentium2 -ffreestanding -fno-pic -fno-pie -fno-stack-protector -fstack-usage -Wstack-usage=256 -nostdlib -nostartfiles -nodefaultlibs -Wall -Wextra $(DEPFLAGS)
 NASMFLAGS := -I.
@@ -279,7 +279,7 @@ stage2.o: platform/p2b98_xv/stage2/stage2.c
 qemu_stage2.o: platform/qemu/stage2/stage2.c
 	$(COMPILE_C)
 
-acpi_tables.o: acpi_tables.c
+acpi_tables.o: lib/acpi/acpi_tables.c
 	$(COMPILE_C)
 
 blob_service.o: shared_service/blob_service.c
