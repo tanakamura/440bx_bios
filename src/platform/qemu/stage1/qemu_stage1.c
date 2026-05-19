@@ -15,6 +15,11 @@ extern int blob_expand_service(const void* blob, void* stage, void* dst,
                                unsigned int dst_capacity,
                                struct blob_status* status,
                                unsigned int total_bytes);
+extern int blob_load_service(unsigned int payload_id, void* fallback_dst,
+                             unsigned int dst_capacity,
+                             unsigned int* load_addr_out,
+                             struct blob_status* status,
+                             unsigned int total_bytes);
 
 static const unsigned char* rom_high_ptr(const unsigned char* ptr) {
     return (const unsigned char*)((unsigned int)ptr + ROM_HIGH_DELTA);
@@ -80,6 +85,9 @@ void qemu_install_shared_service_table(unsigned int total_bytes,
         ((unsigned int)blob_expand_service - (unsigned int)__blob_service_start);
     table->blob_stage = blob_stage;
     table->blob_stage_size = BLOB_STAGE_CAPACITY;
+    table->blob_load =
+        service_base +
+        ((unsigned int)blob_load_service - (unsigned int)__blob_service_start);
 
     if (shared_payload_manifest_from_rom_directory(manifest, 0xfffc0000u) !=
         0) {

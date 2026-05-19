@@ -64,6 +64,11 @@ typedef int (*blob_expand_fn)(const void* blob, void* stage, void* dst,
                               unsigned int dst_capacity,
                               struct blob_status* status,
                               unsigned int total_bytes);
+typedef int (*blob_load_fn)(unsigned int payload_id, void* fallback_dst,
+                            unsigned int dst_capacity,
+                            unsigned int* load_addr_out,
+                            struct blob_status* status,
+                            unsigned int total_bytes);
 typedef void (*blob_shadow_entry_fn)(const void* blob, void* stage, void* dst,
                                      unsigned int dst_capacity,
                                      struct blob_status* status,

@@ -354,6 +354,39 @@ BLOBSVC_ENTRY int blob_expand_service(const void* blob_ptr, void* stage_ptr,
     return 0;
 }
 
+BLOBSVC_ENTRY int blob_load_service(unsigned int payload_id, void* fallback_dst,
+                                    unsigned int dst_capacity,
+                                    unsigned int* load_addr_out,
+                                    struct blob_status* status,
+                                    unsigned int total_bytes) {
+    struct shared_service_table* service = shared_service_from_total(total_bytes);
+    struct shared_payload_entry* payload;
+    const void* blob;
+    unsigned int load_addr;
+
+    if (service == 0 || service->blob_stage == 0u ||
+        service->blob_stage_size < BLOB_STAGE_CAPACITY) {
+        blob_status_set(status, BLOB_ERR_SIZE, 0, 0, 0, 0);
+        return BLOB_ERR_SIZE;
+    }
+
+    payload = shared_payload_find(service, payload_id);
+    if (payload == 0 || payload->type != SHARED_PAYLOAD_TYPE_BLZ4 ||
+        payload->blob_ptr == 0u) {
+        blob_status_set(status, BLOB_ERR_MAGIC, 0, payload_id, 0, 0);
+        return BLOB_ERR_MAGIC;
+    }
+
+    blob = (const void*)payload->blob_ptr;
+    load_addr = blob_load_addr_or(blob, (unsigned int)fallback_dst);
+    if (load_addr_out != 0) {
+        *load_addr_out = load_addr;
+    }
+    return blob_expand_service(blob, (void*)service->blob_stage,
+                               (void*)load_addr, dst_capacity, status,
+                               total_bytes);
+}
+
 #define IA32_MTRR_FIX4K_E0000 0x26cu
 #define IA32_MTRR_FIX4K_E8000 0x26du
 #define IA32_MTRR_FIX4K_F0000 0x26eu
