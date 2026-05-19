@@ -131,8 +131,13 @@ third_party/
 tools/
   dos/
     flashutil.c
+    flashutil_io.asm
     mem_dmp.c
+    srecsave.asm
     xrecv.c
+    biostest.c
+    flattest.c
+    shutdown.c
 ```
 
 ## build matrix
@@ -592,6 +597,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - legacy platform ops / runtime config / boot drive glue は `bios_legacy.*` へ分離済み。`stage3/stage3.c` は boot priority と callbacks を渡して legacy app を呼び出すだけ。
 - Linux loader config / platform callback glue は `bios_linux.*` へ分離済み。`stage3/stage3.c` は stage/settings/VBE callback を渡して Linux loader を呼び出すだけ。
 - ROM test ELF 起動 glue は `bios_selftest.*` へ分離済み。`stage3/stage3.c` は run-test bit を見て selftest config を渡すだけ。
+- DOS tool / DOS test helper の source は `tools/dos/` へ移動済み。build output は互換のため引き続き `src/*.exe` / `src/*.com` に出す。
 
 ## 決定事項
 

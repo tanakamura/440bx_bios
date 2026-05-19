@@ -97,28 +97,28 @@ test_elf_blob.o: test_elf_blob.bin
 		--rename-section .data=.testelfblob,alloc,load,readonly,data,contents \
 		$< $@
 
-srecsave.com: srecsave.asm
+srecsave.com: ../tools/dos/srecsave.asm
 	nasm -f bin $< -o $@
 
 install-srecsave: srecsave.com
 	mcopy -o -i ../freedos_boot_fd.img srecsave.com ::SRECSAVE.COM
 
-xrecv.exe: xrecv.c
+xrecv.exe: ../tools/dos/xrecv.c
 	WATCOM=/opt/watcom INCLUDE=/opt/watcom/h PATH=/opt/watcom/binl64:$$PATH /opt/watcom/binl64/owcc -b dos -mcmodel=s -os -s $< -o $@
 
 install-xrecv-exe: xrecv.exe
 	mcopy -o -i ../freedos_boot_fd.img xrecv.exe ::XRECV.EXE
 
-flashutil_io.obj: flashutil_io.asm
+flashutil_io.obj: ../tools/dos/flashutil_io.asm
 	nasm -f obj $< -o $@
 
-flashutil.exe: flashutil.c flashutil_io.obj
-	WATCOM=/opt/watcom INCLUDE=/opt/watcom/h PATH=/opt/watcom/binl64:$$PATH /opt/watcom/binl64/owcc -b dos -mcmodel=s -os -s flashutil.c flashutil_io.obj -o $@
+flashutil.exe: ../tools/dos/flashutil.c flashutil_io.obj
+	WATCOM=/opt/watcom INCLUDE=/opt/watcom/h PATH=/opt/watcom/binl64:$$PATH /opt/watcom/binl64/owcc -b dos -mcmodel=s -os -s ../tools/dos/flashutil.c flashutil_io.obj -o $@
 
 install-flashutil-exe: flashutil.exe
 	mcopy -o -i ../freedos_boot_fd.img flashutil.exe ::FLASHUTL.EXE
 
-mem_dmp.exe: mem_dmp.c
+mem_dmp.exe: ../tools/dos/mem_dmp.c
 	WATCOM=/opt/watcom INCLUDE=/opt/watcom/h PATH=/opt/watcom/binl64:$$PATH /opt/watcom/binl64/owcc -b dos -mcmodel=s -os -s $< -o $@
 
 install-mem-dmp-exe: mem_dmp.exe
@@ -127,13 +127,13 @@ install-mem-dmp-exe: mem_dmp.exe
 flashtest.img: flashutil.exe gen_flashtest_img.py
 	python3 gen_flashtest_img.py
 
-biostest.exe: biostest.c
+biostest.exe: ../tools/dos/biostest.c
 	WATCOM=/opt/watcom INCLUDE=/opt/watcom/h PATH=/opt/watcom/binl64:$$PATH /opt/watcom/binl64/owcc -b dos -mcmodel=s -os -s $< -o $@
 
-flattest.exe: flattest.c
+flattest.exe: ../tools/dos/flattest.c
 	WATCOM=/opt/watcom INCLUDE=/opt/watcom/h PATH=/opt/watcom/binl64:$$PATH /opt/watcom/binl64/owcc -b dos -mcmodel=s -os -s $< -o $@
 
-shutdown.exe: shutdown.c
+shutdown.exe: ../tools/dos/shutdown.c
 	WATCOM=/opt/watcom INCLUDE=/opt/watcom/h PATH=/opt/watcom/binl64:$$PATH /opt/watcom/binl64/owcc -b dos -mcmodel=s -os -s $< -o $@
 
 stdtest.img custbio.img custflat.img: biostest.exe flattest.exe shutdown.exe flashutil.exe gen_test_images.py
