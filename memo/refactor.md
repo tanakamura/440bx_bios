@@ -580,6 +580,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - legacy BIOS service の dispatcher / thunk / timer / runtime glue は `app/legacy/` へ移動済み。ただし legacy app 単体 blob 化と `0x000F0000` 配置は未完了。
 - legacy service は serial/storage/RTC/E820 などの stage3 直参照を `legacy_platform_ops` callback table 経由へ寄せた。残る大きな直結は app としての entry/link/load ABI。
 - Linux kernel/initrd loader と Linux boot params/VBE setup は `app/linux_loader/` へ移動済み。serial/storage/E820 は `linux_loader_config` callback 経由になり、stage3 は NVRAM 設定と ACPI/RTC/VBIOS/storage/memory callback を渡す glue だけ持つ。
+- NVRAM raw access と設定 decode/save は `bios_nvram.*` へ分離済み。`bios_main.c` には stage3 global へ反映する薄い glue だけ残っている。
 
 ## 決定事項
 

@@ -200,8 +200,8 @@ start: start.elf
 start.elf: start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o dsdt_blob.o vgabios_blob.o test_elf_blob.o p2b98_xv/stage1/start.ld
 	$(LD) -m elf_i386 -T p2b98_xv/stage1/start.ld -Map start.map -o $@ start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o dsdt_blob.o vgabios_blob.o test_elf_blob.o
 
-bios.elf: bios16.o bios_main.o bios_memory.o bios_rtc.o bios_serial.o bios_pci.o bios_storage.o linux_loader.o legacy_bda.o legacy_boot.o legacy_debug.o legacy_floppy.o legacy_int13.o legacy_int15.o legacy_keyboard.o legacy_misc.o legacy_platform.o legacy_runtime.o legacy_service.o legacy_thunk.o legacy_timer.o legacy_time.o legacy_video.o bios.ld
-	$(LD) -m elf_i386 -T bios.ld -Map bios.map -o $@ bios16.o bios_main.o bios_memory.o bios_rtc.o bios_serial.o bios_pci.o bios_storage.o linux_loader.o legacy_bda.o legacy_boot.o legacy_debug.o legacy_floppy.o legacy_int13.o legacy_int15.o legacy_keyboard.o legacy_misc.o legacy_platform.o legacy_runtime.o legacy_service.o legacy_thunk.o legacy_timer.o legacy_time.o legacy_video.o
+bios.elf: bios16.o bios_main.o bios_memory.o bios_nvram.o bios_rtc.o bios_serial.o bios_pci.o bios_storage.o linux_loader.o legacy_bda.o legacy_boot.o legacy_debug.o legacy_floppy.o legacy_int13.o legacy_int15.o legacy_keyboard.o legacy_misc.o legacy_platform.o legacy_runtime.o legacy_service.o legacy_thunk.o legacy_timer.o legacy_time.o legacy_video.o bios.ld
+	$(LD) -m elf_i386 -T bios.ld -Map bios.map -o $@ bios16.o bios_main.o bios_memory.o bios_nvram.o bios_rtc.o bios_serial.o bios_pci.o bios_storage.o linux_loader.o legacy_bda.o legacy_boot.o legacy_debug.o legacy_floppy.o legacy_int13.o legacy_int15.o legacy_keyboard.o legacy_misc.o legacy_platform.o legacy_runtime.o legacy_service.o legacy_thunk.o legacy_timer.o legacy_time.o legacy_video.o
 
 stage2.elf: stage2.o l2_service.o acpi_tables.o p2b98_xv/stage2/stage2.ld
 	$(LD) -m elf_i386 -T p2b98_xv/stage2/stage2.ld -Map stage2.map -o $@ stage2.o l2_service.o acpi_tables.o
@@ -276,6 +276,9 @@ bios_main.o: bios_main.c post_code.h acpi_tables.h blob.h shared_service/service
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 bios_memory.o: bios_memory.c bios_memory.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+bios_nvram.o: bios_nvram.c bios_nvram.h bios_io.h bios_pci.h bios_serial.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 bios_rtc.o: bios_rtc.c bios_io.h bios_rtc.h bios_serial.h

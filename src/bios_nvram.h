@@ -21,4 +21,21 @@
 #define BIOS_NVRAM_BOOT_PRIORITY_USB 2u
 #define BIOS_NVRAM_BOOT_PRIORITY_DEFAULT BIOS_NVRAM_BOOT_PRIORITY_AUTO
 
+struct bios_nvram_settings {
+    unsigned char flags0;
+    unsigned char boot_priority;
+    unsigned char vmlinux_partition;
+    unsigned char enable_memtest;
+    unsigned char run_test_blob;
+    char linux_cmdline_suffix[BIOS_NVRAM_CMDLINE_MAX];
+};
+
+int bios_nvram_enable_extended_cmos(void);
+void bios_nvram_init_defaults(void);
+void bios_nvram_load_settings(struct bios_nvram_settings* settings);
+void bios_nvram_save_partition(unsigned char part);
+void bios_nvram_save_flags0(unsigned char flags0);
+void bios_nvram_save_boot_priority(unsigned char priority);
+void bios_nvram_save_cmdline_suffix(const char* text);
+
 #endif
