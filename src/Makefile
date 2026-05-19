@@ -8,7 +8,7 @@ NASMFLAGS := -I.
 OBJCOPY_ELF_FLAGS := -I binary -O elf32-i386 -B i386
 BUILD_SCRIPTS := ../scripts/build
 TEST_SCRIPTS := ../scripts/test
-UACPI_CPPFLAGS := $(CPPFLAGS) -I../uACPI/include -DUACPI_OVERRIDE_CONFIG
+UACPI_CPPFLAGS := $(CPPFLAGS) -Iapp/selftest/s3test -I../uACPI/include -DUACPI_OVERRIDE_CONFIG
 UACPI_CFLAGS := $(CFLAGS) -Os -ffunction-sections -fdata-sections \
 	-Wno-unused-parameter -Wno-sign-compare -Wno-missing-field-initializers
 UACPI_SRC_NAMES := tables types uacpi utilities interpreter opcodes namespace \
@@ -79,17 +79,17 @@ linuxprobe.elf: linuxprobe.o linuxprobe.ld
 linuxprobe.img linuxprobe_raw.img: linuxprobe.elf $(BUILD_SCRIPTS)/gen_linuxprobe_img.py
 	python3 $(BUILD_SCRIPTS)/gen_linuxprobe_img.py
 
-s3test.o: s3test.c
+s3test.o: app/selftest/s3test/s3test.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-s3test_uacpi.o: s3test_uacpi.c uacpi_config.h
+s3test_uacpi.o: app/selftest/s3test/s3test_uacpi.c app/selftest/s3test/uacpi_config.h
 	$(CC) $(UACPI_CPPFLAGS) $(UACPI_CFLAGS) -c $< -o $@
 
-uacpi_%.o: ../uACPI/source/%.c uacpi_config.h
+uacpi_%.o: ../uACPI/source/%.c app/selftest/s3test/uacpi_config.h
 	$(CC) $(UACPI_CPPFLAGS) $(UACPI_CFLAGS) -c $< -o $@
 
-s3test.elf: s3test.o s3test_uacpi.o $(UACPI_OBJS) s3test.ld
-	$(LD) -m elf_i386 --gc-sections -T s3test.ld -Map s3test.map -o $@ s3test.o s3test_uacpi.o $(UACPI_OBJS) $(LIBGCC)
+s3test.elf: s3test.o s3test_uacpi.o $(UACPI_OBJS) app/selftest/s3test/s3test.ld
+	$(LD) -m elf_i386 --gc-sections -T app/selftest/s3test/s3test.ld -Map s3test.map -o $@ s3test.o s3test_uacpi.o $(UACPI_OBJS) $(LIBGCC)
 
 test_elf_blob.bin: s3test.elf $(BUILD_SCRIPTS)/gen_blob.py
 	python3 $(BUILD_SCRIPTS)/gen_blob.py s3test.elf test_elf_blob.bin
