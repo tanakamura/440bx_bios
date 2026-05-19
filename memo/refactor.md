@@ -590,6 +590,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - NVRAM 設定 state / maintenance prompt glue / boot priority learn は `bios_settings.*` へ分離済み。`bios_main.c` は `struct bios_settings` を各 app config に渡すだけ。
 - legacy platform ops / runtime config / boot drive glue は `bios_legacy.*` へ分離済み。`bios_main.c` は boot priority と callbacks を渡して legacy app を呼び出すだけ。
 - Linux loader config / platform callback glue は `bios_linux.*` へ分離済み。`bios_main.c` は stage/settings/VBE callback を渡して Linux loader を呼び出すだけ。
+- ROM test ELF 起動 glue は `bios_selftest.*` へ分離済み。`bios_main.c` は run-test bit を見て selftest config を渡すだけ。
 
 ## 決定事項
 

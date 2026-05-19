@@ -4,12 +4,12 @@
 #include "bios_linux.h"
 #include "bios_memtest.h"
 #include "bios_memory.h"
+#include "bios_selftest.h"
 #include "bios_serial.h"
 #include "bios_settings.h"
 #include "bios_shadow.h"
 #include "bios_stage_context.h"
 #include "bios_storage.h"
-#include "app/linux_loader/linux_loader.h"
 #include "app/legacy/legacy_floppy.h"
 #include "app/legacy/legacy_thunk.h"
 #include "post_code.h"
@@ -31,13 +31,6 @@ static void zero_bss(void) {
     while (p < __bss_end) {
         *p++ = 0u;
     }
-}
-
-static void cpu_serialize(void) {
-    __asm__ volatile("xorl %%eax, %%eax\n\tcpuid"
-                     :
-                     :
-                     : "eax", "ebx", "ecx", "edx", "memory");
 }
 
 static void install_bios_shadow(void) {
@@ -102,67 +95,17 @@ static void install_pm_stack_top(void) {
 }
 
 static void run_test_elf_blob(void) {
-    typedef unsigned int (*test_elf_entry_fn)(unsigned int, unsigned int,
-                                             unsigned int, unsigned int);
-    blob_expand_fn expand = bios_stage_context_blob_expand(&bios_stage);
-    void* blob_stage = bios_stage_context_blob_stage(&bios_stage);
-    struct blob_status status;
     struct bios_linux_config linux_platform = {0};
-    struct linux_loader_config linux_config = {0};
-    unsigned char* image = (unsigned char*)LINUX_LOADER_TEST_ELF_IMAGE_LINEAR;
-    unsigned int entry_phys = 0u;
-    unsigned int rc;
-    int expand_rc;
-
-    if (bios_stage.test_elf_blob_linear == 0u) {
-        serial_write_string("No test ELF blob\r\n");
-        return;
-    }
-    if (expand == 0 || blob_stage == 0) {
-        serial_write_string("Test ELF blob service missing\r\n");
-        return;
-    }
-
-    serial_write_string("Run ROM test ELF...\r\n");
-    expand_rc = expand((const void*)bios_stage.test_elf_blob_linear,
-                       blob_stage, image, LINUX_LOADER_TEST_ELF_IMAGE_CAPACITY,
-                       &status, bios_stage.total_bytes);
-    if (expand_rc != 0) {
-        serial_write_string("Test ELF blob failed rc=");
-        serial_write_hex8((unsigned char)expand_rc);
-        serial_write_string(" block=");
-        serial_write_hex32(status.block);
-        serial_write_string("\r\n");
-        return;
-    }
+    struct bios_selftest_config selftest = {0};
 
     fill_bios_linux_config(&linux_platform);
-    bios_linux_fill_loader_config(&linux_config, &linux_platform);
-    if (linux_loader_load_elf_image(&linux_config, image, status.output_size,
-                                    &entry_phys) != 0) {
-        return;
-    }
-
-    storage_scan(bios_stage.total_bytes);
-    install_bios_thunks();
-    install_boot_drive();
-    install_pm_stack_top();
-    install_vgabios_shadow();
-    linux_loader_prepare_boot_params(&linux_config, entry_phys, 0u, 0u);
-
-    serial_write_string("Call test ELF entry=");
-    serial_write_hex32(entry_phys);
-    serial_write_string(" params=");
-    serial_write_hex32(LINUX_LOADER_BOOT_PARAMS);
-    serial_write_string("\r\n");
-    cpu_serialize();
-    rc = ((test_elf_entry_fn)entry_phys)(
-        LINUX_LOADER_BOOT_PARAMS, LINUX_LOADER_RSDP_LINEAR,
-        bios_stage.acpi_pm1_evt, bios_stage.acpi_pm1_cnt);
-    cpu_serialize();
-    serial_write_string("Test ELF returned ");
-    serial_write_hex32(rc);
-    serial_write_string("\r\n");
+    selftest.stage = &bios_stage;
+    selftest.linux_config = &linux_platform;
+    selftest.install_legacy_runtime = install_bios_thunks;
+    selftest.install_boot_drive = install_boot_drive;
+    selftest.install_pm_stack_top = install_pm_stack_top;
+    selftest.install_vgabios_shadow = install_vgabios_shadow;
+    bios_selftest_run_elf_blob(&selftest);
 }
 
 static void nvram_record_boot_success(unsigned char kind) {
