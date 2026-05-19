@@ -3,6 +3,8 @@
 post_code.h
 post_code.inc
 start
+start_legacy
+start_legacy_test
 *.elf
 *.d
 *.su
