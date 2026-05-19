@@ -1,10 +1,9 @@
-#include "bios_acpi_runtime.h"
 #include "bios_benchmark.h"
 #include "bios_io.h"
 #include "bios_legacy.h"
+#include "bios_linux.h"
 #include "bios_memtest.h"
 #include "bios_memory.h"
-#include "bios_rtc.h"
 #include "bios_serial.h"
 #include "bios_settings.h"
 #include "bios_shadow.h"
@@ -58,71 +57,13 @@ static void init_vgabios_for_linux(void) {
 
 static void nvram_record_boot_success(unsigned char kind);
 
-static void linux_hdd_get_geometry_cb(
-    struct linux_loader_hdd_geometry* geometry) {
-    struct bios_hdd_geometry bios_geometry;
-
-    bios_hdd_get_geometry(&bios_geometry);
-    geometry->total_sectors = bios_geometry.total_sectors;
-    geometry->cylinders = bios_geometry.cylinders;
-    geometry->heads = bios_geometry.heads;
-    geometry->sectors_per_track = bios_geometry.sectors_per_track;
-}
-
-static int linux_memory_e820_get_entry_cb(unsigned int total_bytes,
-                                          unsigned int index,
-                                          struct linux_loader_e820_entry* entry) {
-    struct e820_entry bios_entry;
-
-    if (bios_memory_e820_get_entry(total_bytes, index, &bios_entry) != 0) {
-        return -1;
-    }
-    entry->base_low = bios_entry.base_low;
-    entry->base_high = bios_entry.base_high;
-    entry->length_low = bios_entry.length_low;
-    entry->length_high = bios_entry.length_high;
-    entry->type = bios_entry.type;
-    return 0;
-}
-
-static void prepare_linux_platform(void) {
-    bios_rtc_prepare_for_linux(bios_nvram_enable_extended_cmos);
-    bios_acpi_install_for_linux(
-        bios_stage.rsdp_linear, bios_stage.acpi_pm1_evt,
-        bios_stage.acpi_pm1_cnt, bios_stage.acpi_gpe0,
-        bios_stage.acpi_gpe0_len, bios_stage.acpi_flags);
-}
-
-static void fill_linux_loader_config(struct linux_loader_config* config) {
-    config->total_bytes = bios_stage.total_bytes;
-    config->boot_priority = bios_settings.boot_priority;
-    config->vmlinux_partition = bios_settings.vmlinux_partition;
-    config->enable_serial_console =
-        (bios_settings.flags0 & BIOS_NVRAM_FLAGS0_SERIAL_CONSOLE) != 0u ? 1u
-                                                                        : 0u;
-    config->enable_vesa_1024_768 =
-        (bios_settings.flags0 & BIOS_NVRAM_FLAGS0_VESA_1024_768) != 0u ? 1u
-                                                                       : 0u;
-    config->cmdline_suffix = bios_settings.linux_cmdline_suffix;
-    config->prepare_platform = prepare_linux_platform;
-    config->init_vgabios = init_vgabios_for_linux;
+static void fill_bios_linux_config(struct bios_linux_config* config) {
+    config->stage = &bios_stage;
+    config->settings = &bios_settings;
     config->record_boot_success = nvram_record_boot_success;
-    config->vbe_mode_info_buffer = legacy_vbe_mode_info_buffer;
+    config->init_vgabios = init_vgabios_for_linux;
     config->vbe_mode_info_pm32 = bios_call_vbe_mode_info_pm32;
     config->vbe_set_mode_pm32 = bios_call_vbe_set_mode_pm32;
-    config->serial_write_string = serial_write_string;
-    config->serial_write_hex8 = serial_write_hex8;
-    config->serial_write_hex16 = serial_write_hex16;
-    config->serial_write_hex32 = serial_write_hex32;
-    config->serial_write_u32 = serial_write_u32;
-    config->hdd_is_present = bios_hdd_is_present;
-    config->hdd_current_kind = bios_hdd_current_kind;
-    config->hdd_select_kind = bios_hdd_select_kind;
-    config->hdd_get_geometry = linux_hdd_get_geometry_cb;
-    config->hdd_read_sectors = bios_hdd_read_sectors;
-    config->memory_extended_usable_end = bios_memory_extended_usable_end;
-    config->memory_e820_entry_count = bios_memory_e820_entry_count;
-    config->memory_e820_get_entry = linux_memory_e820_get_entry_cb;
 }
 
 static void install_bios_thunks(void) {
@@ -166,6 +107,7 @@ static void run_test_elf_blob(void) {
     blob_expand_fn expand = bios_stage_context_blob_expand(&bios_stage);
     void* blob_stage = bios_stage_context_blob_stage(&bios_stage);
     struct blob_status status;
+    struct bios_linux_config linux_platform = {0};
     struct linux_loader_config linux_config = {0};
     unsigned char* image = (unsigned char*)LINUX_LOADER_TEST_ELF_IMAGE_LINEAR;
     unsigned int entry_phys = 0u;
@@ -194,7 +136,8 @@ static void run_test_elf_blob(void) {
         return;
     }
 
-    fill_linux_loader_config(&linux_config);
+    fill_bios_linux_config(&linux_platform);
+    bios_linux_fill_loader_config(&linux_config, &linux_platform);
     if (linux_loader_load_elf_image(&linux_config, image, status.output_size,
                                     &entry_phys) != 0) {
         return;
@@ -227,10 +170,10 @@ static void nvram_record_boot_success(unsigned char kind) {
 }
 
 static int try_boot_linux(void) {
-    struct linux_loader_config config = {0};
+    struct bios_linux_config config = {0};
 
-    fill_linux_loader_config(&config);
-    return linux_loader_try_boot(&config);
+    fill_bios_linux_config(&config);
+    return bios_linux_try_boot(&config);
 }
 
 void postcar_resume(unsigned int total_bytes, unsigned int aux_blob_linear) {

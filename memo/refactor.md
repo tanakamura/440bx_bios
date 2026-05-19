@@ -589,6 +589,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - shared service table / boot context / payload manifest の stage3 decode は `bios_stage_context.*` へ分離済み。`bios_main.c` は `struct bios_stage_context` を保持して各 module へ渡すだけ。
 - NVRAM 設定 state / maintenance prompt glue / boot priority learn は `bios_settings.*` へ分離済み。`bios_main.c` は `struct bios_settings` を各 app config に渡すだけ。
 - legacy platform ops / runtime config / boot drive glue は `bios_legacy.*` へ分離済み。`bios_main.c` は boot priority と callbacks を渡して legacy app を呼び出すだけ。
+- Linux loader config / platform callback glue は `bios_linux.*` へ分離済み。`bios_main.c` は stage/settings/VBE callback を渡して Linux loader を呼び出すだけ。
 
 ## 決定事項
 
