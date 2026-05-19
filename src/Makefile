@@ -184,7 +184,7 @@ bios.bin: bios.elf
 	$(OBJCOPY) -O binary $< $@
 
 bios_blob.bin: bios.bin $(BUILD_SCRIPTS)/gen_blob.py
-	python3 $(BUILD_SCRIPTS)/gen_blob.py bios.bin bios_blob.bin
+	python3 $(BUILD_SCRIPTS)/gen_blob.py --load-addr 0x00200000 bios.bin bios_blob.bin
 
 bios_blob.o: bios_blob.bin
 	objcopy $(OBJCOPY_ELF_FLAGS) \
@@ -195,7 +195,7 @@ stage2.bin: stage2.elf
 	$(OBJCOPY) -O binary $< $@
 
 stage2_blob.bin: stage2.bin $(BUILD_SCRIPTS)/gen_blob.py
-	python3 $(BUILD_SCRIPTS)/gen_blob.py stage2.bin stage2_blob.bin
+	python3 $(BUILD_SCRIPTS)/gen_blob.py --load-addr 0x00080000 stage2.bin stage2_blob.bin
 
 stage2_blob.o: stage2_blob.bin
 	objcopy $(OBJCOPY_ELF_FLAGS) \
@@ -206,7 +206,7 @@ qemu_stage2.bin: qemu_stage2.elf
 	$(OBJCOPY) -O binary $< $@
 
 qemu_stage2_blob.bin: qemu_stage2.bin $(BUILD_SCRIPTS)/gen_blob.py
-	python3 $(BUILD_SCRIPTS)/gen_blob.py qemu_stage2.bin qemu_stage2_blob.bin
+	python3 $(BUILD_SCRIPTS)/gen_blob.py --load-addr 0x00080000 qemu_stage2.bin qemu_stage2_blob.bin
 
 qemu_stage2_blob.o: qemu_stage2_blob.bin
 	objcopy $(OBJCOPY_ELF_FLAGS) \

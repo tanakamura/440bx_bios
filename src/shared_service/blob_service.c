@@ -237,7 +237,8 @@ BLOBSVC_ENTRY int blob_expand_service(const void* blob_ptr, void* stage_ptr,
                         0);
         return BLOB_ERR_VERSION;
     }
-    if (hdr->flags != BLOB_FLAG_LZ4_BLOCKS) {
+    if ((hdr->flags & BLOB_FLAG_LZ4_BLOCKS) == 0u ||
+        (hdr->flags & ~BLOB_FLAG_KNOWN) != 0u) {
         blob_status_set(status, BLOB_ERR_FLAGS, 0, BLOB_FLAG_LZ4_BLOCKS,
                         hdr->flags, 0);
         return BLOB_ERR_FLAGS;

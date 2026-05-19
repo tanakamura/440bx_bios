@@ -681,6 +681,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - DOS tool / DOS test helper の source は `tools/dos/` へ移動済み。build output は互換のため引き続き `src/*.exe` / `src/*.com` に出す。
 - build generator scripts は `scripts/build/`、QEMU test runner は `scripts/test/` へ移動済み。`make -C src` から呼ぶ前提で、生成物の基準 directory は引き続き `src/`。
 - S3/uACPI selftest source は `src/app/selftest/s3test/` へ移動済み。生成物は互換のため引き続き `src/s3test.elf` / `src/test_elf_blob.bin`。
+- BLZ4 blob header は `load_addr` と `BLOB_FLAG_HAS_LOAD_ADDR` を持つ。現状は stage2 / stage3 blob 生成時に load address を埋め、既存 loader は互換のため caller 指定 destination へ展開している。
 
 ## 決定事項
 
@@ -694,5 +695,5 @@ payload blob の場所は boot context ではなく、shared service table の `
 - uACPI は selftest だけで使う。stage3 には常駐させない。
 - ACPI table は stage2 で完成させる。stage3 は boot context の `rsdp_linear` と ACPI PM port 情報だけを使う。
 - DOS 用 tools は `tools/dos/` へ移す。
-- app blob は先頭 4 byte に `load_addr` を持ち、その後ろに既存 BLZ4 blob を置く。
+- load address は app blob 先頭ではなく BLZ4 blob header の `load_addr` に持つ。`BLOB_FLAG_HAS_LOAD_ADDR` が立っている場合だけ有効。
 - shared service table pointer を消した後の panic/debug serial は不要。

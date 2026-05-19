@@ -2,8 +2,10 @@
 #define BLOB_H
 
 #define BLOB_MAGIC 0x345a4c42u
-#define BLOB_VERSION 2u
+#define BLOB_VERSION 3u
 #define BLOB_FLAG_LZ4_BLOCKS 0x00000002u
+#define BLOB_FLAG_HAS_LOAD_ADDR 0x00000004u
+#define BLOB_FLAG_KNOWN (BLOB_FLAG_LZ4_BLOCKS | BLOB_FLAG_HAS_LOAD_ADDR)
 #define BLOB_BLOCK_SIZE 4096u
 #define BLOB_OUTPUT_CRC_LIMIT (512u * 1024u)
 
@@ -31,6 +33,7 @@ struct blob_header {
     unsigned int header_size;
     unsigned int version;
     unsigned int flags;
+    unsigned int load_addr;
     unsigned int uncompressed_size;
     unsigned int compressed_size;
     unsigned int block_size;

@@ -7,9 +7,10 @@ import struct
 
 SECTOR = 512
 MAGIC = 0x345A4C42  # 'BLZ4'
-VERSION = 2
+VERSION = 3
 FLAG_LZ4_BLOCKS = 2
-HEADER_SIZE = 48
+FLAG_HAS_LOAD_ADDR = 4
+HEADER_SIZE = 52
 BLOCK_SIZE = 4096
 BLOCK_DESC_SIZE = 20
 MINMATCH = 4
@@ -197,12 +198,15 @@ def crc32(data: bytes) -> int:
     return binascii.crc32(data) & 0xFFFFFFFF
 
 
-def make_blob(payload: bytes) -> tuple[bytes, int, int]:
+def make_blob(payload: bytes, load_addr: int | None = None) -> tuple[bytes, int, int]:
     blocks = []
     compressed_payload = bytearray()
     block_count = (len(payload) + BLOCK_SIZE - 1) // BLOCK_SIZE
     block_table_off = HEADER_SIZE
     data_off = block_table_off + BLOCK_DESC_SIZE * block_count
+    flags = FLAG_LZ4_BLOCKS
+    if load_addr is not None:
+        flags |= FLAG_HAS_LOAD_ADDR
 
     for block_index in range(block_count):
         uncompressed_off = block_index * BLOCK_SIZE
@@ -225,11 +229,12 @@ def make_blob(payload: bytes) -> tuple[bytes, int, int]:
 
     out = bytearray()
     out += struct.pack(
-        "<IIIIIIIIIIII",
+        "<IIIIIIIIIIIII",
         MAGIC,
         HEADER_SIZE,
         VERSION,
-        FLAG_LZ4_BLOCKS,
+        flags,
+        0 if load_addr is None else load_addr,
         len(payload),
         len(compressed_payload),
         BLOCK_SIZE,
@@ -248,6 +253,7 @@ def make_blob(payload: bytes) -> tuple[bytes, int, int]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--fat12-normalize", action="store_true")
+    parser.add_argument("--load-addr", type=lambda value: int(value, 0))
     parser.add_argument("src", type=Path)
     parser.add_argument("dst", type=Path)
     args = parser.parse_args()
@@ -256,7 +262,7 @@ def main() -> int:
     if args.fat12_normalize:
         payload = normalize_fat12(payload)
 
-    blob, compressed_size, block_count = make_blob(payload)
+    blob, compressed_size, block_count = make_blob(payload, args.load_addr)
     args.dst.write_bytes(blob)
     print(
         f"wrote {args.dst} raw={len(payload)} blob={len(blob)} "
