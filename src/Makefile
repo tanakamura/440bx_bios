@@ -46,6 +46,8 @@ GENROM_BINS := p2b98_xv_legacy_genrom.bin p2b98_xv_selftest_genrom.bin \
 post_code.h post_code.inc ../specs/POST_CODE.md: post_code.def $(BUILD_SCRIPTS)/gen_post_codes.py
 	python3 $(BUILD_SCRIPTS)/gen_post_codes.py
 
+include app/legacy/Makefile
+include app/linux_loader/Makefile
 include stage3/Makefile
 include platform/p2b98_xv/stage1/Makefile
 include platform/p2b98_xv/stage2/Makefile
@@ -306,9 +308,6 @@ blob_service.o: shared_service/blob_service.c
 l2_service.o: platform/p2b98_xv/stage2/l2_service.c
 	$(COMPILE_C)
 
-bios16.o: app/legacy/bios16.asm post_code.inc
-	nasm $(NASMFLAGS) -f elf32 $< -o $@
-
 qemu_start.o: platform/qemu/stage1/qemu_start.asm
 	nasm $(NASMFLAGS) -f elf32 $< -o $@
 
@@ -367,54 +366,6 @@ bios_pci.o: lib/pci/bios_pci.c
 	$(COMPILE_C)
 
 bios_storage.o: lib/storage/bios_storage.c
-	$(COMPILE_C)
-
-linux_loader.o: app/linux_loader/linux_loader.c
-	$(COMPILE_C)
-
-legacy_floppy.o: app/legacy/legacy_floppy.c
-	$(COMPILE_C)
-
-legacy_bda.o: app/legacy/legacy_bda.c
-	$(COMPILE_C)
-
-legacy_boot.o: app/legacy/legacy_boot.c
-	$(COMPILE_C)
-
-legacy_debug.o: app/legacy/legacy_debug.c
-	$(COMPILE_C)
-
-legacy_int13.o: app/legacy/legacy_int13.c
-	$(COMPILE_C)
-
-legacy_int15.o: app/legacy/legacy_int15.c
-	$(COMPILE_C)
-
-legacy_keyboard.o: app/legacy/legacy_keyboard.c
-	$(COMPILE_C)
-
-legacy_misc.o: app/legacy/legacy_misc.c
-	$(COMPILE_C)
-
-legacy_platform.o: app/legacy/legacy_platform.c
-	$(COMPILE_C)
-
-legacy_runtime.o: app/legacy/legacy_runtime.c
-	$(COMPILE_C)
-
-legacy_service.o: app/legacy/legacy_service.c
-	$(COMPILE_C)
-
-legacy_thunk.o: app/legacy/legacy_thunk.c
-	$(COMPILE_C)
-
-legacy_timer.o: app/legacy/legacy_timer.c
-	$(COMPILE_C)
-
-legacy_time.o: app/legacy/legacy_time.c
-	$(COMPILE_C)
-
-legacy_video.o: app/legacy/legacy_video.c
 	$(COMPILE_C)
 
 romtest: romtest.asm
