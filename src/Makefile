@@ -47,6 +47,8 @@ post_code.h post_code.inc ../specs/POST_CODE.md: post_code.def $(BUILD_SCRIPTS)/
 	python3 $(BUILD_SCRIPTS)/gen_post_codes.py
 
 include stage3/Makefile
+include platform/p2b98_xv/stage2/Makefile
+include platform/qemu/stage2/Makefile
 
 fdos_blob.bin: ../freedos_boot_fd.img $(BUILD_SCRIPTS)/gen_blob.py
 	python3 $(BUILD_SCRIPTS)/gen_blob.py --fat12-normalize ../freedos_boot_fd.img fdos_blob.bin
@@ -240,12 +242,6 @@ start.elf: start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o dsdt
 bios.elf: stage3.elf
 	cp $< $@
 
-stage2.elf: stage2.o l2_service.o acpi_tables.o platform/p2b98_xv/stage2/stage2.ld
-	$(LD) -m elf_i386 -T platform/p2b98_xv/stage2/stage2.ld -Map stage2.map -o $@ stage2.o l2_service.o acpi_tables.o
-
-$(P2B_STAGE2_ELF): stage2.elf
-	cp $< $@
-
 qemu_bios.bin: qemu_start.elf
 	$(OBJCOPY) -O binary $< $@
 	truncate -s 262144 $@
@@ -311,9 +307,6 @@ blob_service.o: shared_service/blob_service.c
 l2_service.o: platform/p2b98_xv/stage2/l2_service.c
 	$(COMPILE_C)
 
-qemu_stage2.elf: qemu_stage2.o acpi_tables.o platform/qemu/stage2/stage2.ld
-	$(LD) -m elf_i386 -T platform/qemu/stage2/stage2.ld -Map qemu_stage2.map -o $@ qemu_stage2.o acpi_tables.o
-
 bios16.o: app/legacy/bios16.asm post_code.inc
 	nasm $(NASMFLAGS) -f elf32 $< -o $@
 
@@ -325,9 +318,6 @@ qemu_stage1.o: platform/qemu/stage1/qemu_stage1.c
 
 $(QEMU_STAGE1_ELF): qemu_start.o qemu_stage1.o blob_service.o platform/qemu/stage1/stage1.ld
 	$(LD) -m elf_i386 -T platform/qemu/stage1/stage1.ld -Map platform/qemu/stage1/stage1.map -o $@ qemu_start.o qemu_stage1.o blob_service.o
-
-$(QEMU_STAGE2_ELF): qemu_stage2.elf
-	cp $< $@
 
 stage3_entry.o: stage3/entry.c
 	$(COMPILE_C)
