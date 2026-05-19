@@ -1,3 +1,4 @@
+#include "acpi_tables.h"
 #include "bios_io.h"
 #include "bios_memory.h"
 #include "bios_nvram.h"
@@ -25,9 +26,9 @@ extern unsigned char __bss_start[];
 extern unsigned char __bss_end[];
 
 static unsigned int bios_total_bytes_global = 0;
-static unsigned int bios_dsdt_blob_linear_global = 0;
 static unsigned int bios_vgabios_blob_linear_global = 0;
 static unsigned int bios_test_elf_blob_linear_global = 0;
+static unsigned int bios_rsdp_linear_global = 0;
 static struct shared_service_table* bios_shared_service_global = 0;
 static unsigned char bios_vgabios_shadow_ready = 0;
 static unsigned char bios_vgabios_initialized = 0;
@@ -777,13 +778,6 @@ static void install_boot_drive(void) {
     legacy_install_boot_drive(bios_boot_drive);
 }
 
-static void bios_memset(void* dst, unsigned char value, unsigned int len) {
-    unsigned char* p = (unsigned char*)dst;
-    while (len-- != 0u) {
-        *p++ = value;
-    }
-}
-
 static unsigned int bios_top_reserved_base(void) {
     return bios_memory_top_reserved_base(bios_total_bytes_global);
 }
@@ -917,6 +911,9 @@ static void bios_run_optional_memtest(void) {
     serial_write_string("Memtest ok\r\n");
 }
 
+#if 0
+/* ACPI table construction is owned by stage2.  Keep the old stage3 builder
+ * disabled until the stage split is fully settled. */
 #define ACPI_RSDP_LINEAR 0x0009fc00u
 #define ACPI_EBDA_SEGMENT 0x9fc0u
 #define ACPI_TABLE_RESERVED_OFFSET 0x00080000u
@@ -1387,6 +1384,60 @@ static int acpi_install_qemu_fwcfg(void) {
     return 0;
 }
 
+#endif
+
+static void acpi_enable_qemu_pm_io_stage3(void) {
+    if (pci_read32(0, 1, 3, 0x00) != 0x71138086u) {
+        return;
+    }
+    pci_write32(0, 1, 3, 0x40, QEMU_ACPI_PM_BASE | 0x00000001u);
+    pci_write8(0, 1, 3, 0x80, 0x81u);
+    pci_write16(0, 1, 3, 0x04,
+                (unsigned short)(pci_read16(0, 1, 3, 0x04) | 0x0001u));
+}
+
+static void acpi_enable_real_pm_io(void) {
+    unsigned short cmd;
+    unsigned char misc;
+
+    if (pci_read32(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x00) !=
+        0x71138086u) {
+        serial_write_string("ACPI real PM dev missing\r\n");
+        return;
+    }
+
+    pci_write32(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x40,
+                ACPI_REAL_PM1_EVT | 0x00000001u);
+    misc = pci_read8(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x80);
+    pci_write8(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x80,
+               (unsigned char)(misc | 0x81u));
+    cmd = pci_read16(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x04);
+    pci_write16(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x04,
+                (unsigned short)(cmd | 0x0001u));
+
+    serial_write_string("ACPI real PM io pmb=");
+    serial_write_hex32(
+        pci_read32(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x40));
+    serial_write_string(" misc=");
+    serial_write_hex8(pci_read8(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x80));
+    serial_write_string(" cmd=");
+    serial_write_hex16(
+        pci_read16(0, ACPI_REAL_PCI_DEV, ACPI_REAL_PCI_FN, 0x04));
+    serial_write_string("\r\n");
+}
+
+static void acpi_enable_real_mode(void) {
+    unsigned short cnt = inw((unsigned short)ACPI_REAL_PM1_CNT);
+    if ((cnt & ACPI_PM1_CNT_SCI_EN) == 0u) {
+        outw((unsigned short)ACPI_REAL_PM1_CNT,
+             (unsigned short)(cnt | ACPI_PM1_CNT_SCI_EN));
+        cnt = inw((unsigned short)ACPI_REAL_PM1_CNT);
+    }
+    serial_write_string("ACPI real PM1 cnt=");
+    serial_write_hex16(cnt);
+    serial_write_string("\r\n");
+}
+
 static void acpi_clear_pm_events(unsigned int pm1_evt, unsigned int gpe0,
                                  unsigned int gpe0_len) {
     unsigned int half;
@@ -1423,17 +1474,15 @@ static void acpi_clear_pm_events(unsigned int pm1_evt, unsigned int gpe0,
 }
 
 static void acpi_install_for_linux(void) {
-    int rc;
-    if (bios_qemu_mode) {
-        rc = acpi_install_qemu_fwcfg();
-    } else {
-        rc = acpi_install_real_dsdt_blob();
-    }
-    if (rc != 0) {
-        serial_write_string("ACPI install skipped\r\n");
+    if (bios_rsdp_linear_global == 0u) {
+        serial_write_string("ACPI tables missing\r\n");
         return;
     }
+    serial_write_string("ACPI RSDP=");
+    serial_write_hex32(bios_rsdp_linear_global);
+    serial_write_string("\r\n");
     if (bios_qemu_mode) {
+        acpi_enable_qemu_pm_io_stage3();
         acpi_clear_pm_events(QEMU_ACPI_PM_BASE, QEMU_ACPI_PM_BASE + 0x0cu,
                              ACPI_GPE0_LEN);
     } else {
@@ -1634,9 +1683,9 @@ static void bios_load_stage_context(unsigned int total_bytes,
     bios_total_bytes_global = total_bytes;
     bios_qemu_mode = qemu_mode;
     bios_shared_service_global = shared_service_from_total(total_bytes);
-    bios_dsdt_blob_linear_global = 0u;
     bios_vgabios_blob_linear_global = 0u;
     bios_test_elf_blob_linear_global = 0u;
+    bios_rsdp_linear_global = 0u;
     bios_maintenance_requested = 0u;
     bios_shadow_ready = 0u;
 
@@ -1654,12 +1703,9 @@ static void bios_load_stage_context(unsigned int total_bytes,
         if ((boot_ctx->flags & SHARED_BOOT_FLAG_PLATFORM_P2B98_XV) != 0u) {
             bios_qemu_mode = 0u;
         }
+        bios_rsdp_linear_global = boot_ctx->rsdp_linear;
     }
 
-    blob = bios_payload_blob_ptr(SHARED_PAYLOAD_ID_DSDT);
-    if (blob != 0u) {
-        bios_dsdt_blob_linear_global = blob;
-    }
     blob = bios_payload_blob_ptr(SHARED_PAYLOAD_ID_VGABIOS);
     if (blob != 0u) {
         bios_vgabios_blob_linear_global = blob;
@@ -1670,9 +1716,6 @@ static void bios_load_stage_context(unsigned int total_bytes,
     }
 
     if (aux_blob_linear != 0u) {
-        if (bios_dsdt_blob_linear_global == 0u) {
-            bios_dsdt_blob_linear_global = aux[BOOT_AUX_DSDT_BLOB];
-        }
         if (bios_vgabios_blob_linear_global == 0u) {
             bios_vgabios_blob_linear_global = aux[BOOT_AUX_VBIOS_BLOB];
         }

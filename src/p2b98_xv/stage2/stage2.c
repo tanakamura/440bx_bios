@@ -1,3 +1,4 @@
+#include "acpi_tables.h"
 #include "blob.h"
 #include "l2_service.h"
 #include "service_table.h"
@@ -209,6 +210,50 @@ static void init_l2_cache(void) {
     serial_write_string("\r\n");
 }
 
+static void install_real_acpi_tables(unsigned int total_bytes,
+                                     struct shared_boot_context* boot_ctx,
+                                     volatile unsigned int* aux,
+                                     blob_expand_fn expand) {
+    unsigned int dsdt_blob = 0u;
+    unsigned int base = acpi_table_base_for_total(total_bytes);
+    unsigned int cap = acpi_table_capacity_for_total(total_bytes);
+    unsigned int dsdt = base + 0x1000u;
+    struct blob_status status;
+    int rc;
+
+    if (boot_ctx != 0) {
+        dsdt_blob = boot_ctx->acpi_input_ptr;
+    }
+    if (dsdt_blob == 0u && aux != 0) {
+        dsdt_blob = aux[BOOT_AUX_DSDT_BLOB];
+    }
+    if (dsdt_blob == 0u || cap <= 0x1000u) {
+        serial_write_string("ACPI real tables skipped\r\n");
+        return;
+    }
+
+    serial_write_string("ACPI real DSDT @ ");
+    serial_write_hex32(base);
+    serial_write_string("...");
+    rc = expand((const void*)dsdt_blob, (void*)BLOB_STAGE_LINEAR, (void*)dsdt,
+                cap - 0x1000u, &status);
+    serial_write_string("\r\n");
+    if (rc != 0) {
+        serial_write_string("ACPI DSDT blob failed rc=");
+        serial_write_hex8((unsigned char)rc);
+        serial_write_string(" block=");
+        serial_write_hex32(status.block);
+        serial_write_string("\r\n");
+        return;
+    }
+
+    acpi_build_real_tables(base, dsdt, status.output_size);
+    if (boot_ctx != 0) {
+        boot_ctx->rsdp_linear = ACPI_RSDP_LINEAR;
+    }
+    serial_write_string("ACPI real tables ok\r\n");
+}
+
 __attribute__((section(".stage2.entry"), used)) void stage2_entry(
     unsigned int total_bytes, unsigned int aux_linear) {
     typedef void (*bios_entry_fn)(unsigned int, unsigned int);
@@ -248,6 +293,7 @@ __attribute__((section(".stage2.entry"), used)) void stage2_entry(
     if (boot_ctx != 0) {
         boot_ctx->flags |= SHARED_BOOT_FLAG_SHADOW_READY;
     }
+    install_real_acpi_tables(total_bytes, boot_ctx, aux, expand);
 
     serial_write_string("Load stage3 @ 00200000...\r\n");
     if (stage3_blob == 0) {

@@ -203,8 +203,8 @@ start.elf: start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o dsdt
 bios.elf: bios16.o bios_main.o bios_memory.o bios_rtc.o bios_serial.o bios_pci.o bios_storage.o linux_loader.o legacy_bda.o legacy_boot.o legacy_debug.o legacy_floppy.o legacy_int13.o legacy_int15.o legacy_keyboard.o legacy_misc.o legacy_runtime.o legacy_service.o legacy_thunk.o legacy_timer.o legacy_time.o legacy_video.o bios.ld
 	$(LD) -m elf_i386 -T bios.ld -Map bios.map -o $@ bios16.o bios_main.o bios_memory.o bios_rtc.o bios_serial.o bios_pci.o bios_storage.o linux_loader.o legacy_bda.o legacy_boot.o legacy_debug.o legacy_floppy.o legacy_int13.o legacy_int15.o legacy_keyboard.o legacy_misc.o legacy_runtime.o legacy_service.o legacy_thunk.o legacy_timer.o legacy_time.o legacy_video.o
 
-stage2.elf: stage2.o l2_service.o p2b98_xv/stage2/stage2.ld
-	$(LD) -m elf_i386 -T p2b98_xv/stage2/stage2.ld -Map stage2.map -o $@ stage2.o l2_service.o
+stage2.elf: stage2.o l2_service.o acpi_tables.o p2b98_xv/stage2/stage2.ld
+	$(LD) -m elf_i386 -T p2b98_xv/stage2/stage2.ld -Map stage2.map -o $@ stage2.o l2_service.o acpi_tables.o
 
 qemu_bios.bin: qemu_start.elf
 	$(OBJCOPY) -O binary $< $@
@@ -245,10 +245,13 @@ start_asm.o: p2b98_xv/stage1/start.asm post_code.inc
 bootblock.o: p2b98_xv/stage1/bootblock.c post_code.h blob.h service_table.h bios_nvram.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-stage2.o: p2b98_xv/stage2/stage2.c blob.h service_table.h p2b98_xv/stage2/l2_service.h
+stage2.o: p2b98_xv/stage2/stage2.c acpi_tables.h blob.h service_table.h p2b98_xv/stage2/l2_service.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-qemu_stage2.o: qemu/stage2/stage2.c blob.h service_table.h
+qemu_stage2.o: qemu/stage2/stage2.c acpi_tables.h blob.h service_table.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+acpi_tables.o: acpi_tables.c acpi_tables.h bios_memory.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 blob_service.o: blob_service.c blob.h
@@ -257,8 +260,8 @@ blob_service.o: blob_service.c blob.h
 l2_service.o: p2b98_xv/stage2/l2_service.c p2b98_xv/stage2/l2_service.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-qemu_stage2.elf: qemu_stage2.o qemu/stage2/stage2.ld
-	$(LD) -m elf_i386 -T qemu/stage2/stage2.ld -Map qemu_stage2.map -o $@ qemu_stage2.o
+qemu_stage2.elf: qemu_stage2.o acpi_tables.o qemu/stage2/stage2.ld
+	$(LD) -m elf_i386 -T qemu/stage2/stage2.ld -Map qemu_stage2.map -o $@ qemu_stage2.o acpi_tables.o
 
 bios16.o: app/legacy/bios16.asm post_code.inc
 	nasm $(NASMFLAGS) -f elf32 $< -o $@
@@ -269,7 +272,7 @@ qemu_start.o: qemu/stage1/qemu_start.asm
 qemu_stage1.o: qemu/stage1/qemu_stage1.c blob.h service_table.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-bios_main.o: bios_main.c post_code.h blob.h service_table.h bios_io.h bios_memory.h bios_nvram.h bios_pci.h bios_rtc.h bios_serial.h bios_storage.h app/linux_loader/linux_loader.h app/legacy/legacy_boot.h app/legacy/legacy_floppy.h app/legacy/legacy_runtime.h app/legacy/legacy_thunk.h
+bios_main.o: bios_main.c post_code.h acpi_tables.h blob.h service_table.h bios_io.h bios_memory.h bios_nvram.h bios_pci.h bios_rtc.h bios_serial.h bios_storage.h app/linux_loader/linux_loader.h app/legacy/legacy_boot.h app/legacy/legacy_floppy.h app/legacy/legacy_runtime.h app/legacy/legacy_thunk.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 bios_memory.o: bios_memory.c bios_memory.h

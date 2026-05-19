@@ -1,3 +1,4 @@
+#include "acpi_tables.h"
 #include "blob.h"
 #include "service_table.h"
 
@@ -11,6 +12,20 @@ static inline void outb(unsigned short port, unsigned char value) {
 static inline unsigned char inb(unsigned short port) {
     unsigned char value;
     __asm__ volatile("inb %1, %0" : "=a"(value) : "Nd"(port));
+    return value;
+}
+
+static inline void outw(unsigned short port, unsigned short value) {
+    __asm__ volatile("outw %0, %1" : : "a"(value), "Nd"(port));
+}
+
+static inline void outl(unsigned short port, unsigned int value) {
+    __asm__ volatile("outl %0, %1" : : "a"(value), "Nd"(port));
+}
+
+static inline unsigned int inl(unsigned short port) {
+    unsigned int value;
+    __asm__ volatile("inl %1, %0" : "=a"(value) : "Nd"(port));
     return value;
 }
 
@@ -52,6 +67,167 @@ static void zero_bss(void) {
     }
 }
 
+static unsigned int pci_addr(unsigned char bus, unsigned char dev,
+                             unsigned char fn, unsigned char reg) {
+    return 0x80000000u | ((unsigned int)bus << 16) |
+           ((unsigned int)dev << 11) | ((unsigned int)fn << 8) |
+           (reg & 0xfcu);
+}
+
+static unsigned int pci_read32(unsigned char bus, unsigned char dev,
+                               unsigned char fn, unsigned char reg) {
+    outl(0x0cf8u, pci_addr(bus, dev, fn, reg));
+    return inl(0x0cfcu);
+}
+
+static unsigned short pci_read16(unsigned char bus, unsigned char dev,
+                                 unsigned char fn, unsigned char reg) {
+    unsigned int value = pci_read32(bus, dev, fn, reg);
+    return (unsigned short)(value >> ((reg & 0x02u) * 8u));
+}
+
+static void pci_write32(unsigned char bus, unsigned char dev, unsigned char fn,
+                        unsigned char reg, unsigned int value) {
+    outl(0x0cf8u, pci_addr(bus, dev, fn, reg));
+    outl(0x0cfcu, value);
+}
+
+static void pci_write16(unsigned char bus, unsigned char dev, unsigned char fn,
+                        unsigned char reg, unsigned short value) {
+    outl(0x0cf8u, pci_addr(bus, dev, fn, reg));
+    outw((unsigned short)(0x0cfcu + (reg & 0x02u)), value);
+}
+
+static void pci_write8(unsigned char bus, unsigned char dev, unsigned char fn,
+                       unsigned char reg, unsigned char value) {
+    outl(0x0cf8u, pci_addr(bus, dev, fn, reg));
+    outb((unsigned short)(0x0cfcu + (reg & 0x03u)), value);
+}
+
+#define FW_CFG_PORT_SEL 0x0510u
+#define FW_CFG_PORT_DATA 0x0511u
+#define FW_CFG_SIGNATURE 0x0000u
+#define FW_CFG_FILE_DIR 0x0019u
+#define FW_CFG_MAX_FILE_PATH 56u
+
+static int stage2_name_eq(const char* a, const char* b) {
+    while (*a != '\0' || *b != '\0') {
+        if (*a != *b) {
+            return 0;
+        }
+        ++a;
+        ++b;
+    }
+    return 1;
+}
+
+static void fwcfg_select(unsigned short selector) {
+    outw(FW_CFG_PORT_SEL, selector);
+}
+
+static unsigned char fwcfg_read8(void) { return inb(FW_CFG_PORT_DATA); }
+
+static unsigned short fwcfg_read_be16(void) {
+    unsigned short hi = fwcfg_read8();
+    unsigned short lo = fwcfg_read8();
+    return (unsigned short)((hi << 8) | lo);
+}
+
+static unsigned int fwcfg_read_be32(void) {
+    unsigned int b0 = fwcfg_read8();
+    unsigned int b1 = fwcfg_read8();
+    unsigned int b2 = fwcfg_read8();
+    unsigned int b3 = fwcfg_read8();
+    return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
+}
+
+static int fwcfg_signature_ok(void) {
+    fwcfg_select(FW_CFG_SIGNATURE);
+    return fwcfg_read8() == 'Q' && fwcfg_read8() == 'E' &&
+           fwcfg_read8() == 'M' && fwcfg_read8() == 'U';
+}
+
+static int fwcfg_find_file(const char* name, unsigned short* selector,
+                           unsigned int* size) {
+    unsigned int count;
+    unsigned int i;
+
+    if (!fwcfg_signature_ok()) {
+        return -1;
+    }
+    fwcfg_select(FW_CFG_FILE_DIR);
+    count = fwcfg_read_be32();
+    for (i = 0; i < count; ++i) {
+        unsigned int file_size = fwcfg_read_be32();
+        unsigned short file_select = fwcfg_read_be16();
+        char file_name[FW_CFG_MAX_FILE_PATH];
+        unsigned int j;
+
+        (void)fwcfg_read_be16();
+        for (j = 0; j < FW_CFG_MAX_FILE_PATH; ++j) {
+            file_name[j] = (char)fwcfg_read8();
+        }
+        file_name[FW_CFG_MAX_FILE_PATH - 1u] = '\0';
+        if (stage2_name_eq(file_name, name)) {
+            *selector = file_select;
+            *size = file_size;
+            return 0;
+        }
+    }
+    return -1;
+}
+
+static void fwcfg_read_file(unsigned short selector, void* dst,
+                            unsigned int size) {
+    unsigned char* p = (unsigned char*)dst;
+    unsigned int i;
+
+    fwcfg_select(selector);
+    for (i = 0; i < size; ++i) {
+        p[i] = fwcfg_read8();
+    }
+}
+
+static void acpi_enable_qemu_pm_io(void) {
+    if (pci_read32(0, 1, 3, 0x00) != 0x71138086u) {
+        return;
+    }
+    pci_write32(0, 1, 3, 0x40, QEMU_ACPI_PM_BASE | 0x00000001u);
+    pci_write8(0, 1, 3, 0x80, 0x81u);
+    pci_write16(0, 1, 3, 0x04,
+                (unsigned short)(pci_read16(0, 1, 3, 0x04) | 0x0001u));
+}
+
+static void install_qemu_acpi_tables(unsigned int total_bytes,
+                                     struct shared_boot_context* boot_ctx) {
+    unsigned short selector;
+    unsigned int size;
+    unsigned int base = acpi_table_base_for_total(total_bytes);
+    unsigned int cap = acpi_table_capacity_for_total(total_bytes);
+
+    if (fwcfg_find_file("etc/acpi/tables", &selector, &size) != 0 ||
+        size == 0u || size > cap) {
+        serial_write_string("ACPI qemu tables skipped\r\n");
+        return;
+    }
+
+    serial_write_string("ACPI qemu fw_cfg @ ");
+    serial_write_hex32(base);
+    serial_write_string(" size=");
+    serial_write_hex32(size);
+    serial_write_string("\r\n");
+    acpi_enable_qemu_pm_io();
+    fwcfg_read_file(selector, (void*)base, size);
+    if (acpi_patch_qemu_tables(base, size) != 0) {
+        serial_write_string("ACPI qemu patch failed\r\n");
+        return;
+    }
+    if (boot_ctx != 0) {
+        boot_ctx->rsdp_linear = ACPI_RSDP_LINEAR;
+    }
+    serial_write_string("ACPI qemu tables ok\r\n");
+}
+
 __attribute__((section(".stage2.entry"), used)) void qemu_stage2_entry(
     unsigned int total_bytes, unsigned int aux_linear) {
     typedef void (*bios_entry_fn)(unsigned int, unsigned int);
@@ -85,6 +261,7 @@ __attribute__((section(".stage2.entry"), used)) void qemu_stage2_entry(
     if (boot_ctx != 0) {
         boot_ctx->flags |= SHARED_BOOT_FLAG_SHADOW_READY;
     }
+    install_qemu_acpi_tables(total_bytes, boot_ctx);
 
     if (stage3_blob == 0) {
         serial_write_string("qemu stage3 blob missing\r\n");
