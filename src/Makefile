@@ -47,7 +47,9 @@ post_code.h post_code.inc ../specs/POST_CODE.md: post_code.def $(BUILD_SCRIPTS)/
 	python3 $(BUILD_SCRIPTS)/gen_post_codes.py
 
 include stage3/Makefile
+include platform/p2b98_xv/stage1/Makefile
 include platform/p2b98_xv/stage2/Makefile
+include platform/qemu/stage1/Makefile
 include platform/qemu/stage2/Makefile
 
 fdos_blob.bin: ../freedos_boot_fd.img $(BUILD_SCRIPTS)/gen_blob.py
@@ -289,9 +291,6 @@ start_asm.o: platform/p2b98_xv/stage1/start.asm post_code.inc
 bootblock.o: platform/p2b98_xv/stage1/bootblock.c
 	$(COMPILE_C)
 
-$(P2B_STAGE1_ELF): start_asm.o bootblock.o blob_service.o platform/p2b98_xv/stage1/stage1.ld
-	$(LD) -m elf_i386 -T platform/p2b98_xv/stage1/stage1.ld -Map platform/p2b98_xv/stage1/stage1.map -o $@ start_asm.o bootblock.o blob_service.o
-
 stage2.o: platform/p2b98_xv/stage2/stage2.c
 	$(COMPILE_C)
 
@@ -315,9 +314,6 @@ qemu_start.o: platform/qemu/stage1/qemu_start.asm
 
 qemu_stage1.o: platform/qemu/stage1/qemu_stage1.c
 	$(COMPILE_C)
-
-$(QEMU_STAGE1_ELF): qemu_start.o qemu_stage1.o blob_service.o platform/qemu/stage1/stage1.ld
-	$(LD) -m elf_i386 -T platform/qemu/stage1/stage1.ld -Map platform/qemu/stage1/stage1.map -o $@ qemu_start.o qemu_stage1.o blob_service.o
 
 stage3_entry.o: stage3/entry.c
 	$(COMPILE_C)
