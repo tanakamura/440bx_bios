@@ -7,3 +7,6 @@ qemu_stage2.elf: $(QEMU_STAGE2_OBJS) platform/qemu/stage2/stage2.ld
 
 $(QEMU_STAGE2_ELF): qemu_stage2.elf
 	cp $< $@
+
+qemu_stage2.o: platform/qemu/stage2/stage2.c
+	$(COMPILE_C)

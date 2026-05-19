@@ -7,3 +7,9 @@ stage2.elf: $(P2B_STAGE2_OBJS) platform/p2b98_xv/stage2/stage2.ld
 
 $(P2B_STAGE2_ELF): stage2.elf
 	cp $< $@
+
+stage2.o: platform/p2b98_xv/stage2/stage2.c
+	$(COMPILE_C)
+
+l2_service.o: platform/p2b98_xv/stage2/l2_service.c
+	$(COMPILE_C)

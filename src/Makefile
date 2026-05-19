@@ -261,31 +261,10 @@ start_legacy_test: start_legacy test_floppy_blob.bin $(BUILD_SCRIPTS)/patch_rom_
 	cp start_legacy $@
 	python3 $(BUILD_SCRIPTS)/patch_rom_free.py $@ test_floppy_blob.bin
 
-start_asm.o: platform/p2b98_xv/stage1/start.asm post_code.inc
-	nasm $(NASMFLAGS) -f elf32 $< -o $@
-
-bootblock.o: platform/p2b98_xv/stage1/bootblock.c
-	$(COMPILE_C)
-
-stage2.o: platform/p2b98_xv/stage2/stage2.c
-	$(COMPILE_C)
-
-qemu_stage2.o: platform/qemu/stage2/stage2.c
-	$(COMPILE_C)
-
 acpi_tables.o: lib/acpi/acpi_tables.c
 	$(COMPILE_C)
 
 blob_service.o: shared_service/blob_service.c
-	$(COMPILE_C)
-
-l2_service.o: platform/p2b98_xv/stage2/l2_service.c
-	$(COMPILE_C)
-
-qemu_start.o: platform/qemu/stage1/qemu_start.asm
-	nasm $(NASMFLAGS) -f elf32 $< -o $@
-
-qemu_stage1.o: platform/qemu/stage1/qemu_stage1.c
 	$(COMPILE_C)
 
 bios_memory.o: lib/x86/bios_memory.c
