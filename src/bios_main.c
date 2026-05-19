@@ -1,6 +1,7 @@
 #include "bios_acpi_runtime.h"
 #include "bios_benchmark.h"
 #include "bios_io.h"
+#include "bios_legacy.h"
 #include "bios_memtest.h"
 #include "bios_memory.h"
 #include "bios_rtc.h"
@@ -10,10 +11,7 @@
 #include "bios_stage_context.h"
 #include "bios_storage.h"
 #include "app/linux_loader/linux_loader.h"
-#include "app/legacy/legacy_boot.h"
 #include "app/legacy/legacy_floppy.h"
-#include "app/legacy/legacy_platform.h"
-#include "app/legacy/legacy_runtime.h"
 #include "app/legacy/legacy_thunk.h"
 #include "post_code.h"
 
@@ -27,8 +25,6 @@ extern unsigned char __bss_end[];
 
 static struct bios_stage_context bios_stage;
 static struct bios_settings bios_settings;
-static const unsigned short bios_ebda_segment = 0x0000u;
-static const unsigned short bios_dos_base_mem_kb = 640u;
 static unsigned char bios_boot_drive = 0x80u;
 
 static void zero_bss(void) {
@@ -62,41 +58,6 @@ static void init_vgabios_for_linux(void) {
 
 static void nvram_record_boot_success(unsigned char kind);
 
-static void legacy_hdd_get_geometry_cb(struct legacy_hdd_geometry* geometry) {
-    struct bios_hdd_geometry bios_geometry;
-
-    bios_hdd_get_geometry(&bios_geometry);
-    geometry->total_sectors = bios_geometry.total_sectors;
-    geometry->cylinders = bios_geometry.cylinders;
-    geometry->heads = bios_geometry.heads;
-    geometry->sectors_per_track = bios_geometry.sectors_per_track;
-}
-
-static unsigned int
-legacy_memory_extended_usable_end_cb(unsigned int total_bytes) {
-    return bios_memory_extended_usable_end(total_bytes);
-}
-
-static unsigned int legacy_memory_e820_entry_count_cb(unsigned int total_bytes) {
-    return bios_memory_e820_entry_count(total_bytes);
-}
-
-static int legacy_memory_e820_get_entry_cb(unsigned int total_bytes,
-                                           unsigned int index,
-                                           struct legacy_e820_entry* entry) {
-    struct e820_entry bios_entry;
-
-    if (bios_memory_e820_get_entry(total_bytes, index, &bios_entry) != 0) {
-        return -1;
-    }
-    entry->base_low = bios_entry.base_low;
-    entry->base_high = bios_entry.base_high;
-    entry->length_low = bios_entry.length_low;
-    entry->length_high = bios_entry.length_high;
-    entry->type = bios_entry.type;
-    return 0;
-}
-
 static void linux_hdd_get_geometry_cb(
     struct linux_loader_hdd_geometry* geometry) {
     struct bios_hdd_geometry bios_geometry;
@@ -122,31 +83,6 @@ static int linux_memory_e820_get_entry_cb(unsigned int total_bytes,
     entry->length_high = bios_entry.length_high;
     entry->type = bios_entry.type;
     return 0;
-}
-
-static void install_legacy_platform_ops(void) {
-    struct legacy_platform_ops ops = {0};
-
-    ops.serial_write_char = serial_write_char;
-    ops.serial_write_string = serial_write_string;
-    ops.serial_write_hex8 = serial_write_hex8;
-    ops.serial_write_hex16 = serial_write_hex16;
-    ops.serial_write_hex32 = serial_write_hex32;
-    ops.serial_write_u32 = serial_write_u32;
-    ops.hdd_is_present = bios_hdd_is_present;
-    ops.hdd_current_kind = bios_hdd_current_kind;
-    ops.hdd_select_kind = bios_hdd_select_kind;
-    ops.hdd_get_geometry = legacy_hdd_get_geometry_cb;
-    ops.hdd_read_sectors = bios_hdd_read_sectors;
-    ops.hdd_load_mbr_boot_sector = bios_hdd_load_mbr_boot_sector;
-    ops.rtc_read_time_bcd = bios_rtc_read_time_bcd;
-    ops.rtc_read_date_bcd = bios_rtc_read_date_bcd;
-    ops.rtc_set_time_bcd = bios_rtc_set_time_bcd;
-    ops.rtc_set_date_bcd = bios_rtc_set_date_bcd;
-    ops.memory_extended_usable_end = legacy_memory_extended_usable_end_cb;
-    ops.memory_e820_entry_count = legacy_memory_e820_entry_count_cb;
-    ops.memory_e820_get_entry = legacy_memory_e820_get_entry_cb;
-    legacy_platform_init(&ops);
 }
 
 static void prepare_linux_platform(void) {
@@ -190,27 +126,19 @@ static void fill_linux_loader_config(struct linux_loader_config* config) {
 }
 
 static void install_bios_thunks(void) {
-    struct legacy_runtime_config config;
-
-    config.total_bytes = bios_stage.total_bytes;
-    config.floppy_present = legacy_floppy_present();
-    config.hdd_present = bios_hdd_is_present();
-    config.base_mem_kb = bios_dos_base_mem_kb;
-    config.ebda_segment = bios_ebda_segment;
-    config.boot_priority = bios_settings.boot_priority;
-    config.record_boot_success = nvram_record_boot_success;
-    config.boot_pm32 = bios_boot_freedos_pm32;
-    config.install_shadow = install_bios_shadow;
-    legacy_runtime_init(&config);
+    bios_legacy_install_runtime(bios_stage.total_bytes,
+                                bios_settings.boot_priority,
+                                nvram_record_boot_success,
+                                bios_boot_freedos_pm32, install_bios_shadow);
 }
 
 static void prepare_boot_sector(void) {
-    bios_boot_drive = legacy_prepare_boot_sector(
+    bios_boot_drive = bios_legacy_prepare_boot_sector(
         bios_settings.boot_priority, nvram_record_boot_success);
 }
 
 static void install_boot_drive(void) {
-    legacy_install_boot_drive(bios_boot_drive);
+    bios_legacy_install_boot_drive(bios_boot_drive);
 }
 
 static unsigned int bios_top_reserved_base(void) {
@@ -229,7 +157,7 @@ static unsigned int bios_pm_stack_top(void) {
 }
 
 static void install_pm_stack_top(void) {
-    legacy_install_pm_stack_top(bios_pm_stack_top());
+    bios_legacy_install_pm_stack_top(bios_pm_stack_top());
 }
 
 static void run_test_elf_blob(void) {
@@ -312,7 +240,7 @@ void postcar_resume(unsigned int total_bytes, unsigned int aux_blob_linear) {
     bios_stage_context_load(&bios_stage, total_bytes);
     storage_set_scratch_base(bios_top_reserved_base());
     bios_settings_load(&bios_settings);
-    install_legacy_platform_ops();
+    bios_legacy_install_platform_ops();
     legacy_floppy_probe();
     outb(0x80, POST_DRAM_STACK);
     serial_write_string("stage3 @ 00200000\r\n");
