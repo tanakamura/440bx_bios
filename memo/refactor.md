@@ -585,6 +585,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - maintenance prompt は `bios_maintenance.*` へ分離済み。`bios_main.c` は NVRAM 設定ポインタと save callback を渡すだけ。
 - optional memtest とその一時 MTRR UC 化は `bios_memtest.*` へ分離済み。`bios_main.c` は enable flag / DRAM size / shared service table を渡すだけ。
 - Linux 起動直前の ACPI PM event clear / SCI enable は `bios_acpi_runtime.*` へ分離済み。stage3 は stage2 由来の RSDP/PM port/flag を渡すだけ。
+- manual bandwidth benchmark は `bios_benchmark.*` へ分離済み。stage3 main flow からは fallback diagnostic として呼ぶだけ。
 
 ## 決定事項
 
