@@ -1,4 +1,4 @@
-#include "acpi_tables.h"
+#include "bios_acpi_runtime.h"
 #include "bios_io.h"
 #include "bios_maintenance.h"
 #include "bios_memtest.h"
@@ -52,8 +52,6 @@ static const unsigned short bios_dos_base_mem_kb = 640u;
 static unsigned char bios_boot_drive = 0x80u;
 
 static unsigned int tsc_low(void);
-static void acpi_install_for_linux(void);
-
 static void zero_bss(void) {
     unsigned char* p = __bss_start;
     while (p < __bss_end) {
@@ -481,7 +479,10 @@ static void install_legacy_platform_ops(void) {
 
 static void prepare_linux_platform(void) {
     bios_rtc_prepare_for_linux(nvram_enable_extended_cmos);
-    acpi_install_for_linux();
+    bios_acpi_install_for_linux(
+        bios_rsdp_linear_global, bios_acpi_pm1_evt_global,
+        bios_acpi_pm1_cnt_global, bios_acpi_gpe0_global,
+        bios_acpi_gpe0_len_global, bios_acpi_flags_global);
 }
 
 static void fill_linux_loader_config(struct linux_loader_config* config) {
@@ -555,67 +556,6 @@ static unsigned int bios_pm_stack_top(void) {
 
 static void install_pm_stack_top(void) {
     legacy_install_pm_stack_top(bios_pm_stack_top());
-}
-
-static void acpi_clear_pm_events(unsigned int pm1_evt, unsigned int gpe0,
-                                 unsigned int gpe0_len) {
-    unsigned int half;
-    unsigned int i;
-
-    if (pm1_evt != 0u) {
-        outw((unsigned short)(pm1_evt + 2u), 0x0000u);
-        outw((unsigned short)pm1_evt, 0xffffu);
-        (void)inw((unsigned short)pm1_evt);
-    }
-
-    if (gpe0 == 0u || gpe0_len < 2u) {
-        return;
-    }
-
-    half = gpe0_len / 2u;
-    for (i = 0; i < half; ++i) {
-        outb((unsigned short)(gpe0 + half + i), 0x00u);
-    }
-    for (i = 0; i < half; ++i) {
-        outb((unsigned short)(gpe0 + i), 0xffu);
-    }
-    (void)inb((unsigned short)gpe0);
-
-    serial_write_string("ACPI PM sts=");
-    serial_write_hex16(inw((unsigned short)pm1_evt));
-    serial_write_string(" en=");
-    serial_write_hex16(inw((unsigned short)(pm1_evt + 2u)));
-    serial_write_string(" gpe=");
-    serial_write_hex8(inb((unsigned short)gpe0));
-    serial_write_string("/");
-    serial_write_hex8(inb((unsigned short)(gpe0 + half)));
-    serial_write_string("\r\n");
-}
-
-static void acpi_install_for_linux(void) {
-    unsigned short cnt;
-
-    if (bios_rsdp_linear_global == 0u) {
-        serial_write_string("ACPI tables missing\r\n");
-        return;
-    }
-    serial_write_string("ACPI RSDP=");
-    serial_write_hex32(bios_rsdp_linear_global);
-    serial_write_string("\r\n");
-    acpi_clear_pm_events(bios_acpi_pm1_evt_global, bios_acpi_gpe0_global,
-                         bios_acpi_gpe0_len_global);
-    if ((bios_acpi_flags_global & SHARED_BOOT_ACPI_FLAG_ENABLE_SCI) != 0u &&
-        bios_acpi_pm1_cnt_global != 0u) {
-        cnt = inw((unsigned short)bios_acpi_pm1_cnt_global);
-        if ((cnt & ACPI_PM1_CNT_SCI_EN) == 0u) {
-            outw((unsigned short)bios_acpi_pm1_cnt_global,
-                 (unsigned short)(cnt | ACPI_PM1_CNT_SCI_EN));
-            cnt = inw((unsigned short)bios_acpi_pm1_cnt_global);
-        }
-        serial_write_string("ACPI PM1 cnt=");
-        serial_write_hex16(cnt);
-        serial_write_string("\r\n");
-    }
 }
 
 static void run_test_elf_blob(void) {
