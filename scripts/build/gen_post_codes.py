@@ -56,8 +56,8 @@ def write_md(path: Path, entries):
 
 
 def main():
-    src_dir = Path(__file__).resolve().parent
-    repo_root = src_dir.parent
+    repo_root = Path(__file__).resolve().parents[2]
+    src_dir = repo_root / "src"
     entries = parse_defs(src_dir / "post_code.def")
     write_header(src_dir / "post_code.h", entries)
     write_inc(src_dir / "post_code.inc", entries)

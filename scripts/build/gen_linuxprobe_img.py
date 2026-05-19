@@ -3,7 +3,7 @@ from pathlib import Path
 import struct
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path.cwd()
 SECTOR = 512
 DISK_SECTORS = 32768
 PART1_START = 2048

@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path.cwd()
 BASE_IMG = ROOT / "../freedos_boot_fd.img"
 STD_IMG = ROOT / "stdtest.img"
 CUST_BIO_IMG = ROOT / "custbio.img"

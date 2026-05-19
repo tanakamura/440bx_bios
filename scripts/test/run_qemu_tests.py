@@ -6,7 +6,7 @@ import sys
 import tempfile
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path.cwd()
 
 
 def run_case(name: str, cmd: list[str], expect: list[str]) -> bool:
