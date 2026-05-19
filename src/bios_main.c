@@ -8,9 +8,8 @@
 #include "bios_rtc.h"
 #include "bios_serial.h"
 #include "bios_shadow.h"
+#include "bios_stage_context.h"
 #include "bios_storage.h"
-#include "blob.h"
-#include "shared_service/service_table.h"
 #include "app/linux_loader/linux_loader.h"
 #include "app/legacy/legacy_boot.h"
 #include "app/legacy/legacy_floppy.h"
@@ -27,18 +26,7 @@ extern unsigned int bios_call_vbe_set_mode_pm32(unsigned int mode);
 extern unsigned char __bss_start[];
 extern unsigned char __bss_end[];
 
-static unsigned int bios_total_bytes_global = 0;
-static unsigned int bios_vgabios_blob_linear_global = 0;
-static unsigned int bios_test_elf_blob_linear_global = 0;
-static unsigned int bios_rsdp_linear_global = 0;
-static unsigned int bios_acpi_pm1_evt_global = 0;
-static unsigned int bios_acpi_pm1_cnt_global = 0;
-static unsigned int bios_acpi_gpe0_global = 0;
-static unsigned int bios_acpi_gpe0_len_global = 0;
-static unsigned int bios_acpi_flags_global = 0;
-static struct shared_service_table* bios_shared_service_global = 0;
-static unsigned char bios_maintenance_requested = 0;
-static unsigned char bios_shadow_ready = 0;
+static struct bios_stage_context bios_stage;
 static unsigned char bios_nvram_flags0 = BIOS_NVRAM_FLAGS0_DEFAULT;
 static unsigned char bios_boot_priority = BIOS_NVRAM_BOOT_PRIORITY_DEFAULT;
 static unsigned char bios_linux_vmlinux_partition = 0;
@@ -140,31 +128,15 @@ static void cpu_serialize(void) {
                      : "eax", "ebx", "ecx", "edx", "memory");
 }
 
-static blob_expand_fn bios_blob_expand_fn(void) {
-    if (bios_shared_service_global != 0 &&
-        bios_shared_service_global->blob_expand != 0u) {
-        return (blob_expand_fn)bios_shared_service_global->blob_expand;
-    }
-    return 0;
-}
-
-static void* bios_blob_stage_ptr(void) {
-    if (bios_shared_service_global != 0 &&
-        bios_shared_service_global->blob_stage != 0u &&
-        bios_shared_service_global->blob_stage_size >= BLOB_STAGE_CAPACITY) {
-        return (void*)bios_shared_service_global->blob_stage;
-    }
-    return 0;
-}
-
 static void install_bios_shadow(void) {
-    bios_shadow_install(bios_shadow_ready);
+    bios_shadow_install(bios_stage.shadow_ready);
 }
 
 static void install_vgabios_shadow(void) {
-    bios_shadow_install_vgabios(bios_vgabios_blob_linear_global,
-                                bios_blob_expand_fn(), bios_blob_stage_ptr(),
-                                bios_total_bytes_global);
+    bios_shadow_install_vgabios(
+        bios_stage.vgabios_blob_linear,
+        bios_stage_context_blob_expand(&bios_stage),
+        bios_stage_context_blob_stage(&bios_stage), bios_stage.total_bytes);
 }
 
 static void init_vgabios_for_linux(void) {
@@ -263,13 +235,13 @@ static void install_legacy_platform_ops(void) {
 static void prepare_linux_platform(void) {
     bios_rtc_prepare_for_linux(nvram_enable_extended_cmos);
     bios_acpi_install_for_linux(
-        bios_rsdp_linear_global, bios_acpi_pm1_evt_global,
-        bios_acpi_pm1_cnt_global, bios_acpi_gpe0_global,
-        bios_acpi_gpe0_len_global, bios_acpi_flags_global);
+        bios_stage.rsdp_linear, bios_stage.acpi_pm1_evt,
+        bios_stage.acpi_pm1_cnt, bios_stage.acpi_gpe0,
+        bios_stage.acpi_gpe0_len, bios_stage.acpi_flags);
 }
 
 static void fill_linux_loader_config(struct linux_loader_config* config) {
-    config->total_bytes = bios_total_bytes_global;
+    config->total_bytes = bios_stage.total_bytes;
     config->boot_priority = bios_boot_priority;
     config->vmlinux_partition = bios_linux_vmlinux_partition;
     config->enable_serial_console =
@@ -301,7 +273,7 @@ static void fill_linux_loader_config(struct linux_loader_config* config) {
 static void install_bios_thunks(void) {
     struct legacy_runtime_config config;
 
-    config.total_bytes = bios_total_bytes_global;
+    config.total_bytes = bios_stage.total_bytes;
     config.floppy_present = legacy_floppy_present();
     config.hdd_present = bios_hdd_is_present();
     config.base_mem_kb = bios_dos_base_mem_kb;
@@ -323,16 +295,16 @@ static void install_boot_drive(void) {
 }
 
 static unsigned int bios_top_reserved_base(void) {
-    return bios_memory_top_reserved_base(bios_total_bytes_global);
+    return bios_memory_top_reserved_base(bios_stage.total_bytes);
 }
 
 static unsigned int bios_pm_stack_top(void) {
-    if (bios_shared_service_global != 0 &&
-        bios_shared_service_global->stack_top != 0u) {
-        return bios_shared_service_global->stack_top;
+    if (bios_stage.shared_service != 0 &&
+        bios_stage.shared_service->stack_top != 0u) {
+        return bios_stage.shared_service->stack_top;
     }
-    if (bios_total_bytes_global >= 0x00300000u) {
-        return (bios_total_bytes_global & ~0xfffu) - 0x1000u;
+    if (bios_stage.total_bytes >= 0x00300000u) {
+        return (bios_stage.total_bytes & ~0xfffu) - 0x1000u;
     }
     return 0x001ff000u;
 }
@@ -344,8 +316,8 @@ static void install_pm_stack_top(void) {
 static void run_test_elf_blob(void) {
     typedef unsigned int (*test_elf_entry_fn)(unsigned int, unsigned int,
                                              unsigned int, unsigned int);
-    blob_expand_fn expand = bios_blob_expand_fn();
-    void* blob_stage = bios_blob_stage_ptr();
+    blob_expand_fn expand = bios_stage_context_blob_expand(&bios_stage);
+    void* blob_stage = bios_stage_context_blob_stage(&bios_stage);
     struct blob_status status;
     struct linux_loader_config linux_config = {0};
     unsigned char* image = (unsigned char*)LINUX_LOADER_TEST_ELF_IMAGE_LINEAR;
@@ -353,7 +325,7 @@ static void run_test_elf_blob(void) {
     unsigned int rc;
     int expand_rc;
 
-    if (bios_test_elf_blob_linear_global == 0u) {
+    if (bios_stage.test_elf_blob_linear == 0u) {
         serial_write_string("No test ELF blob\r\n");
         return;
     }
@@ -363,9 +335,9 @@ static void run_test_elf_blob(void) {
     }
 
     serial_write_string("Run ROM test ELF...\r\n");
-    expand_rc = expand((const void*)bios_test_elf_blob_linear_global,
+    expand_rc = expand((const void*)bios_stage.test_elf_blob_linear,
                        blob_stage, image, LINUX_LOADER_TEST_ELF_IMAGE_CAPACITY,
-                       &status, bios_total_bytes_global);
+                       &status, bios_stage.total_bytes);
     if (expand_rc != 0) {
         serial_write_string("Test ELF blob failed rc=");
         serial_write_hex8((unsigned char)expand_rc);
@@ -381,7 +353,7 @@ static void run_test_elf_blob(void) {
         return;
     }
 
-    storage_scan(bios_total_bytes_global);
+    storage_scan(bios_stage.total_bytes);
     install_bios_thunks();
     install_boot_drive();
     install_pm_stack_top();
@@ -396,7 +368,7 @@ static void run_test_elf_blob(void) {
     cpu_serialize();
     rc = ((test_elf_entry_fn)entry_phys)(
         LINUX_LOADER_BOOT_PARAMS, LINUX_LOADER_RSDP_LINEAR,
-        bios_acpi_pm1_evt_global, bios_acpi_pm1_cnt_global);
+        bios_stage.acpi_pm1_evt, bios_stage.acpi_pm1_cnt);
     cpu_serialize();
     serial_write_string("Test ELF returned ");
     serial_write_hex32(rc);
@@ -424,65 +396,11 @@ static int try_boot_linux(void) {
     return linux_loader_try_boot(&config);
 }
 
-static unsigned int bios_payload_blob_ptr(unsigned int payload_id) {
-    struct shared_payload_entry* payload =
-        shared_payload_find(bios_shared_service_global, payload_id);
-
-    if (payload == 0) {
-        return 0u;
-    }
-    return payload->blob_ptr;
-}
-
-static void bios_load_stage_context(unsigned int total_bytes) {
-    struct shared_boot_context* boot_ctx;
-    unsigned int blob;
-
-    bios_total_bytes_global = total_bytes;
-    bios_shared_service_global = shared_service_from_total(total_bytes);
-    bios_vgabios_blob_linear_global = 0u;
-    bios_test_elf_blob_linear_global = 0u;
-    bios_rsdp_linear_global = 0u;
-    bios_acpi_pm1_evt_global = 0u;
-    bios_acpi_pm1_cnt_global = 0u;
-    bios_acpi_gpe0_global = 0u;
-    bios_acpi_gpe0_len_global = 0u;
-    bios_acpi_flags_global = 0u;
-    bios_maintenance_requested = 0u;
-    bios_shadow_ready = 0u;
-
-    boot_ctx = shared_boot_context(bios_shared_service_global);
-    if (boot_ctx != 0) {
-        if ((boot_ctx->flags & SHARED_BOOT_FLAG_MAINTENANCE_REQUESTED) != 0u) {
-            bios_maintenance_requested = 1u;
-        }
-        if ((boot_ctx->flags & SHARED_BOOT_FLAG_SHADOW_READY) != 0u) {
-            bios_shadow_ready = 1u;
-        }
-        bios_rsdp_linear_global = boot_ctx->rsdp_linear;
-        bios_acpi_pm1_evt_global = boot_ctx->acpi_pm1_evt;
-        bios_acpi_pm1_cnt_global = boot_ctx->acpi_pm1_cnt;
-        bios_acpi_gpe0_global = boot_ctx->acpi_gpe0;
-        bios_acpi_gpe0_len_global = boot_ctx->acpi_gpe0_len;
-        bios_acpi_flags_global = boot_ctx->acpi_flags;
-    }
-
-    blob = bios_payload_blob_ptr(SHARED_PAYLOAD_ID_VGABIOS);
-    if (blob != 0u) {
-        bios_vgabios_blob_linear_global = blob;
-    }
-    blob = bios_payload_blob_ptr(SHARED_PAYLOAD_ID_TEST_ELF);
-    if (blob != 0u) {
-        bios_test_elf_blob_linear_global = blob;
-    }
-
-}
-
 void postcar_resume(unsigned int total_bytes, unsigned int aux_blob_linear) {
     volatile unsigned int stack_cookie = 0x13579bdfu;
 
     (void)aux_blob_linear;
-    bios_load_stage_context(total_bytes);
+    bios_stage_context_load(&bios_stage, total_bytes);
     storage_set_scratch_base(bios_top_reserved_base());
     nvram_load_settings();
     install_legacy_platform_ops();
@@ -497,8 +415,8 @@ void postcar_resume(unsigned int total_bytes, unsigned int aux_blob_linear) {
     serial_write_string("Usable DRAM: ");
     serial_write_u32(total_bytes >> 10);
     serial_write_string("K\r\n");
-    bios_memtest_run_optional(bios_enable_memtest, bios_total_bytes_global,
-                              bios_shared_service_global);
+    bios_memtest_run_optional(bios_enable_memtest, bios_stage.total_bytes,
+                              bios_stage.shared_service);
     if (bios_run_test_blob != 0u) {
         nvram_consume_test_blob_request();
         run_test_elf_blob();
@@ -507,7 +425,7 @@ void postcar_resume(unsigned int total_bytes, unsigned int aux_blob_linear) {
             __asm__ volatile("hlt");
         }
     }
-    if (bios_maintenance_requested != 0u) {
+    if (bios_stage.maintenance_requested != 0u) {
         maintenance_prompt();
     }
     storage_scan(total_bytes);

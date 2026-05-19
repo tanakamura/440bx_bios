@@ -200,8 +200,8 @@ start: start.elf
 start.elf: start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o dsdt_blob.o vgabios_blob.o test_elf_blob.o p2b98_xv/stage1/start.ld
 	$(LD) -m elf_i386 -T p2b98_xv/stage1/start.ld -Map start.map -o $@ start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o dsdt_blob.o vgabios_blob.o test_elf_blob.o
 
-bios.elf: bios16.o bios_main.o bios_acpi_runtime.o bios_benchmark.o bios_maintenance.o bios_memtest.o bios_memory.o bios_nvram.o bios_rtc.o bios_serial.o bios_shadow.o bios_pci.o bios_storage.o linux_loader.o legacy_bda.o legacy_boot.o legacy_debug.o legacy_floppy.o legacy_int13.o legacy_int15.o legacy_keyboard.o legacy_misc.o legacy_platform.o legacy_runtime.o legacy_service.o legacy_thunk.o legacy_timer.o legacy_time.o legacy_video.o bios.ld
-	$(LD) -m elf_i386 -T bios.ld -Map bios.map -o $@ bios16.o bios_main.o bios_acpi_runtime.o bios_benchmark.o bios_maintenance.o bios_memtest.o bios_memory.o bios_nvram.o bios_rtc.o bios_serial.o bios_shadow.o bios_pci.o bios_storage.o linux_loader.o legacy_bda.o legacy_boot.o legacy_debug.o legacy_floppy.o legacy_int13.o legacy_int15.o legacy_keyboard.o legacy_misc.o legacy_platform.o legacy_runtime.o legacy_service.o legacy_thunk.o legacy_timer.o legacy_time.o legacy_video.o
+bios.elf: bios16.o bios_main.o bios_acpi_runtime.o bios_benchmark.o bios_maintenance.o bios_memtest.o bios_memory.o bios_nvram.o bios_rtc.o bios_serial.o bios_shadow.o bios_stage_context.o bios_pci.o bios_storage.o linux_loader.o legacy_bda.o legacy_boot.o legacy_debug.o legacy_floppy.o legacy_int13.o legacy_int15.o legacy_keyboard.o legacy_misc.o legacy_platform.o legacy_runtime.o legacy_service.o legacy_thunk.o legacy_timer.o legacy_time.o legacy_video.o bios.ld
+	$(LD) -m elf_i386 -T bios.ld -Map bios.map -o $@ bios16.o bios_main.o bios_acpi_runtime.o bios_benchmark.o bios_maintenance.o bios_memtest.o bios_memory.o bios_nvram.o bios_rtc.o bios_serial.o bios_shadow.o bios_stage_context.o bios_pci.o bios_storage.o linux_loader.o legacy_bda.o legacy_boot.o legacy_debug.o legacy_floppy.o legacy_int13.o legacy_int15.o legacy_keyboard.o legacy_misc.o legacy_platform.o legacy_runtime.o legacy_service.o legacy_thunk.o legacy_timer.o legacy_time.o legacy_video.o
 
 stage2.elf: stage2.o l2_service.o acpi_tables.o p2b98_xv/stage2/stage2.ld
 	$(LD) -m elf_i386 -T p2b98_xv/stage2/stage2.ld -Map stage2.map -o $@ stage2.o l2_service.o acpi_tables.o
@@ -272,7 +272,7 @@ qemu_start.o: qemu/stage1/qemu_start.asm
 qemu_stage1.o: qemu/stage1/qemu_stage1.c blob.h shared_service/service_table.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-bios_main.o: bios_main.c post_code.h blob.h shared_service/service_table.h bios_acpi_runtime.h bios_benchmark.h bios_io.h bios_maintenance.h bios_memtest.h bios_memory.h bios_nvram.h bios_rtc.h bios_serial.h bios_shadow.h bios_storage.h app/linux_loader/linux_loader.h app/legacy/legacy_boot.h app/legacy/legacy_floppy.h app/legacy/legacy_platform.h app/legacy/legacy_runtime.h app/legacy/legacy_thunk.h
+bios_main.o: bios_main.c post_code.h bios_acpi_runtime.h bios_benchmark.h bios_io.h bios_maintenance.h bios_memtest.h bios_memory.h bios_nvram.h bios_rtc.h bios_serial.h bios_shadow.h bios_stage_context.h bios_storage.h app/linux_loader/linux_loader.h app/legacy/legacy_boot.h app/legacy/legacy_floppy.h app/legacy/legacy_platform.h app/legacy/legacy_runtime.h app/legacy/legacy_thunk.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 bios_acpi_runtime.o: bios_acpi_runtime.c bios_acpi_runtime.h acpi_tables.h bios_io.h bios_serial.h shared_service/service_table.h
@@ -300,6 +300,9 @@ bios_serial.o: bios_serial.c bios_io.h bios_serial.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 bios_shadow.o: bios_shadow.c bios_shadow.h blob.h bios_io.h bios_pci.h bios_serial.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+bios_stage_context.o: bios_stage_context.c bios_stage_context.h blob.h shared_service/service_table.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 bios_pci.o: bios_pci.c bios_io.h bios_pci.h
