@@ -211,39 +211,8 @@ qemu_stage2_blob.o: qemu_stage2_blob.bin
 		--rename-section .data=.stage2blob,alloc,load,readonly,data,contents \
 		$< $@
 
-start: start.elf
-	$(OBJCOPY) -O binary --pad-to 0x100000 --gap-fill 0x90 $< $@
-
-start.elf: start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o dsdt_blob.o vgabios_blob.o test_elf_blob.o platform/p2b98_xv/stage1/stage1.ld
-	$(LD) -m elf_i386 -T platform/p2b98_xv/stage1/stage1.ld -Map start.map -o $@ start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o dsdt_blob.o vgabios_blob.o test_elf_blob.o
-
 bios.elf: stage3.elf
 	cp $< $@
-
-qemu_bios.bin: qemu_start.elf
-	$(OBJCOPY) -O binary $< $@
-	truncate -s 262144 $@
-
-qemu_start.elf: qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o platform/qemu/stage1/stage1.ld
-	$(LD) -m elf_i386 -T platform/qemu/stage1/stage1.ld -Map qemu.map -o $@ qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o
-
-qemu_legacy_bios.bin: qemu_legacy_start.elf
-	$(OBJCOPY) -O binary $< $@
-	truncate -s 262144 $@
-
-qemu_legacy_start.elf: qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o platform/qemu/stage1/stage1.ld
-	$(LD) -m elf_i386 -T platform/qemu/stage1/stage1.ld -Map qemu_legacy.map -o $@ qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o
-
-qemu_flat_test_bios.bin: qemu_flat_test_start.elf
-	$(OBJCOPY) -O binary $< $@
-	truncate -s 262144 $@
-
-qemu_flat_test_start.elf: qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o platform/qemu/stage1/stage1.ld
-	$(LD) -m elf_i386 -T platform/qemu/stage1/stage1.ld -Map qemu_flat_test.map -o $@ qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o
-
-qemu_legacy_test_bios.bin: qemu_legacy_bios.bin test_floppy_blob.bin $(BUILD_SCRIPTS)/patch_rom_free.py
-	cp qemu_legacy_bios.bin $@
-	python3 $(BUILD_SCRIPTS)/patch_rom_free.py $@ test_floppy_blob.bin
 
 genrom: $(GENROM_BINS)
 
@@ -252,14 +221,6 @@ p2b98_xv_%_genrom.bin: platform/p2b98_xv/%.blobs $(GENROM_STAGE_ELFS) dsdt.aml .
 
 qemu_%_genrom.bin: platform/qemu/%.blobs $(GENROM_STAGE_ELFS) dsdt.aml ../images/gbsmc.088 $(BUILD_SCRIPTS)/gen_rom.py $(BUILD_SCRIPTS)/gen_blob.py
 	python3 $(BUILD_SCRIPTS)/gen_rom.py $< $@
-
-start_legacy: start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o platform/p2b98_xv/stage1/stage1.ld
-	$(LD) -m elf_i386 -T platform/p2b98_xv/stage1/stage1.ld -Map start_legacy.map -o start_legacy.elf start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o
-	$(OBJCOPY) -O binary --pad-to 0x100000 --gap-fill 0x90 start_legacy.elf $@
-
-start_legacy_test: start_legacy test_floppy_blob.bin $(BUILD_SCRIPTS)/patch_rom_free.py
-	cp start_legacy $@
-	python3 $(BUILD_SCRIPTS)/patch_rom_free.py $@ test_floppy_blob.bin
 
 romtest: romtest.asm
 	nasm -f bin $< -o $@
