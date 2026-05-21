@@ -5,7 +5,6 @@
 #include "bios_serial.h"
 #include "bios_storage.h"
 #include "app/legacy/legacy_boot.h"
-#include "app/legacy/legacy_floppy.h"
 #include "app/legacy/legacy_platform.h"
 #include "app/legacy/legacy_runtime.h"
 #include "app/legacy/legacy_thunk.h"
@@ -48,7 +47,7 @@ static int legacy_memory_e820_get_entry_cb(unsigned int total_bytes,
     return 0;
 }
 
-void bios_legacy_install_platform_ops(void) {
+static void bios_legacy_install_platform_ops(void) {
     struct legacy_platform_ops ops = {0};
 
     ops.serial_write_char = serial_write_char;
@@ -79,8 +78,8 @@ void bios_legacy_install_runtime(
     bios_legacy_void_fn boot_pm32, bios_legacy_void_fn install_shadow) {
     struct legacy_runtime_config config;
 
+    bios_legacy_install_platform_ops();
     config.total_bytes = total_bytes;
-    config.floppy_present = legacy_floppy_present();
     config.hdd_present = bios_hdd_is_present();
     config.base_mem_kb = bios_dos_base_mem_kb;
     config.ebda_segment = bios_ebda_segment;

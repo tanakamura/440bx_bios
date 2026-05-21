@@ -1,13 +1,15 @@
 #include "app/legacy/legacy_runtime.h"
 
+#include "app/legacy/legacy_floppy.h"
 #include "app/legacy/legacy_timer.h"
 
 void legacy_runtime_init(const struct legacy_runtime_config* config) {
     struct legacy_service_context context;
     unsigned int floppy_dpt_linear;
 
+    legacy_floppy_probe();
     floppy_dpt_linear = legacy_install_bios_thunks(
-        config->floppy_present, config->hdd_present, config->base_mem_kb,
+        legacy_floppy_present(), config->hdd_present, config->base_mem_kb,
         config->ebda_segment, config->install_shadow, 0);
 
     context.total_bytes = config->total_bytes;

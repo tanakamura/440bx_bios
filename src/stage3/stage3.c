@@ -11,7 +11,6 @@
 #include "stage3.h"
 #include "bios_stage_context.h"
 #include "bios_storage.h"
-#include "app/legacy/legacy_floppy.h"
 #include "app/legacy/legacy_thunk.h"
 #include "post_code.h"
 
@@ -117,8 +116,6 @@ void bios_stage3_run(unsigned int total_bytes, unsigned int aux_blob_linear) {
     bios_stage_context_load(&bios_stage, total_bytes);
     storage_set_scratch_base(bios_top_reserved_base());
     bios_settings_load(&bios_settings);
-    bios_legacy_install_platform_ops();
-    legacy_floppy_probe();
     outb(0x80, POST_DRAM_STACK);
     serial_write_string("stage3 @ 00200000\r\n");
     serial_write_string("post-CAR ok\r\n");

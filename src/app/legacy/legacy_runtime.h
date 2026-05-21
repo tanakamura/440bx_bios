@@ -7,7 +7,6 @@
 
 struct legacy_runtime_config {
     unsigned int total_bytes;
-    int floppy_present;
     int hdd_present;
     unsigned short base_mem_kb;
     unsigned short ebda_segment;
