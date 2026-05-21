@@ -626,9 +626,8 @@ BLOBSVC void blob_shadow_load_and_enter(const void* blob, void* stage,
                                         unsigned int dst_capacity,
                                         struct blob_status* status,
                                         unsigned int total_bytes,
-                                        unsigned int fdos_blob_linear,
                                         unsigned int bios_entry) {
-    typedef void (*bios_entry_fn)(unsigned int, unsigned int);
+    typedef void (*bios_entry_fn)(unsigned int);
     struct shared_service_table* service;
     struct shared_payload_entry* payload;
     volatile unsigned int* p;
@@ -673,7 +672,7 @@ BLOBSVC void blob_shadow_load_and_enter(const void* blob, void* stage,
                      :
                      :
                      : "eax", "ebx", "ecx", "edx", "memory");
-    ((bios_entry_fn)bios_entry)(total_bytes, fdos_blob_linear);
+    ((bios_entry_fn)bios_entry)(total_bytes);
     for (;;) {
         __asm__ volatile("hlt");
     }

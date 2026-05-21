@@ -89,7 +89,6 @@ qemu_pm_entry:
     sub esp, BLOB_STATUS_SIZE
     mov ebx, esp
     push dword STAGE2_ENTRY
-    push dword 0
     push dword QEMU_TOTAL_BYTES
     push ebx
     push dword STAGE2_LOAD_CAPACITY

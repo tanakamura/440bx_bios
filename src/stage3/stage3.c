@@ -107,10 +107,9 @@ static int try_boot_linux(void) {
     return bios_linux_try_boot(&config);
 }
 
-void bios_stage3_run(unsigned int total_bytes, unsigned int aux_blob_linear) {
+void bios_stage3_run(unsigned int total_bytes) {
     volatile unsigned int stack_cookie = 0x13579bdfu;
 
-    (void)aux_blob_linear;
     bios_stage_context_load(&bios_stage, total_bytes);
     storage_set_scratch_base(bios_top_reserved_base());
     bios_settings_load(&bios_settings);

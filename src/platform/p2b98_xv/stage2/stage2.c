@@ -320,8 +320,8 @@ static void install_real_acpi_tables(unsigned int total_bytes,
 }
 
 __attribute__((section(".stage2.entry"), used)) void stage2_entry(
-    unsigned int total_bytes, unsigned int aux_linear) {
-    typedef void (*bios_entry_fn)(unsigned int, unsigned int);
+    unsigned int total_bytes) {
+    typedef void (*bios_entry_fn)(unsigned int);
     struct shared_service_table* service =
         shared_service_from_total(total_bytes);
     struct shared_boot_context* boot_ctx = shared_boot_context(service);
@@ -374,7 +374,7 @@ __attribute__((section(".stage2.entry"), used)) void stage2_entry(
         }
     }
     serial_write_string("\r\nstage3 copied\r\n");
-    ((bios_entry_fn)stage3_load)(total_bytes, aux_linear);
+    ((bios_entry_fn)stage3_load)(total_bytes);
     for (;;) {
         __asm__ volatile("hlt");
     }

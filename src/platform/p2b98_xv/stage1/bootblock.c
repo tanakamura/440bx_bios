@@ -651,7 +651,7 @@ static void install_shared_service_table(unsigned int total_bytes,
 }
 
 static void enter_stage2(unsigned int total_bytes) {
-    typedef void (*stage2_entry_fn)(unsigned int, unsigned int);
+    typedef void (*stage2_entry_fn)(unsigned int);
     struct blob_status status;
     struct shared_service_table* service =
         shared_service_from_total(total_bytes);
@@ -684,7 +684,7 @@ static void enter_stage2(unsigned int total_bytes) {
     }
 
     serial_write_string("\r\nstage2 copied\r\n");
-    ((stage2_entry_fn)stage2_load)(total_bytes, 0u);
+    ((stage2_entry_fn)stage2_load)(total_bytes);
     die_with_post(0xef);
 }
 
