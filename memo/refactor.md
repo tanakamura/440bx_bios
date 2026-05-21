@@ -681,6 +681,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - legacy app entry ABI は `include/legacy_app_abi.h`、real-mode service frame は `include/legacy_rm.h` へ切り出し済み。stage3 は legacy app 内部の `legacy_runtime.h` / `legacy_rm.h` を include しない。
 - floppy test image probe/state は legacy runtime 側へ移動済み。stage3 は floppy の有無を保持せず、legacy app が自分で BDA/INT13 用 state を作る。
 - Linux kernel/initrd loader と Linux boot params/VBE setup は `app/linux_loader/` へ移動済み。serial/storage/E820 は `linux_loader_config` callback 経由になり、stage3 は NVRAM 設定と ACPI/RTC/VBIOS/storage/memory callback を渡す glue だけ持つ。
+- Linux loader entry ABI は `include/linux_loader_abi.h` へ切り出し済み。stage3 は `app/linux_loader/linux_loader.h` を include しない。
 - 通常 boot path では `linux_loader` payload がある profile だけ Linux boot を試す。payload が無い legacy profile では direct fallback せず legacy boot へ進む。
 - NVRAM raw access と設定 decode/save は `bios_nvram.*` へ分離済み。`stage3/stage3.c` には stage3 global へ反映する薄い glue だけ残っている。
 - maintenance prompt は `bios_maintenance.*` へ分離済み。`stage3/stage3.c` は NVRAM 設定ポインタと save callback を渡すだけ。

@@ -1,7 +1,7 @@
 #ifndef BIOS_LINUX_H
 #define BIOS_LINUX_H
 
-#include "app/linux_loader/linux_loader.h"
+#include "linux_loader_abi.h"
 #include "bios_settings.h"
 #include "bios_stage_context.h"
 
