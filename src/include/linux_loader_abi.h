@@ -36,6 +36,7 @@ struct linux_loader_e820_entry {
 
 struct linux_loader_config {
     unsigned int total_bytes;
+    unsigned int acpi_rsdp_linear;
     unsigned char boot_priority;
     unsigned char vmlinux_partition;
     unsigned char enable_serial_console;

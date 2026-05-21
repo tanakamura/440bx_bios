@@ -697,6 +697,11 @@ static void linux_setup_boot_params(
     linux_memset(bp, 0u, 4096u);
     linux_write_cmdline(config);
 
+    if (config->acpi_rsdp_linear != 0u) {
+        linux_put32(bp + 0x070u, config->acpi_rsdp_linear);
+        linux_put32(bp + 0x074u, 0u);
+    }
+
     linux_put16(bp + 0x01e0u, (unsigned short)alt_mem_kb);
     bp[0x01e8u] = (unsigned char)count;
     for (i = 0; i < count; ++i) {
@@ -728,14 +733,14 @@ void linux_loader_prepare_boot_params(
     const struct linux_loader_config* config, unsigned int entry_phys,
     unsigned int initrd_base, unsigned int initrd_size) {
     linux_loader_set_active_config(config);
+    if (config->init_vgabios != 0) {
+        config->init_vgabios();
+    }
     if (config->prepare_platform != 0) {
         config->prepare_platform();
     }
     linux_setup_boot_params(config, entry_phys, initrd_base, initrd_size);
     if (config->enable_vesa_1024_768 != 0u) {
-        if (config->init_vgabios != 0) {
-            config->init_vgabios();
-        }
         if (linux_set_vbe_1024x768(config) == 0) {
             linux_apply_vbe_screen_info();
         }

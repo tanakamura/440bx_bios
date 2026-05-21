@@ -15,6 +15,8 @@ bits 16
 %define UART_FCR  2
 %define UART_LCR  3
 %define UART_MCR  4
+%define PCI_CONFIG_ADDR 0x0CF8
+%define PCI_CONFIG_DATA 0x0CFC
 %define CODE_SEL  0x08
 %define DATA_SEL  0x10
 %define CODE16_SEL 0x18
@@ -111,7 +113,7 @@ halt32:
     jmp short halt32
 
 postcar_transition:
-    cli
+        cli
 
     mov ebx, [esp + 4]     ; new DRAM stack top
     mov edi, [esp + 8]     ; variable MTRR mask
@@ -370,6 +372,7 @@ init_uart:
 
     jmp fini_init_uart
 
+
 section .startdata progbits alloc noexec nowrite align=8
 start_data:
 align 8
@@ -388,4 +391,4 @@ gdtr:
 section .reset progbits alloc exec nowrite align=16
 bits 16
 reset_vector:
-    jmp 0xFE00:0x0000
+    jmp start

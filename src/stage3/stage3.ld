@@ -34,6 +34,7 @@ SECTIONS
     .thunk16 :
     {
         *(.thunk16)
+        *(.thunk16_legacy)
     }
 
     __bss_start = .;
@@ -49,7 +50,6 @@ SECTIONS
 
     /DISCARD/ :
     {
-        *(.thunk16_legacy)
         *(.comment)
         *(.eh_frame)
         *(.note*)

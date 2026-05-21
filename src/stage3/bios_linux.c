@@ -160,6 +160,7 @@ void bios_linux_fill_loader_config(struct linux_loader_config* loader,
 
     active_config = *config;
     loader->total_bytes = config->stage->total_bytes;
+    loader->acpi_rsdp_linear = config->stage->rsdp_linear;
     loader->boot_priority = settings->boot_priority;
     loader->vmlinux_partition = settings->vmlinux_partition;
     loader->enable_serial_console =

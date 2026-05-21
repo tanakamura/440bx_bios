@@ -1,9 +1,20 @@
 #include "bios_direct_thunk.h"
 
 extern unsigned char bios16_thunk_start[];
+extern unsigned char bios16_int08[];
+extern unsigned char bios16_int10[];
+extern unsigned char bios16_int11[];
+extern unsigned char bios16_int12[];
+extern unsigned char bios16_int13[];
+extern unsigned char bios16_int15[];
+extern unsigned char bios16_int16[];
+extern unsigned char bios16_int17[];
+extern unsigned char bios16_int19[];
+extern unsigned char bios16_int1a[];
+extern unsigned char bios16_int60[];
 extern unsigned char bios16_default[];
 extern unsigned char bios16_iret[];
-extern unsigned char bios16_direct_thunk_end[];
+extern unsigned char bios16_thunk_end[];
 extern unsigned int bios16_pm_stack_top;
 extern unsigned char bios16_boot_drive[];
 extern unsigned char bios16_vbe_mode_info[];
@@ -51,7 +62,7 @@ static void copy_thunk_code(bios_direct_thunk_void_fn install_shadow) {
     volatile unsigned char* thunk =
         (volatile unsigned char*)BIOS_DIRECT_THUNK_RUNTIME_BASE;
     unsigned int thunk_size =
-        (unsigned int)(bios16_direct_thunk_end - bios16_thunk_start);
+        (unsigned int)(bios16_thunk_end - bios16_thunk_start);
     unsigned int thunk_off;
 
     if (install_shadow != 0) {
@@ -78,6 +89,39 @@ void bios_direct_thunk_install(bios_direct_thunk_void_fn install_shadow) {
     install_thunk_vector(
         0x1c, BIOS_DIRECT_THUNK_RUNTIME_BASE +
                   (unsigned int)(bios16_iret - bios16_thunk_start));
+    install_thunk_vector(
+        0x08, BIOS_DIRECT_THUNK_RUNTIME_BASE +
+                  (unsigned int)(bios16_int08 - bios16_thunk_start));
+    install_thunk_vector(
+        0x10, BIOS_DIRECT_THUNK_RUNTIME_BASE +
+                  (unsigned int)(bios16_int10 - bios16_thunk_start));
+    install_thunk_vector(
+        0x11, BIOS_DIRECT_THUNK_RUNTIME_BASE +
+                  (unsigned int)(bios16_int11 - bios16_thunk_start));
+    install_thunk_vector(
+        0x12, BIOS_DIRECT_THUNK_RUNTIME_BASE +
+                  (unsigned int)(bios16_int12 - bios16_thunk_start));
+    install_thunk_vector(
+        0x13, BIOS_DIRECT_THUNK_RUNTIME_BASE +
+                  (unsigned int)(bios16_int13 - bios16_thunk_start));
+    install_thunk_vector(
+        0x15, BIOS_DIRECT_THUNK_RUNTIME_BASE +
+                  (unsigned int)(bios16_int15 - bios16_thunk_start));
+    install_thunk_vector(
+        0x16, BIOS_DIRECT_THUNK_RUNTIME_BASE +
+                  (unsigned int)(bios16_int16 - bios16_thunk_start));
+    install_thunk_vector(
+        0x17, BIOS_DIRECT_THUNK_RUNTIME_BASE +
+                  (unsigned int)(bios16_int17 - bios16_thunk_start));
+    install_thunk_vector(
+        0x19, BIOS_DIRECT_THUNK_RUNTIME_BASE +
+                  (unsigned int)(bios16_int19 - bios16_thunk_start));
+    install_thunk_vector(
+        0x1a, BIOS_DIRECT_THUNK_RUNTIME_BASE +
+                  (unsigned int)(bios16_int1a - bios16_thunk_start));
+    install_thunk_vector(
+        0x60, BIOS_DIRECT_THUNK_RUNTIME_BASE +
+                  (unsigned int)(bios16_int60 - bios16_thunk_start));
     serialize_instruction_stream();
 }
 

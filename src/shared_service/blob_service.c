@@ -1,5 +1,5 @@
-#include "blob.h"
 #include "bios_mtrr.h"
+#include "blob.h"
 #include "shared_service/service_table.h"
 
 #define BLOBSVC __attribute__((section(".blobsvc"), noinline, used))
@@ -180,8 +180,7 @@ BLOBSVC_ENTRY void shared_heap_free_service(unsigned int total_bytes,
         return;
     }
     addr = (unsigned int)ptr - sizeof(struct shared_heap_block);
-    if ((addr & (SHARED_HEAP_ALIGN - 1u)) != 0u ||
-        addr < table->heap_base ||
+    if ((addr & (SHARED_HEAP_ALIGN - 1u)) != 0u || addr < table->heap_base ||
         addr + sizeof(struct shared_heap_block) > table->heap_limit) {
         return;
     }
@@ -207,8 +206,7 @@ BLOBSVC_ENTRY void shared_heap_free_service(unsigned int total_bytes,
 }
 
 BLOBSVC_ENTRY void* shared_heap_realloc_service(unsigned int total_bytes,
-                                                void* ptr,
-                                                unsigned int size) {
+                                                void* ptr, unsigned int size) {
     struct shared_heap_block* block;
     void* new_ptr;
     unsigned int old_size;
@@ -222,8 +220,8 @@ BLOBSVC_ENTRY void* shared_heap_realloc_service(unsigned int total_bytes,
         return 0;
     }
 
-    block = (struct shared_heap_block*)(
-        (unsigned int)ptr - sizeof(struct shared_heap_block));
+    block = (struct shared_heap_block*)((unsigned int)ptr -
+                                        sizeof(struct shared_heap_block));
     old_size = heap_payload_size(block);
     if (old_size >= size) {
         return ptr;
@@ -514,7 +512,8 @@ BLOBSVC_ENTRY int blob_load_service(unsigned int payload_id, void* fallback_dst,
                                     unsigned int* load_addr_out,
                                     struct blob_status* status,
                                     unsigned int total_bytes) {
-    struct shared_service_table* service = shared_service_from_total(total_bytes);
+    struct shared_service_table* service =
+        shared_service_from_total(total_bytes);
     struct shared_payload_entry* payload;
     const void* blob;
     void* stage;
@@ -555,9 +554,8 @@ static BLOBSVC_INLINE unsigned int blob_pci_addr(unsigned char bus,
                                                  unsigned char dev,
                                                  unsigned char fn,
                                                  unsigned char reg) {
-    return 0x80000000u | ((unsigned int)bus << 16) |
-           ((unsigned int)dev << 11) | ((unsigned int)fn << 8) |
-           (reg & 0xfcu);
+    return 0x80000000u | ((unsigned int)bus << 16) | ((unsigned int)dev << 11) |
+           ((unsigned int)fn << 8) | (reg & 0xfcu);
 }
 
 static BLOBSVC void blob_pci_write8(unsigned char bus, unsigned char dev,
@@ -584,14 +582,15 @@ static BLOBSVC void blob_enable_ef_shadow(void) {
     unsigned int def_lo = (unsigned int)def_type;
     unsigned int def_hi = (unsigned int)(def_type >> 32);
 
-    __asm__ volatile("movl %%cr0, %%eax\n\t"
-                     "orl $0x40000000, %%eax\n\t"
-                     "andl $0xdfffffff, %%eax\n\t"
-                     "movl %%eax, %%cr0\n\t"
-                     "wbinvd"
-                     :
-                     :
-                     : "eax", "memory");
+    __asm__ volatile(
+        "movl %%cr0, %%eax\n\t"
+        "orl $0x40000000, %%eax\n\t"
+        "andl $0xdfffffff, %%eax\n\t"
+        "movl %%eax, %%cr0\n\t"
+        "wbinvd"
+        :
+        :
+        : "eax", "memory");
 
     blob_pci_write8(0, 0, 0, 0x5eu, 0x33u);
     blob_pci_write8(0, 0, 0, 0x5fu, 0x33u);
@@ -604,15 +603,16 @@ static BLOBSVC void blob_enable_ef_shadow(void) {
     blob_wrmsr64(IA32_MTRR_FIX4K_F8000, 0x06060606u, 0x06060606u);
     blob_wrmsr64(IA32_MTRR_DEF_TYPE, def_lo, def_hi);
 
-    __asm__ volatile("wbinvd\n\t"
-                     "movl %%cr0, %%eax\n\t"
-                     "andl $0x9fffffff, %%eax\n\t"
-                     "movl %%eax, %%cr0\n\t"
-                     "xorl %%eax, %%eax\n\t"
-                     "cpuid"
-                     :
-                     :
-                     : "eax", "ebx", "ecx", "edx", "memory");
+    __asm__ volatile(
+        "wbinvd\n\t"
+        "movl %%cr0, %%eax\n\t"
+        "andl $0x9fffffff, %%eax\n\t"
+        "movl %%eax, %%cr0\n\t"
+        "xorl %%eax, %%eax\n\t"
+        "cpuid"
+        :
+        :
+        : "eax", "ebx", "ecx", "edx", "memory");
 }
 
 BLOBSVC void blob_shadow_load_stage2_and_enter(unsigned int total_bytes,

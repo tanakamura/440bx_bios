@@ -1,5 +1,5 @@
-#include "post_code.h"
 #include "blob.h"
+#include "post_code.h"
 #include "shared_service/service_table.h"
 
 static inline void outb(unsigned short port, unsigned char value) {
@@ -491,7 +491,6 @@ static int dram_init_from_spd(const unsigned char* spd, unsigned char spd_slot,
 
     mode_addr = dram_mode_reg_address(cas_latency, start_row);
 
-    serial_write_string("DramSeq...");
     __asm__ volatile(
         "movl $0x80000074, %%ebx\n\t"
         "xorl %%edi, %%edi\n\t"
@@ -543,7 +542,6 @@ static int dram_init_from_spd(const unsigned char* spd, unsigned char spd_slot,
           [mrs] "rm"((unsigned short)(sdramc_normal | 0x0060)),
           [mode] "rm"((unsigned int)mode_addr)
         : "eax", "ebx", "ecx", "edx", "esi", "edi", "memory", "cc");
-    serial_write_string(" done");
 
     pci_write16(0, 0, 0, BX_SDRAMC, sdramc_normal);
     dramc57 = (unsigned char)((dramc57 & 0x20) | 0x09);
@@ -551,7 +549,6 @@ static int dram_init_from_spd(const unsigned char* spd, unsigned char spd_slot,
     pmcr = pci_read8(0, 0, 0, BX_PMCR);
     pmcr |= 0x10;
     pci_write8(0, 0, 0, BX_PMCR, pmcr);
-    serial_write_string(" OK\r\n");
 
     *total_bytes_out = row_size_bytes * module_banks;
     return 0;
@@ -610,24 +607,19 @@ static void install_shared_service_table(unsigned int total_bytes,
     shared_heap_init(table);
     table->boot_context_ptr = (unsigned int)ctx;
     table->payload_manifest_ptr = (unsigned int)manifest;
-    table->blob_load =
-        service_base +
-        ((unsigned int)blob_load_service - (unsigned int)__blob_service_start);
+    table->blob_load = service_base + ((unsigned int)blob_load_service -
+                                       (unsigned int)__blob_service_start);
     table->heap_alloc =
-        service_base +
-        ((unsigned int)shared_heap_alloc_service -
-         (unsigned int)__blob_service_start);
-    table->heap_free =
-        service_base +
-        ((unsigned int)shared_heap_free_service -
-         (unsigned int)__blob_service_start);
+        service_base + ((unsigned int)shared_heap_alloc_service -
+                        (unsigned int)__blob_service_start);
+    table->heap_free = service_base + ((unsigned int)shared_heap_free_service -
+                                       (unsigned int)__blob_service_start);
     table->heap_realloc =
-        service_base +
-        ((unsigned int)shared_heap_realloc_service -
-         (unsigned int)__blob_service_start);
+        service_base + ((unsigned int)shared_heap_realloc_service -
+                        (unsigned int)__blob_service_start);
 
-    if (shared_payload_manifest_from_rom_directory(
-            manifest, SHARED_ROM_HIGH_BASE) != 0) {
+    if (shared_payload_manifest_from_rom_directory(manifest,
+                                                   SHARED_ROM_HIGH_BASE) != 0) {
         manifest->magic = SHARED_PAYLOAD_MAGIC;
         manifest->version = SHARED_PAYLOAD_VERSION;
         manifest->entry_count = 0u;
@@ -685,7 +677,6 @@ static void enter_stage2(unsigned int total_bytes) {
         die_with_post(0xef);
     }
 
-    serial_write_string("\r\nstage2 copied\r\n");
     ((stage2_entry_fn)stage2_load)(total_bytes);
     die_with_post(0xef);
 }
@@ -722,15 +713,8 @@ void postcar_bootblock_resume(unsigned int total_bytes) {
     unsigned int stack_top = dram_stack_top(total_bytes);
     unsigned int service_base = blob_service_base_for_total(total_bytes);
 
-    serial_write_string("bootblock post-CAR\r\n");
-    serial_write_string("Install blobsvc...\r\n");
     install_blob_service(service_base);
-    serial_write_string("blobsvc ok\r\n");
     install_shared_service_table(total_bytes, stack_top, service_base);
-    serial_write_string("svctab ok\r\n");
-    serial_write_string("Load stage2 @ ");
-    serial_write_hex32(STAGE2_LOAD_LINEAR);
-    serial_write_string("...\r\n");
     enter_stage2(total_bytes);
     for (;;) {
         __asm__ volatile("hlt");
@@ -751,7 +735,6 @@ void c_entry(void) {
     unsigned char found_spd = 0;
 
     outb(0x80, POST_ENTER_C);
-    serial_write_string("bootblock\r\n");
 
     enable_extended_bios_decode();
 
@@ -778,17 +761,9 @@ void c_entry(void) {
     for (slot = 0x50; slot <= 0x53; ++slot) {
         probe_rc = probe_spd_device(smba, slot);
         if (probe_rc != 0) {
-            serial_write_string("SPD ");
-            serial_write_hex8(slot);
-            serial_write_string(": !");
-            serial_write_hex8((unsigned char)probe_rc);
-            serial_write_string("\r\n");
             continue;
         }
         found_spd = slot;
-        serial_write_string("SPD ");
-        serial_write_hex8(slot);
-        serial_write_string(": ok\r\n");
         if (read_spd_minimal(smba, slot, spd) != 0) {
             die_with_post(POST_DRAM_INIT_FAIL);
         }
@@ -800,25 +775,20 @@ void c_entry(void) {
     }
 
     outb(0x80, POST_DRAM_INIT_START);
-    serial_write_string("DRAM init...\r\n");
     if (dram_init_from_spd(spd, found_spd, &total_bytes) != 0) {
         die_with_post(POST_DRAM_UNSUPPORTED);
     }
-    serial_write_string("DRAM init ok\r\n");
 
     if (a20_alias_test() != 0) {
         die_with_post(0xf5);
     }
-    serial_write_string("A20 ok\r\n");
 
     if (dram_test_rw() != 0) {
         die_with_post(POST_DRAM_TEST_FAIL);
     }
     outb(0x80, POST_DRAM_TEST_PASS);
-    serial_write_string("DRAM test ok\r\n");
 
     outb(0x80, POST_LEAVE_CAR);
-    serial_write_string("Leaving CAR...\r\n");
     wb_mask = dram_mtrr_mask(total_bytes);
     new_stack_top = dram_stack_top(total_bytes);
 
