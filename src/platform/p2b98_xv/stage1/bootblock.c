@@ -69,6 +69,11 @@ extern int blob_load_service(unsigned int payload_id, void* fallback_dst,
                              unsigned int* load_addr_out,
                              struct blob_status* status,
                              unsigned int total_bytes);
+extern void* shared_heap_alloc_service(unsigned int total_bytes,
+                                       unsigned int size);
+extern void shared_heap_free_service(unsigned int total_bytes, void* ptr);
+extern void* shared_heap_realloc_service(unsigned int total_bytes, void* ptr,
+                                         unsigned int size);
 
 static void serial_write_char(char c) {
     while ((inb(0x03f8 + 5) & 0x20) == 0) {
@@ -608,8 +613,8 @@ static void install_shared_service_table(unsigned int total_bytes,
     table->table_size = SHARED_TABLE_BYTES;
     table->stack_top = stack_top;
     table->heap_base = (unsigned int)heap_base;
-    table->heap_free_list = 0u;
     table->heap_limit = ptr_slot;
+    shared_heap_init(table);
     table->boot_context_ptr = (unsigned int)ctx;
     table->payload_manifest_ptr = (unsigned int)manifest;
     table->blob_expand =
@@ -620,6 +625,18 @@ static void install_shared_service_table(unsigned int total_bytes,
     table->blob_load =
         service_base +
         ((unsigned int)blob_load_service - (unsigned int)__blob_service_start);
+    table->heap_alloc =
+        service_base +
+        ((unsigned int)shared_heap_alloc_service -
+         (unsigned int)__blob_service_start);
+    table->heap_free =
+        service_base +
+        ((unsigned int)shared_heap_free_service -
+         (unsigned int)__blob_service_start);
+    table->heap_realloc =
+        service_base +
+        ((unsigned int)shared_heap_realloc_service -
+         (unsigned int)__blob_service_start);
 
     if (shared_payload_manifest_from_rom_directory(manifest, 0xfffc0000u) !=
         0) {

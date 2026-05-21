@@ -84,6 +84,160 @@ static BLOBSVC void blob_status_set(struct blob_status* status, int code,
     status->output_size = output_size;
 }
 
+static BLOBSVC_INLINE unsigned int heap_payload_size(
+    const struct shared_heap_block* block) {
+    if (block->size <= sizeof(*block)) {
+        return 0u;
+    }
+    return block->size - sizeof(*block);
+}
+
+static BLOBSVC_INLINE void heap_copy(unsigned char* dst,
+                                     const unsigned char* src,
+                                     unsigned int size) {
+    unsigned int i;
+    for (i = 0; i < size; ++i) {
+        dst[i] = src[i];
+    }
+}
+
+static BLOBSVC void heap_coalesce_next(struct shared_heap_block* block) {
+    struct shared_heap_block* next;
+    unsigned int block_addr = (unsigned int)block;
+
+    if (block->next == 0u || block_addr + block->size != block->next) {
+        return;
+    }
+    next = (struct shared_heap_block*)block->next;
+    block->size += next->size;
+    block->next = next->next;
+}
+
+BLOBSVC_ENTRY void* shared_heap_alloc_service(unsigned int total_bytes,
+                                              unsigned int size) {
+    struct shared_service_table* table = shared_service_from_total(total_bytes);
+    unsigned int needed;
+    unsigned int prev = 0u;
+    unsigned int cur;
+
+    if (table == 0 || size == 0u) {
+        return 0;
+    }
+    needed = shared_align_up(size + sizeof(struct shared_heap_block),
+                             SHARED_HEAP_ALIGN);
+    if (needed < SHARED_HEAP_MIN_BLOCK) {
+        needed = SHARED_HEAP_MIN_BLOCK;
+    }
+
+    cur = table->heap_free_list;
+    while (cur != 0u) {
+        struct shared_heap_block* block = (struct shared_heap_block*)cur;
+        unsigned int next = block->next;
+        if (block->size >= needed) {
+            unsigned int remain = block->size - needed;
+            if (remain >= SHARED_HEAP_MIN_BLOCK) {
+                struct shared_heap_block* split =
+                    (struct shared_heap_block*)(cur + needed);
+                split->size = remain;
+                split->next = next;
+                split->reserved0 = 0u;
+                split->reserved1 = 0u;
+                if (prev != 0u) {
+                    ((struct shared_heap_block*)prev)->next =
+                        (unsigned int)split;
+                } else {
+                    table->heap_free_list = (unsigned int)split;
+                }
+                block->size = needed;
+            } else {
+                if (prev != 0u) {
+                    ((struct shared_heap_block*)prev)->next = next;
+                } else {
+                    table->heap_free_list = next;
+                }
+            }
+            block->next = 0u;
+            block->reserved0 = 0u;
+            block->reserved1 = 0u;
+            return (void*)(cur + sizeof(*block));
+        }
+        prev = cur;
+        cur = next;
+    }
+    return 0;
+}
+
+BLOBSVC_ENTRY void shared_heap_free_service(unsigned int total_bytes,
+                                            void* ptr) {
+    struct shared_service_table* table = shared_service_from_total(total_bytes);
+    struct shared_heap_block* block;
+    unsigned int addr;
+    unsigned int prev = 0u;
+    unsigned int cur;
+
+    if (table == 0 || ptr == 0) {
+        return;
+    }
+    addr = (unsigned int)ptr - sizeof(struct shared_heap_block);
+    if ((addr & (SHARED_HEAP_ALIGN - 1u)) != 0u ||
+        addr < table->heap_base ||
+        addr + sizeof(struct shared_heap_block) > table->heap_limit) {
+        return;
+    }
+    block = (struct shared_heap_block*)addr;
+    if (block->size < SHARED_HEAP_MIN_BLOCK ||
+        addr + block->size > table->heap_limit) {
+        return;
+    }
+
+    cur = table->heap_free_list;
+    while (cur != 0u && cur < addr) {
+        prev = cur;
+        cur = ((struct shared_heap_block*)cur)->next;
+    }
+    block->next = cur;
+    if (prev != 0u) {
+        ((struct shared_heap_block*)prev)->next = addr;
+        heap_coalesce_next((struct shared_heap_block*)prev);
+    } else {
+        table->heap_free_list = addr;
+    }
+    heap_coalesce_next(block);
+}
+
+BLOBSVC_ENTRY void* shared_heap_realloc_service(unsigned int total_bytes,
+                                                void* ptr,
+                                                unsigned int size) {
+    struct shared_heap_block* block;
+    void* new_ptr;
+    unsigned int old_size;
+    unsigned int copy_size;
+
+    if (ptr == 0) {
+        return shared_heap_alloc_service(total_bytes, size);
+    }
+    if (size == 0u) {
+        shared_heap_free_service(total_bytes, ptr);
+        return 0;
+    }
+
+    block = (struct shared_heap_block*)(
+        (unsigned int)ptr - sizeof(struct shared_heap_block));
+    old_size = heap_payload_size(block);
+    if (old_size >= size) {
+        return ptr;
+    }
+
+    new_ptr = shared_heap_alloc_service(total_bytes, size);
+    if (new_ptr == 0) {
+        return 0;
+    }
+    copy_size = old_size < size ? old_size : size;
+    heap_copy((unsigned char*)new_ptr, (const unsigned char*)ptr, copy_size);
+    shared_heap_free_service(total_bytes, ptr);
+    return new_ptr;
+}
+
 static BLOBSVC_INLINE unsigned int blob_crc32_update(unsigned int crc,
                                                      unsigned char byte) {
     unsigned int i;

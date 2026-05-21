@@ -10,6 +10,8 @@
 
 #define SHARED_PAYLOAD_MAX 16u
 #define SHARED_TABLE_BYTES 4096u
+#define SHARED_HEAP_ALIGN 16u
+#define SHARED_HEAP_MIN_BLOCK 32u
 
 #define SHARED_PAYLOAD_ID_STAGE2 1u
 #define SHARED_PAYLOAD_ID_STAGE3 2u
@@ -130,9 +132,52 @@ struct shared_service_table {
     unsigned int panic;
 };
 
+struct shared_heap_block {
+    unsigned int size;
+    unsigned int next;
+    unsigned int reserved0;
+    unsigned int reserved1;
+};
+
+typedef void* (*shared_heap_alloc_fn)(unsigned int total_bytes,
+                                      unsigned int size);
+typedef void (*shared_heap_free_fn)(unsigned int total_bytes, void* ptr);
+typedef void* (*shared_heap_realloc_fn)(unsigned int total_bytes, void* ptr,
+                                        unsigned int size);
+
 static inline unsigned int shared_align_up(unsigned int value,
                                            unsigned int align) {
     return (value + align - 1u) & ~(align - 1u);
+}
+
+static inline unsigned int shared_align_down(unsigned int value,
+                                             unsigned int align) {
+    return value & ~(align - 1u);
+}
+
+static inline void shared_heap_init(struct shared_service_table* table) {
+    unsigned int base;
+    unsigned int limit;
+    struct shared_heap_block* block;
+
+    if (table == 0) {
+        return;
+    }
+    base = shared_align_up(table->heap_base, SHARED_HEAP_ALIGN);
+    limit = shared_align_down(table->heap_limit, SHARED_HEAP_ALIGN);
+    table->heap_base = base;
+    table->heap_limit = limit;
+    table->heap_free_list = 0u;
+    if (limit < base + sizeof(*block) ||
+        limit - base < SHARED_HEAP_MIN_BLOCK) {
+        return;
+    }
+    block = (struct shared_heap_block*)base;
+    block->size = limit - base;
+    block->next = 0u;
+    block->reserved0 = 0u;
+    block->reserved1 = 0u;
+    table->heap_free_list = base;
 }
 
 static inline unsigned int shared_table_pointer_slot(unsigned int total_bytes) {

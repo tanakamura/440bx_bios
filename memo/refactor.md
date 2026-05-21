@@ -667,7 +667,8 @@ payload blob の場所は boot context ではなく、shared service table の `
 - stage2 は `blob_expand` と stage3 payload を shared service table から使う。payload pointer の旧 aux fallback は削除済み。
 - shared service table の `blob_load` は実装済み。stage1/stage2 は次 stage payload の検索、header `load_addr` 適用、展開 staging の選択を `blob_load` に委譲する。stage1/stage2 の旧 linker-symbol/direct `blob_expand` fallback は削除済み。
 - P2B98-XV stage2 の DSDT 展開も `blob_load` 経由へ移行済み。
-- blob 展開用 staging/scratch は固定低位アドレスではなく、DRAM 末尾に予約した `blob_stage` を shared service table 経由で渡す。まだ heap allocate/free ではない。
+- shared heap は DRAM 末尾 table page 内の free-list allocator として初期化済み。`heap_alloc` / `heap_free` / `heap_realloc` は shared service table 経由で呼べる。
+- blob 展開用 staging/scratch は固定低位アドレスではなく、DRAM 末尾に予約した `blob_stage` を shared service table 経由で渡す。これはまだ shared heap からの一時 allocate/free にはなっていない。
 - blob 展開中の maintenance key は blob service が DRAM 末尾の shared service table pointer から boot context を辿り、`SHARED_BOOT_FLAG_MAINTENANCE_REQUESTED` を直接立てる。旧 aux dword 配列は削除済み。
 - stage3 は VGA BIOS / test ELF payload と `blob_expand` を shared service table から使う。旧 aux fallback と固定 `BLOB_SERVICE_LINEAR` fallback は削除済み。
 - ACPI table 構築は stage2 へ移動済み。P2B98-XV stage2 は DSDT blob を展開して RSDT/FADT/FACS/RSDP を作る。QEMU stage2 は fw_cfg の ACPI tables を取得/patch して RSDP を作る。stage3 は board 非依存の ACPI PM event clear / SCI enable だけを持つ。
