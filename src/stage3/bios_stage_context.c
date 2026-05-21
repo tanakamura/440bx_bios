@@ -83,3 +83,18 @@ blob_load_fn bios_stage_context_blob_load(
     }
     return 0;
 }
+
+void bios_stage_context_release_shared_service(
+    const struct bios_stage_context* context) {
+    volatile unsigned int* slot;
+
+    if (context == 0 || context->total_bytes < 0x1000u) {
+        return;
+    }
+
+    slot = (volatile unsigned int*)shared_table_pointer_slot(
+        context->total_bytes);
+    if (*slot == (unsigned int)context->shared_service) {
+        *slot = 0u;
+    }
+}

@@ -27,5 +27,7 @@ unsigned int bios_stage_context_payload_blob(
     const struct bios_stage_context* context, unsigned int payload_id);
 blob_load_fn bios_stage_context_blob_load(
     const struct bios_stage_context* context);
+void bios_stage_context_release_shared_service(
+    const struct bios_stage_context* context);
 
 #endif

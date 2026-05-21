@@ -53,6 +53,10 @@ static void prepare_linux_platform(void) {
         stage->acpi_gpe0, stage->acpi_gpe0_len, stage->acpi_flags);
 }
 
+static void release_linux_boot_services(void) {
+    bios_stage_context_release_shared_service(active_config.stage);
+}
+
 void bios_linux_fill_loader_config(struct linux_loader_config* loader,
                                    const struct bios_linux_config* config) {
     const struct bios_settings* settings = config->settings;
@@ -85,6 +89,7 @@ void bios_linux_fill_loader_config(struct linux_loader_config* loader,
     loader->memory_extended_usable_end = bios_memory_extended_usable_end;
     loader->memory_e820_entry_count = bios_memory_e820_entry_count;
     loader->memory_e820_get_entry = linux_memory_e820_get_entry_cb;
+    loader->release_boot_services = release_linux_boot_services;
 }
 
 int bios_linux_try_boot(const struct bios_linux_config* config) {

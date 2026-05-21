@@ -62,6 +62,7 @@ struct linux_loader_config {
     unsigned int (*memory_e820_entry_count)(unsigned int total_bytes);
     int (*memory_e820_get_entry)(unsigned int total_bytes, unsigned int index,
                                  struct linux_loader_e820_entry* entry);
+    void (*release_boot_services)(void);
 };
 
 int linux_loader_try_boot(const struct linux_loader_config* config);

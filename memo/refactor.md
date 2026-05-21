@@ -688,6 +688,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - NVRAM 設定 state / maintenance prompt glue / boot priority learn は `bios_settings.*` へ分離済み。`stage3/stage3.c` は `struct bios_settings` を各 app config に渡すだけ。
 - legacy platform ops / runtime config / boot drive glue は `bios_legacy.*` へ分離済み。`stage3/stage3.c` は boot priority と callbacks を渡して legacy app を呼び出すだけ。
 - Linux loader config / platform callback glue は `bios_linux.*` へ分離済み。`stage3/stage3.c` は stage/settings/VBE callback を渡して Linux loader を呼び出すだけ。
+- Linux 起動直前に Linux loader callback から DRAM 末尾の shared service table pointer を消す。E820 はまだ top reserved 1MiB を reserved のまま渡しているため、shared service/ACPI/scratch 領域の OS への完全解放は未完。
 - ROM test ELF 起動 glue は `bios_selftest.*` へ分離済み。`stage3/stage3.c` は run-test bit を見て selftest config を渡すだけ。
 - DOS tool / DOS test helper の source は `tools/dos/` へ移動済み。build output は互換のため引き続き `src/*.exe` / `src/*.com` に出す。
 - QEMU regression 用 boot sector / Linux probe source は `src/tests/boot/` へ移動済み。生成物名は互換のため引き続き `src/*.img` / `src/linuxprobe.elf` に出す。

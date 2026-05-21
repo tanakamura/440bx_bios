@@ -916,6 +916,9 @@ static int try_boot_linux_current(const struct linux_loader_config* config) {
     if (config->record_boot_success != 0) {
         config->record_boot_success(linux_hdd_current_kind());
     }
+    if (config->release_boot_services != 0) {
+        config->release_boot_services();
+    }
     serial_write_string("Boot Linux entry=");
     serial_write_hex32(entry_phys);
     serial_write_string(" params=");
