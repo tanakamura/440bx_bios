@@ -24,6 +24,11 @@ SECTIONS
         KEEP(*(.startdata))
     }
 
+    .stage15_blob :
+    {
+        KEEP(*(.stage15_blob))
+    }
+
     .blobsvc :
     {
         __blob_service_start = .;

@@ -62,6 +62,9 @@ typedef void (*stage15_entry_fn)(unsigned int stack_top,
                                  unsigned int mtrr_mask,
                                  unsigned int total_bytes,
                                  unsigned int gdtr_ptr);
+extern unsigned char stage15_blob_start[];
+extern unsigned char stage15_blob_end[];
+extern unsigned int stage15_blob_crc32;
 
 static void serial_write_char(char c) {
     while ((inb(0x03f8 + 5) & 0x20) == 0) {
@@ -151,28 +154,28 @@ static void pci_write8(unsigned char bus, unsigned char device,
 
 static unsigned char rom_read_stable_u8(const unsigned char* ptr) {
     volatile const unsigned char* p = (volatile const unsigned char*)ptr;
-    unsigned char a = p[0];
-    unsigned char b = p[0];
-    unsigned char c;
-    unsigned char d;
-    unsigned char e;
+    unsigned char samples[11];
+    unsigned int best = 0u;
+    unsigned int best_count = 0u;
+    unsigned int i;
+    unsigned int j;
 
-    if (a == b) {
-        return a;
+    for (i = 0u; i < sizeof(samples); ++i) {
+        samples[i] = p[0];
     }
-    c = p[0];
-    if (c == a || c == b) {
-        return c;
+    for (i = 0u; i < sizeof(samples); ++i) {
+        unsigned int count = 0u;
+        for (j = 0u; j < sizeof(samples); ++j) {
+            if (samples[j] == samples[i]) {
+                ++count;
+            }
+        }
+        if (count > best_count) {
+            best = i;
+            best_count = count;
+        }
     }
-    d = p[0];
-    if (d == a || d == b || d == c) {
-        return d;
-    }
-    e = p[0];
-    if (e == a || e == b || e == c || e == d) {
-        return e;
-    }
-    return e;
+    return samples[best];
 }
 
 static void enable_extended_bios_decode(void) {
@@ -550,106 +553,21 @@ static unsigned int stage1_crc32(const unsigned char* data, unsigned int len) {
     return crc ^ 0xffffffffu;
 }
 
-static unsigned int rom_read_stable_u32(unsigned int linear) {
-    unsigned int v = 0u;
-    v |= (unsigned int)rom_read_stable_u8((const unsigned char*)linear);
-    v |= (unsigned int)rom_read_stable_u8((const unsigned char*)(linear + 1u))
-         << 8;
-    v |= (unsigned int)rom_read_stable_u8((const unsigned char*)(linear + 2u))
-         << 16;
-    v |= (unsigned int)rom_read_stable_u8((const unsigned char*)(linear + 3u))
-         << 24;
-    return v;
-}
-
-static int find_stage15_payload(unsigned int* rom_linear_out,
-                                unsigned int* load_addr_out,
-                                unsigned int* size_out,
-                                unsigned int* crc_out) {
-    unsigned int base = SHARED_ROM_HIGH_BASE;
-    unsigned int entry_count;
-    unsigned int payload_start;
-    unsigned int payload_end;
-    unsigned int stage1_start;
-    unsigned int directory_bytes;
-    unsigned int sum = 0u;
-    unsigned int i;
-
-    if (rom_read_stable_u32(base + 0u) != SHARED_ROM_DIRECTORY_MAGIC ||
-        rom_read_stable_u32(base + 4u) != SHARED_ROM_DIRECTORY_VERSION ||
-        rom_read_stable_u32(base + 8u) != SHARED_ROM_DIRECTORY_HEADER_SIZE ||
-        rom_read_stable_u32(base + 12u) != SHARED_ROM_DIRECTORY_ENTRY_SIZE) {
-        return -1;
-    }
-
-    entry_count = rom_read_stable_u32(base + 16u);
-    payload_start = rom_read_stable_u32(base + 20u);
-    payload_end = rom_read_stable_u32(base + 24u);
-    stage1_start = rom_read_stable_u32(base + 28u);
-    if (entry_count > SHARED_ROM_DIRECTORY_ENTRY_MAX ||
-        payload_start < SHARED_ROM_DIRECTORY_HEADER_SIZE ||
-        payload_end > SHARED_ROM_SIZE || payload_start > payload_end ||
-        stage1_start > SHARED_ROM_SIZE || payload_end > stage1_start) {
-        return -1;
-    }
-
-    directory_bytes =
-        SHARED_ROM_DIRECTORY_HEADER_SIZE + entry_count * SHARED_ROM_DIRECTORY_ENTRY_SIZE;
-    if (directory_bytes > payload_start || (directory_bytes & 3u) != 0u) {
-        return -1;
-    }
-    for (i = 0u; i < directory_bytes; i += 4u) {
-        sum += rom_read_stable_u32(base + i);
-    }
-    if (sum != 0u) {
-        return -1;
-    }
-
-    for (i = 0u; i < entry_count; ++i) {
-        unsigned int off =
-            SHARED_ROM_DIRECTORY_HEADER_SIZE + i * SHARED_ROM_DIRECTORY_ENTRY_SIZE;
-        unsigned int id = rom_read_stable_u32(base + off + 0u);
-        unsigned int type = rom_read_stable_u32(base + off + 4u);
-        unsigned int rom_offset = rom_read_stable_u32(base + off + 12u);
-        unsigned int blob_size = rom_read_stable_u32(base + off + 16u);
-        unsigned int slot_size = rom_read_stable_u32(base + off + 20u);
-        unsigned int load_addr = rom_read_stable_u32(base + off + 24u);
-        unsigned int crc = rom_read_stable_u32(base + off + 28u);
-
-        if (id != SHARED_PAYLOAD_ID_STAGE15) {
-            continue;
-        }
-        if (type != SHARED_PAYLOAD_TYPE_RAW || blob_size == 0u ||
-            rom_offset < payload_start || rom_offset > payload_end ||
-            blob_size > payload_end - rom_offset || slot_size < blob_size ||
-            load_addr != STAGE15_LOAD_LINEAR ||
-            blob_size > STAGE15_LOAD_CAPACITY) {
-            return -1;
-        }
-        *rom_linear_out = base + rom_offset;
-        *load_addr_out = load_addr;
-        *size_out = blob_size;
-        *crc_out = crc;
-        return 0;
-    }
-    return -1;
-}
-
 static void load_stage15_and_transition(unsigned int stack_top,
                                         unsigned int wb_mask,
                                         unsigned int total_bytes,
                                         unsigned int gdtr_ptr) {
-    unsigned int rom_linear = 0u;
-    unsigned int load_addr = 0u;
-    unsigned int size = 0u;
-    unsigned int expected_crc = 0u;
+    const unsigned char* src = stage15_blob_start;
+    unsigned int load_addr = STAGE15_LOAD_LINEAR;
+    unsigned int size =
+        (unsigned int)(stage15_blob_end - stage15_blob_start);
+    unsigned int expected_crc = stage15_blob_crc32;
     unsigned char* dst;
     unsigned int retry;
     unsigned int got = 0u;
 
-    if (find_stage15_payload(&rom_linear, &load_addr, &size, &expected_crc) !=
-        0) {
-        serial_write_string("stage1.5 missing\r\n");
+    if (size == 0u || size > STAGE15_LOAD_CAPACITY) {
+        serial_write_string("stage1.5 bad size\r\n");
         die_with_post(0xef);
     }
 
@@ -659,9 +577,14 @@ static void load_stage15_and_transition(unsigned int stack_top,
     dst = (unsigned char*)load_addr;
     for (retry = 0u; retry < 16u; ++retry) {
         unsigned int i;
+        serial_write_char('[');
         for (i = 0u; i < size; ++i) {
-            dst[i] = rom_read_stable_u8((const unsigned char*)(rom_linear + i));
+            if ((i & 0x03ffu) == 0u) {
+                serial_write_char('+');
+            }
+            dst[i] = rom_read_stable_u8(src + i);
         }
+        serial_write_char(']');
         got = stage1_crc32(dst, size);
         if (got == expected_crc) {
             break;

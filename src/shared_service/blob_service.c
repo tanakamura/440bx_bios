@@ -267,28 +267,28 @@ BLOBSVC_ENTRY unsigned int blob_crc32_service(const void* data,
 static BLOBSVC_INLINE unsigned char blob_read_stable_u8(
     const unsigned char* ptr) {
     volatile const unsigned char* p = (volatile const unsigned char*)ptr;
-    unsigned char a = p[0];
-    unsigned char b = p[0];
-    unsigned char c;
-    unsigned char d;
-    unsigned char e;
+    unsigned char samples[11];
+    unsigned int best = 0u;
+    unsigned int best_count = 0u;
+    unsigned int i;
+    unsigned int j;
 
-    if (a == b) {
-        return a;
+    for (i = 0u; i < sizeof(samples); ++i) {
+        samples[i] = p[0];
     }
-    c = p[0];
-    if (c == a || c == b) {
-        return c;
+    for (i = 0u; i < sizeof(samples); ++i) {
+        unsigned int count = 0u;
+        for (j = 0u; j < sizeof(samples); ++j) {
+            if (samples[j] == samples[i]) {
+                ++count;
+            }
+        }
+        if (count > best_count) {
+            best = i;
+            best_count = count;
+        }
     }
-    d = p[0];
-    if (d == a || d == b || d == c) {
-        return d;
-    }
-    e = p[0];
-    if (e == a || e == b || e == c || e == d) {
-        return e;
-    }
-    return e;
+    return samples[best];
 }
 
 static BLOBSVC unsigned int blob_crc32_stable(const unsigned char* data,
@@ -551,7 +551,7 @@ BLOBSVC_ENTRY int blob_load_service(unsigned int payload_id, void* fallback_dst,
     if (payload->blob_crc32 != 0u) {
         unsigned int retry;
         unsigned int got = 0u;
-        for (retry = 0u; retry < 8u; ++retry) {
+        for (retry = 0u; retry < 32u; ++retry) {
             got = blob_crc32_stable((const unsigned char*)blob,
                                     payload->blob_size);
             if (got == payload->blob_crc32) {
@@ -559,7 +559,7 @@ BLOBSVC_ENTRY int blob_load_service(unsigned int payload_id, void* fallback_dst,
             }
             serial_write_char('X');
         }
-        if (retry == 8u) {
+        if (retry == 32u) {
             blob_status_set(status, BLOB_ERR_CRC, 0xffffffffu,
                             payload->blob_crc32, got, payload->blob_size);
             return BLOB_ERR_CRC;

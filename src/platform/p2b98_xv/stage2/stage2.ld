@@ -11,6 +11,14 @@ SECTIONS
         KEEP(*(.stage2.entry))
     }
 
+    .blobsvc :
+    {
+        __blob_service_start = .;
+        KEEP(*(.blobsvc.entry))
+        KEEP(*(.blobsvc))
+        __blob_service_end = .;
+    }
+
     .text :
     {
         *(.text)

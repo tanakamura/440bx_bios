@@ -67,6 +67,9 @@ start:
     mov al, POST_BOOT
     out 0x80, al
 
+    jmp disable_pam_shadow
+fini_disable_pam_shadow:
+
     jmp init_superio_uart1
 fini_init_superio_uart1:
 
@@ -259,6 +262,30 @@ init_uart:
     out dx, al
 
     jmp fini_init_uart
+
+disable_pam_shadow:
+    ; Reset can arrive through the top ROM alias while low F-segment PAM
+    ; still decodes shadow RAM from the previous boot. Restore C0000-FFFFF
+    ; to ROM before reading .startdata through the low F alias.
+    mov dx, PCI_CONFIG_ADDR
+    mov eax, 0x80000058
+    out dx, eax
+    mov dx, PCI_CONFIG_DATA + 1
+    xor al, al
+    out dx, al
+    inc dx
+    out dx, al
+    inc dx
+    out dx, al
+
+    mov dx, PCI_CONFIG_ADDR
+    mov eax, 0x8000005c
+    out dx, eax
+    mov dx, PCI_CONFIG_DATA
+    xor eax, eax
+    out dx, eax
+
+    jmp fini_disable_pam_shadow
 
 
 section .startdata progbits alloc noexec nowrite align=8

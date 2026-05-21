@@ -93,6 +93,7 @@ ROM_ENTRY_SIZE = SHARED["SHARED_ROM_DIRECTORY_ENTRY_SIZE"]
 PAYLOAD_IDS = {
     "stage15": SHARED["SHARED_PAYLOAD_ID_STAGE15"],
     "stage2": SHARED["SHARED_PAYLOAD_ID_STAGE2"],
+    "stage2_raw": SHARED["SHARED_PAYLOAD_ID_STAGE2"],
     "stage3": SHARED["SHARED_PAYLOAD_ID_STAGE3"],
     "legacy": SHARED["SHARED_PAYLOAD_ID_LEGACY_APP"],
     "linux_loader": SHARED["SHARED_PAYLOAD_ID_LINUX_LOADER_APP"],
@@ -310,7 +311,7 @@ def build_rom(entries: list[tuple[str, Path]]) -> bytes:
         payload_id = PAYLOAD_IDS[kind]
         payload_type = (
             PAYLOAD_TYPE_RAW
-            if kind == "test_floppy" or kind == "stage15"
+            if kind in ("test_floppy", "stage15", "stage2_raw")
             else PAYLOAD_TYPE_BLZ4
         )
         if payload_type == PAYLOAD_TYPE_BLZ4:

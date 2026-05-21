@@ -1,5 +1,4 @@
-stage15,stage15/stage15.elf
-stage2,stage2/stage2.elf
+stage2_raw,stage2/stage2.elf
 stage3,../../stage3/stage3.elf
 linux_loader,../../app/linux_loader/linux_loader_app.elf
 dsdt,../../dsdt.aml

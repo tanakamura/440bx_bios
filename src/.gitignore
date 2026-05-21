@@ -2,6 +2,7 @@
 *.obj
 post_code.h
 post_code.inc
+platform/p2b98_xv/stage1/stage15_crc.inc
 include/blob.inc
 include/blob.ld
 shared_service/service_table.inc
