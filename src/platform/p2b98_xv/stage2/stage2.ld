@@ -32,6 +32,7 @@ SECTIONS
     .bss :
     {
         *(.bss)
+        *(.bss.*)
         *(COMMON)
     }
     __stage2_bss_end = .;

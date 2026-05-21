@@ -32,6 +32,7 @@ SECTIONS
     .bss :
     {
         *(.bss)
+        *(.bss.*)
         *(COMMON)
     }
     __qemu_stage2_bss_end = .;

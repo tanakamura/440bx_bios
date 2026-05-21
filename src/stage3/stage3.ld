@@ -7,7 +7,7 @@ SECTIONS
 
     .entry :
     {
-        *(.entry)
+        KEEP(*(.entry))
     }
 
     . = ALIGN(16);
@@ -39,6 +39,7 @@ SECTIONS
     .bss :
     {
         *(.bss)
+        *(.bss.*)
         *(COMMON)
     }
     __bss_end = .;

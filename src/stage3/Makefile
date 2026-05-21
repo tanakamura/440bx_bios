@@ -13,7 +13,7 @@ STAGE3_LEGACY_THUNK_OBJS := bios16.o legacy_bda.o legacy_keyboard.o \
 STAGE3_APP_OBJS := $(LINUX_LOADER_OBJS) $(STAGE3_LEGACY_THUNK_OBJS)
 
 stage3.elf: $(STAGE3_OBJS) $(STAGE3_APP_OBJS) stage3/stage3.ld
-	$(LD) -m elf_i386 -T stage3/stage3.ld -Map stage3.map -o $@ $(STAGE3_OBJS) $(STAGE3_APP_OBJS)
+	$(LD) -m elf_i386 --gc-sections -T stage3/stage3.ld -Map stage3.map -o $@ $(STAGE3_OBJS) $(STAGE3_APP_OBJS)
 
 $(STAGE3_DIR_ELF): stage3.elf
 	cp $< $@

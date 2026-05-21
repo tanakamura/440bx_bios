@@ -10,7 +10,8 @@ static void zero_bss(void) {
     }
 }
 
-void postcar_resume(unsigned int total_bytes, unsigned int aux_blob_linear) {
+__attribute__((section(".entry"), used)) void
+postcar_resume(unsigned int total_bytes, unsigned int aux_blob_linear) {
     bios_stage3_run(total_bytes, aux_blob_linear);
 }
 

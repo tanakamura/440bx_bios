@@ -183,10 +183,12 @@ stage2 が使う DSDT などの board 固有 ACPI 入力はここでは別扱い
 
 - legacy profile は `legacy_app` を payload として link する。必要な test media だけ ROM free area へ後差しする。
 - `app/legacy/bios16.asm` と legacy service の一部は `app/legacy/` へ移動済み。現状は `legacy_floppy`, BDA 初期化, INT 10h/11h/12h/13h/15h/16h/17h/1Ah/60h が legacy 側 module になっている。
-- `bios_rm_service` dispatcher と thunk/IVT/DPT 設置は `app/legacy/` へ移動済み。legacy genrom profile では `legacy_app` payload を `0x000F0000` にロードして entry を呼ぶ。互換 fallback と Linux profile 用 thunk のため、stage3 にはまだ legacy object の直リンクが残る。
+- `bios_rm_service` dispatcher と thunk/IVT/DPT 設置は `app/legacy/` へ移動済み。legacy genrom profile では `legacy_app` payload を `0x000F0000` にロードして entry を呼ぶ。stage3 に残す legacy 直リンクは Linux 起動前の IVT/thunk 設置に必要な最小 thunk 部分だけに縮小済み。
 - E820/memory map は `bios_memory.*`、RTC は `bios_rtc.*` へ分離済み。legacy service からは `legacy_platform_ops` callback 経由で呼ぶ。
 - selftest profile は現状まだ `test_elf_blob` に依存している。build matrix の「selftest の app 用 payload なし」を実装するには、先に `selftest_app` を stage3 から切り出す必要がある。
-- stage3 main flow は `stage3/stage3.*` へ分離済み。`stage3/entry.c` は legacy asm entry からの BSS clear と stage3 run wrapper だけを持つ。linker script も `stage3/stage3.ld` へ移動済み。
+- stage3 main flow は `stage3/stage3.*` へ分離済み。`stage3/entry.c` は stage2 からロード先先頭に jump される entry と stage3 run wrapper だけを持つ。linker script も `stage3/stage3.ld` へ移動済み。
+- stage3 は `0x00200000` にロードされる。app slot の `0x000F0000` とは分離済み。
+- C は `-ffunction-sections -fdata-sections`、stage3 link は `--gc-sections` を使う。stage3 entry はロード先先頭に残す必要があるため `.entry` に固定して `KEEP()` する。
 - stage3 専用 glue のうち context/settings/maintenance/memtest/selftest/benchmark/ACPI runtime/legacy/Linux/shadow は `src/stage3/` へ移動済み。
 - low-level helper のうち ACPI table、x86 I/O/memory/RTC/NVRAM、PCI、serial、storage は `src/lib/` へ移動済み。ファイル名/API は移行中のため一旦 `bios_*` のまま。
 
@@ -552,7 +554,7 @@ legacy app 切り出し方針:
 
 移行中の残依存:
 
-- `app/legacy/bios16.asm` から呼ぶ `bios_rm_service` は `app/legacy/legacy_service.c` 側に移動済み。ただし同一 ELF 内 symbol 参照であり、app blob として独立 link しているわけではない。
+- `app/legacy/bios16.asm` から呼ぶ `bios_rm_service` は `app/legacy/legacy_service.c` 側に移動済み。legacy app は独立 ELF として link し、stage3 が `legacy_platform_ops` と export table を渡して初期化する。
 - thunk/IVT/DPT 設置は `legacy_thunk.*` に移動済み。stage3 はまだ `install_bios_shadow` callback を渡している。
 - INT19 boot sector 選択は `legacy_boot.*` に移動済み。ただし FreeDOS へ落ちる protected-mode-to-real-mode jump は `bios16.asm` の `bios_boot_freedos_pm32` symbol を同一 ELF 参照している。
 - INT13 HDD path は `legacy_platform_ops` 経由になった。legacy app 単体 blob 化では、この callback の実装を app 側 storage scan または shared service table 経由 block device service に差し替える。
