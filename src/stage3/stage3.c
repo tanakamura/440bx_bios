@@ -78,10 +78,7 @@ static void run_test_elf_payload(void) {
     struct bios_selftest_config selftest = {0};
 
     selftest.stage = &bios_stage;
-    selftest.install_legacy_runtime = install_bios_thunks;
-    selftest.install_boot_drive = install_boot_drive;
-    selftest.install_pm_stack_top = install_pm_stack_top;
-    selftest.install_vgabios_shadow = install_vgabios_shadow;
+    selftest.settings = &bios_settings;
     bios_selftest_run_elf_payload(&selftest);
 }
 

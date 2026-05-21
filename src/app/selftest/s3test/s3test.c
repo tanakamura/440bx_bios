@@ -1,3 +1,5 @@
+#include "selftest_abi.h"
+
 static inline void outb(unsigned short port, unsigned char value) {
     __asm__ volatile("outb %0, %1" : : "a"(value), "Nd"(port));
 }
@@ -90,14 +92,19 @@ static void dump_pm(unsigned int pm1_evt, unsigned int pm1_cnt) {
     serial_write_string("\r\n");
 }
 
-unsigned int s3test_entry(unsigned int boot_params, unsigned int rsdp,
-                          unsigned int pm1_evt, unsigned int pm1_cnt) {
+unsigned int s3test_entry(const struct selftest_runtime_info* info) {
+    unsigned int boot_params = info->boot_params;
+    unsigned int rsdp = info->platform.acpi_rsdp_linear;
+    unsigned int pm1_evt = info->platform.acpi_pm1_evt;
+    unsigned int pm1_cnt = info->platform.acpi_pm1_cnt;
     const unsigned char* rsdp_ptr = (const unsigned char*)rsdp;
     const unsigned char* bp = (const unsigned char*)boot_params;
     unsigned int ok = 1u;
 
     serial_write_string("S3TEST START\r\n");
-    serial_write_string("args bp=");
+    serial_write_string("args info=");
+    serial_write_hex32((unsigned int)info);
+    serial_write_string(" bp=");
     serial_write_hex32(boot_params);
     serial_write_string(" rsdp=");
     serial_write_hex32(rsdp);
