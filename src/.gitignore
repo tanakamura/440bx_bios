@@ -3,6 +3,7 @@
 post_code.h
 post_code.inc
 include/blob.inc
+include/blob.ld
 shared_service/service_table.inc
 start
 start_legacy

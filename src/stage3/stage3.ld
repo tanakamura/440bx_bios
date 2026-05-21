@@ -1,9 +1,10 @@
 OUTPUT_FORMAT(elf32-i386)
 ENTRY(postcar_resume)
+INCLUDE include/blob.ld
 
 SECTIONS
 {
-    . = 0x00200000;
+    . = BIOS_LOAD_LINEAR;
 
     .entry :
     {
@@ -44,7 +45,7 @@ SECTIONS
     }
     __bss_end = .;
 
-    ASSERT(. <= 0x00240000, "stage3 image exceeds high DRAM stage3 window")
+    ASSERT(. <= BIOS_LOAD_LINEAR + BIOS_LOAD_CAPACITY, "stage3 image exceeds high DRAM stage3 window")
 
     /DISCARD/ :
     {

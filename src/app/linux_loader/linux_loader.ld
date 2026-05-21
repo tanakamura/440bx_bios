@@ -1,5 +1,6 @@
 OUTPUT_FORMAT("elf32-i386")
 ENTRY(linux_loader_app_entry)
+INCLUDE include/blob.ld
 
 PHDRS {
     text PT_LOAD FLAGS(5);
@@ -7,7 +8,7 @@ PHDRS {
 }
 
 SECTIONS {
-    . = 0x000F0000;
+    . = APP_SLOT_LOAD_LINEAR;
 
     .text : {
         *(.text*)
@@ -26,6 +27,8 @@ SECTIONS {
         *(COMMON)
         *(.bss*)
     } :data
+
+    ASSERT(. <= APP_SLOT_LOAD_LINEAR + APP_SLOT_LOAD_CAPACITY, "linux loader app exceeds app slot")
 
     /DISCARD/ : {
         *(.comment*)

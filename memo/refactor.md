@@ -715,6 +715,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - 通常の同名 `.c` -> `.o` compile は top-level の共通 pattern rule に寄せる。module Makefile は object list/link rule と、asm/uACPI/別名 object などの例外だけを持つ。
 - `blob.h` は `src/include/` へ移動済み。root 直下の `bios_pci.h` forwarding header も削除し、PCI header は `lib/pci/` の実体を include path から解決する。
 - `shared_service/service_table.inc` は `shared_service/service_table.h` から、`include/blob.inc` は `include/blob.h` から生成する。QEMU stage1 asm はこれらを include し、shared table size / stage2 load address / blob status size の C/asm 二重定義を避ける。
+- `include/blob.ld` も `include/blob.h` から生成し、stage2/stage3/app linker script の load address / capacity を C header と同期する。
 - ROM high alias delta も `shared_service/service_table.h` から `service_table.inc` へ生成し、stage1 C/asm の重複即値を避ける。
 - asm object / boot sector / board smoke test は `nasm -MD` で dependency file を生成する。`post_code.inc`, `include/blob.inc`, `shared_service/service_table.inc` は初回生成用の order-only prerequisite にしている。
 

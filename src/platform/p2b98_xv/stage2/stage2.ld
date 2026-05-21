@@ -1,9 +1,10 @@
 OUTPUT_FORMAT(elf32-i386)
 ENTRY(stage2_entry)
+INCLUDE include/blob.ld
 
 SECTIONS
 {
-    . = 0x00080000;
+    . = STAGE2_LOAD_LINEAR;
 
     .stage2_entry :
     {
@@ -37,7 +38,7 @@ SECTIONS
     }
     __stage2_bss_end = .;
 
-    ASSERT(. <= 0x00090000, "stage2 exceeds 0x80000-0x8ffff")
+    ASSERT(. <= STAGE2_LOAD_LINEAR + STAGE2_LOAD_CAPACITY, "stage2 exceeds load window")
 
     /DISCARD/ :
     {

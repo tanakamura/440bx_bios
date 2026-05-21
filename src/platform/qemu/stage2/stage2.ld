@@ -1,9 +1,10 @@
 OUTPUT_FORMAT(elf32-i386)
 ENTRY(qemu_stage2_entry)
+INCLUDE include/blob.ld
 
 SECTIONS
 {
-    . = 0x00080000;
+    . = STAGE2_LOAD_LINEAR;
 
     .stage2_entry :
     {
@@ -37,7 +38,7 @@ SECTIONS
     }
     __qemu_stage2_bss_end = .;
 
-    ASSERT(. <= 0x00090000, "qemu stage2 exceeds 0x80000-0x8ffff")
+    ASSERT(. <= STAGE2_LOAD_LINEAR + STAGE2_LOAD_CAPACITY, "qemu stage2 exceeds load window")
 
     /DISCARD/ :
     {

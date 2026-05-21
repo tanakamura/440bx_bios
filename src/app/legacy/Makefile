@@ -13,7 +13,7 @@ LEGACY_APP_LIB_OBJS := lib/serial/bios_serial.o lib/pci/bios_pci.o \
 LEGACY_APP_OBJS := app/legacy/entry.o $(LEGACY_OBJS) $(LEGACY_APP_LIB_OBJS)
 LEGACY_C_OBJS := app/legacy/entry.o $(filter-out $(RM_THUNK_BIOS16_OBJ),$(LEGACY_OBJS))
 
-$(LEGACY_APP_ELF): $(LEGACY_APP_OBJS) app/legacy/legacy.ld
+$(LEGACY_APP_ELF): $(LEGACY_APP_OBJS) app/legacy/legacy.ld include/blob.ld
 	$(LD) -m elf_i386 -T app/legacy/legacy.ld -Map app/legacy/legacy_app.map -o $@ $(LEGACY_APP_OBJS)
 
 app/legacy/legacy_app.bin: $(LEGACY_APP_ELF)

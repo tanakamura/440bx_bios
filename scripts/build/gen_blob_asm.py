@@ -5,6 +5,10 @@ from pathlib import Path
 
 
 EXPORTED = {
+    "APP_SLOT_LOAD_CAPACITY",
+    "APP_SLOT_LOAD_LINEAR",
+    "BIOS_LOAD_CAPACITY",
+    "BIOS_LOAD_LINEAR",
     "BLOB_STATUS_SIZE",
     "STAGE2_LOAD_LINEAR",
     "STAGE2_LOAD_CAPACITY",
@@ -37,11 +41,17 @@ def main():
     repo_root = Path(__file__).resolve().parents[2]
     src_dir = repo_root / "src"
     defines = parse_numeric_defines(src_dir / "include" / "blob.h")
-    out = src_dir / "include" / "blob.inc"
-    lines = ["; generated from include/blob.h"]
+    inc_out = src_dir / "include" / "blob.inc"
+    inc_lines = ["; generated from include/blob.h"]
     for name in sorted(defines):
-        lines.append(f"%define {name} 0x{defines[name]:x}")
-    out.write_text("\n".join(lines) + "\n")
+        inc_lines.append(f"%define {name} 0x{defines[name]:x}")
+    inc_out.write_text("\n".join(inc_lines) + "\n")
+
+    ld_out = src_dir / "include" / "blob.ld"
+    ld_lines = ["/* generated from include/blob.h */"]
+    for name in sorted(defines):
+        ld_lines.append(f"{name} = 0x{defines[name]:x};")
+    ld_out.write_text("\n".join(ld_lines) + "\n")
 
 
 if __name__ == "__main__":

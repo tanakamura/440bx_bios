@@ -14,5 +14,5 @@ STAGE3_C_OBJS := $(STAGE3_CORE_OBJS)
 STAGE3_BIOS16_OBJS := $(RM_THUNK_BIOS16_OBJ)
 STAGE3_APP_OBJS := $(STAGE3_BIOS16_OBJS)
 
-$(STAGE3_DIR_ELF): $(STAGE3_OBJS) $(STAGE3_APP_OBJS) stage3/stage3.ld
+$(STAGE3_DIR_ELF): $(STAGE3_OBJS) $(STAGE3_APP_OBJS) stage3/stage3.ld include/blob.ld
 	$(LD) -m elf_i386 --gc-sections -T stage3/stage3.ld -Map stage3/stage3.map -o $@ $(STAGE3_OBJS) $(STAGE3_APP_OBJS)
