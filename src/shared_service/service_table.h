@@ -260,8 +260,8 @@ static inline int shared_payload_manifest_from_rom_directory(
 
     if (manifest == 0 || dir->magic != SHARED_ROM_DIRECTORY_MAGIC ||
         dir->version != SHARED_ROM_DIRECTORY_VERSION ||
-        dir->header_size < sizeof(*dir) ||
-        dir->entry_size < sizeof(struct shared_rom_payload_directory_entry) ||
+        dir->header_size != SHARED_ROM_DIRECTORY_HEADER_SIZE ||
+        dir->entry_size != SHARED_ROM_DIRECTORY_ENTRY_SIZE ||
         dir->entry_count > SHARED_ROM_DIRECTORY_ENTRY_MAX ||
         dir->payload_area_start < dir->header_size ||
         dir->payload_area_end > SHARED_ROM_SIZE ||
