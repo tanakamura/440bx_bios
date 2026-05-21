@@ -9,9 +9,7 @@ STAGE3_LIB_OBJS := $(X86_OBJS) $(SERIAL_OBJS) $(PCI_OBJS) $(STORAGE_OBJS)
 STAGE3_OBJS := $(STAGE3_CORE_OBJS) $(STAGE3_LIB_OBJS)
 STAGE3_C_OBJS := $(STAGE3_CORE_OBJS)
 
-STAGE3_LEGACY_THUNK_OBJS := app/legacy/bios16.o app/legacy/legacy_bda.o \
-	app/legacy/legacy_keyboard.o app/legacy/legacy_platform.o \
-	app/legacy/legacy_thunk.o app/legacy/legacy_video.o
+STAGE3_LEGACY_THUNK_OBJS := app/legacy/bios16.o app/legacy/legacy_thunk.o
 STAGE3_APP_OBJS := $(STAGE3_LEGACY_THUNK_OBJS)
 
 $(STAGE3_DIR_ELF): $(STAGE3_OBJS) $(STAGE3_APP_OBJS) stage3/stage3.ld

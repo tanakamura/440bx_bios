@@ -121,8 +121,7 @@ void bios_legacy_install_runtime(
     }
 
     serial_write_string("Legacy app missing; direct thunk only\r\n");
-    legacy_install_bios_thunks(0, config.hdd_present, config.base_mem_kb,
-                               config.ebda_segment, install_shadow, 0);
+    legacy_install_direct_thunks(install_shadow);
 }
 
 static int legacy_exports_ready(void) {

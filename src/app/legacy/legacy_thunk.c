@@ -52,25 +52,12 @@ static void install_thunk_vector(unsigned char vector, unsigned int linear) {
     ivt[(unsigned int)vector * 2u + 1u] = segment;
 }
 
-unsigned int legacy_install_bios_thunks(
-    int floppy_present, int hdd_present, unsigned short base_mem_kb,
-    unsigned short ebda_segment, legacy_thunk_void_fn install_shadow,
-    legacy_thunk_void_fn init_pit) {
-    static const unsigned char floppy_dpt[11] = {
-        0xaf, 0x02, 0x25, 0x02, 0x12, 0x1b, 0xff, 0x6c, 0xf6, 0x0f, 0x08,
-    };
+static unsigned int copy_thunk_code(legacy_thunk_void_fn install_shadow) {
     volatile unsigned char* thunk =
         (volatile unsigned char*)LEGACY_THUNK_RUNTIME_BASE;
     unsigned int thunk_size =
         (unsigned int)(bios16_thunk_end - bios16_thunk_start);
-    unsigned int dpt_linear =
-        LEGACY_THUNK_RUNTIME_BASE + ((thunk_size + 15u) & ~15u);
-    volatile unsigned char* dpt = (volatile unsigned char*)dpt_linear;
     unsigned int thunk_off;
-    unsigned int i;
-    unsigned int default_linear =
-        LEGACY_THUNK_RUNTIME_BASE +
-        (unsigned int)(bios16_default - bios16_thunk_start);
 
     if (install_shadow != 0) {
         install_shadow();
@@ -79,6 +66,45 @@ unsigned int legacy_install_bios_thunks(
     for (thunk_off = 0; thunk_off < thunk_size; ++thunk_off) {
         thunk[thunk_off] = bios16_thunk_start[thunk_off];
     }
+    return thunk_size;
+}
+
+void legacy_install_direct_thunks(legacy_thunk_void_fn install_shadow) {
+    unsigned int i;
+    unsigned int default_linear;
+
+    copy_thunk_code(install_shadow);
+    default_linear =
+        LEGACY_THUNK_RUNTIME_BASE +
+        (unsigned int)(bios16_default - bios16_thunk_start);
+
+    for (i = 0; i < 256u; ++i) {
+        install_ivt_vector((unsigned char)i, default_linear);
+    }
+    install_thunk_vector(0x1c,
+                         LEGACY_THUNK_RUNTIME_BASE +
+                             (unsigned int)(bios16_iret - bios16_thunk_start));
+    serialize_instruction_stream();
+}
+
+unsigned int legacy_install_bios_thunks(
+    int floppy_present, int hdd_present, unsigned short base_mem_kb,
+    unsigned short ebda_segment, legacy_thunk_void_fn install_shadow,
+    legacy_thunk_void_fn init_pit) {
+    static const unsigned char floppy_dpt[11] = {
+        0xaf, 0x02, 0x25, 0x02, 0x12, 0x1b, 0xff, 0x6c, 0xf6, 0x0f, 0x08,
+    };
+    unsigned int thunk_size;
+    unsigned int dpt_linear;
+    volatile unsigned char* dpt;
+    unsigned int i;
+    unsigned int default_linear =
+        LEGACY_THUNK_RUNTIME_BASE +
+        (unsigned int)(bios16_default - bios16_thunk_start);
+
+    thunk_size = copy_thunk_code(install_shadow);
+    dpt_linear = LEGACY_THUNK_RUNTIME_BASE + ((thunk_size + 15u) & ~15u);
+    dpt = (volatile unsigned char*)dpt_linear;
 
     for (i = 0; i < 256u; ++i) {
         install_ivt_vector((unsigned char)i, default_linear);
