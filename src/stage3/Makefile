@@ -12,7 +12,7 @@ STAGE3_C_OBJS := $(STAGE3_CORE_OBJS)
 STAGE3_LEGACY_THUNK_OBJS := app/legacy/bios16.o app/legacy/legacy_bda.o \
 	app/legacy/legacy_keyboard.o app/legacy/legacy_platform.o \
 	app/legacy/legacy_thunk.o app/legacy/legacy_video.o
-STAGE3_APP_OBJS := $(LINUX_LOADER_OBJS) $(STAGE3_LEGACY_THUNK_OBJS)
+STAGE3_APP_OBJS := $(STAGE3_LEGACY_THUNK_OBJS)
 
 $(STAGE3_DIR_ELF): $(STAGE3_OBJS) $(STAGE3_APP_OBJS) stage3/stage3.ld
 	$(LD) -m elf_i386 --gc-sections -T stage3/stage3.ld -Map stage3/stage3.map -o $@ $(STAGE3_OBJS) $(STAGE3_APP_OBJS)

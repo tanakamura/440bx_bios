@@ -83,12 +83,9 @@ static void install_pm_stack_top(void) {
 }
 
 static void run_test_elf_payload(void) {
-    struct bios_linux_config linux_platform = {0};
     struct bios_selftest_config selftest = {0};
 
-    fill_bios_linux_config(&linux_platform);
     selftest.stage = &bios_stage;
-    selftest.linux_config = &linux_platform;
     selftest.install_legacy_runtime = install_bios_thunks;
     selftest.install_boot_drive = install_boot_drive;
     selftest.install_pm_stack_top = install_pm_stack_top;
