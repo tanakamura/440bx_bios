@@ -75,29 +75,6 @@ def main() -> int:
             [
                 "qemu-system-i386",
                 "-m", "32m",
-                "-bios", str(ROOT / "qemu_flat_test_bios.bin"),
-                "-M", "pc",
-                "-serial", "stdio",
-                "-monitor", "none",
-                "-nographic",
-                "-no-reboot",
-                "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
-                "-drive", f"if=ide,format=raw,file={ide_img}",
-            ],
-            [
-                "IDE LBA0 @",
-                "BIOS HDD80 IDE",
-                "USBMBR",
-                "TIMEROK",
-                "INT60OK",
-                "E820OK",
-            ],
-        )
-        genrom_ideboot_ok = run_case(
-            "custombios-genrom-idembr",
-            [
-                "qemu-system-i386",
-                "-m", "32m",
                 "-bios", str(ROOT / "qemu_legacy_genrom.bin"),
                 "-M", "pc",
                 "-serial", "stdio",
@@ -108,7 +85,8 @@ def main() -> int:
                 "-drive", f"if=ide,format=raw,file={ide_img}",
             ],
             [
-                "qemu stage3 copied",
+                "Legacy app @ 000f0000",
+                "IDE LBA0 @",
                 "BIOS HDD80 IDE",
                 "USBMBR",
                 "TIMEROK",
@@ -118,27 +96,6 @@ def main() -> int:
         )
         linuxprobe_ok = run_case(
             "custombios-linuxprobe",
-            [
-                "qemu-system-i386",
-                "-m", "32m",
-                "-bios", str(ROOT / "qemu_flat_test_bios.bin"),
-                "-M", "pc",
-                "-serial", "stdio",
-                "-monitor", "none",
-                "-nographic",
-                "-no-reboot",
-                "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
-                "-drive", f"if=ide,format=raw,file={linuxprobe_img}",
-            ],
-            [
-                "Linux part1 start=",
-                "Linux initrd @",
-                "Boot Linux entry=00100000",
-                "LINUXPROBE",
-            ],
-        )
-        genrom_linuxprobe_ok = run_case(
-            "custombios-genrom-linuxprobe",
             [
                 "qemu-system-i386",
                 "-m", "32m",
@@ -154,6 +111,7 @@ def main() -> int:
             [
                 "Linux app @ 000f0000",
                 "Linux part1 start=",
+                "Linux initrd @",
                 "Boot Linux entry=00100000",
                 "LINUXPROBE",
             ],
@@ -163,7 +121,7 @@ def main() -> int:
             [
                 "qemu-system-i386",
                 "-m", "32m",
-                "-bios", str(ROOT / "qemu_flat_test_bios.bin"),
+                "-bios", str(ROOT / "qemu_linux_genrom.bin"),
                 "-M", "pc",
                 "-serial", "stdio",
                 "-monitor", "none",
@@ -173,6 +131,7 @@ def main() -> int:
                 "-drive", f"if=ide,format=raw,file={linuxprobe_raw_img}",
             ],
             [
+                "Linux app @ 000f0000",
                 "Linux disk start=00000000",
                 "Linux initrd: none",
                 "Boot Linux entry=00100000",
@@ -184,7 +143,7 @@ def main() -> int:
             [
                 "qemu-system-i386",
                 "-m", "32m",
-                "-bios", str(ROOT / "qemu_flat_test_bios.bin"),
+                "-bios", str(ROOT / "qemu_legacy_genrom.bin"),
                 "-M", "pc",
                 "-serial", "stdio",
                 "-monitor", "none",
@@ -196,6 +155,7 @@ def main() -> int:
                 "-device", "usb-storage,drive=usbmbr,bus=uhci.0",
             ],
             [
+                "Legacy app @ 000f0000",
                 "BIOS HDD80 USB",
                 "Booting drive=80",
                 "USBMBR",
@@ -224,8 +184,8 @@ def main() -> int:
                 "SQ",
             ],
         )
-    return 0 if (std_ok and ideboot_ok and genrom_ideboot_ok and linuxprobe_ok and
-                 genrom_linuxprobe_ok and linuxprobe_raw_ok and usbmbr_ok and
+    return 0 if (std_ok and ideboot_ok and linuxprobe_ok and
+                 linuxprobe_raw_ok and usbmbr_ok and
                  legacy_floppy_ok) else 1
 
 

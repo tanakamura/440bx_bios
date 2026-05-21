@@ -691,7 +691,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - board/profile ごとの blob list は `platform/qemu/*.blobs` と `platform/p2b98_xv/*.blobs` に追加済み。`genrom` target はこの blob list を入力にする。
 - `.blobsvc` は ROM payload area から stage1 tail 側へ移動済み。payload area は stage2/stage3/app/blob 用に寄せ、stage1 が必要とする shared service code は stage1 image の一部として持つ。
 - gen_rom 用に stage directory 配下の ELF alias を作る target を追加済み。stage1 ELF は payload symbol なしでも link できるようにし、`gen_rom.py` は stage1 ELF の alloc section だけを ROM 末尾へ overlay して payload directory を壊さない。
-- `make -C src test` は生成 ROM 経路の最低限確認として `qemu_legacy_genrom.bin` の IDE boot も実行する。
+- `make -C src test` は自作 BIOS の通常 boot path を genrom ROM で確認する。legacy boot/USB MBR/floppy は `qemu_legacy_genrom.bin`、Linux probe は `qemu_linux_genrom.bin` を使う。
 - stage3、P2B98-XV/QEMU stage2、P2B98-XV/QEMU stage1-only ELF の link rule と object list は各 stage directory の `Makefile` へ切り出し済み。現状は top-level `src/Makefile` から include する非再帰 make。通常 ROM target は genrom 版をコピーするが、旧 linker-symbol ROM の `start.elf` / `qemu_start.elf` 生成 rule は移行用に残っている。
 - legacy と linux_loader の object list / compile rule は各 app directory の `Makefile` へ切り出し済み。`legacy_app.elf` と `linux_loader_app.elf` は独立 app ELF として作れる。genrom profile ではそれぞれ ROM payload としてロードできるが、stage3 には互換 fallback と Linux profile 用 thunk のため両方の直リンク object がまだ残る。
 - `linux_loader_app.elf` / `linux_loader_app.bin` の単体 build target は追加済み。Linux profile の genrom では ROM blob list に入り、stage3 は payload があれば `0x000F0000` へロードして app entry を呼ぶ。旧 linker 同梱経路は fallback として残る。

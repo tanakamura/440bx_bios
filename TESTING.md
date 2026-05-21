@@ -9,9 +9,12 @@ QEMU で見える範囲の BIOS service / boot path は、まず `make test` で
   - `AUTOEXEC.BAT` で `BIOSTEST.EXE` を実行する
 - `src/custtest.img`
   - 廃止
-- `src/qemu_flat_test_bios.bin`
-  - 自作 BIOS の QEMU テスト ROM
-  - RAM floppy は埋め込まない
+- `src/qemu_legacy_genrom.bin`
+  - 自作 BIOS の QEMU legacy profile ROM
+  - `legacy_app` payload を `0x000f0000` にロードする
+- `src/qemu_linux_genrom.bin`
+  - 自作 BIOS の QEMU linux profile ROM
+  - `linux_loader` payload を `0x000f0000` にロードする
 
 ## 実行
 
@@ -22,10 +25,10 @@ make -C src test
 これで以下を自動実行する。
 
 1. `stdtest.img` を QEMU 標準 BIOS で起動
-2. `qemu_flat_test_bios.bin` に IDE MBR image を付けて、IDE MBR boot path を起動
-3. `qemu_flat_test_bios.bin` に IDE Linux probe image を付けて、raw partition ELF loader を起動
-4. `qemu_flat_test_bios.bin` に IDE Linux raw-disk probe image を付けて、disk 先頭 ELF loader を起動
-5. `qemu_flat_test_bios.bin` に USB MBR image を付けて、USB MBR boot path を起動
+2. `qemu_legacy_genrom.bin` に IDE MBR image を付けて、IDE MBR boot path を起動
+3. `qemu_linux_genrom.bin` に IDE Linux probe image を付けて、raw partition ELF loader を起動
+4. `qemu_linux_genrom.bin` に IDE Linux raw-disk probe image を付けて、disk 先頭 ELF loader を起動
+5. `qemu_legacy_genrom.bin` に USB MBR image を付けて、USB MBR boot path を起動
 6. それぞれの serial 出力を見て `OK/NG` を判定
 7. DOS 側の `SHUTDOWN.EXE` またはテスト MBR / Linux probe で QEMU を `isa-debug-exit` 経由で終了する
 
