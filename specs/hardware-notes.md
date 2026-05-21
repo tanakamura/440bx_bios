@@ -72,8 +72,13 @@
 
 - Conventional memory `0x00000-0x9fbff` is reported usable.
 - `0x9fc00-0xfffff` is reserved for EBDA-compatible holes, VGA/option ROM area, and the low app/thunk window at `0xf0000-`.
-- `0x00100000` through `detected_dram_end - 1MiB` is reported usable by `INT 15h E820h`, `AH=88h`, and `E801h`.
-- The top `1MiB` of detected DRAM is reserved for BIOS protected-mode stack and IDE/USB scratch buffers used by BIOS services after boot.
+- Legacy BIOS memory services (`INT 15h E820h`, `AH=88h`, and `E801h`) report
+  `0x00100000` through `detected_dram_end - 1MiB` usable. The top `1MiB` stays
+  reserved for BIOS protected-mode stack and IDE/USB scratch buffers used by
+  BIOS services after boot.
+- Linux loader E820 is less conservative: before jumping to Linux, stage3
+  releases the shared service pointer and reports only the stage2-built ACPI
+  table range reserved. Other DRAM above the ACPI table range is reported usable.
 - RAM floppy staging has been removed; boot media should be supplied by IDE/USB storage.
 
 ## Clocking
