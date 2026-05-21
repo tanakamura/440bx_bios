@@ -19,5 +19,5 @@ s3test_uacpi.o: app/selftest/s3test/s3test_uacpi.c
 uacpi_%.o: ../uACPI/source/%.c
 	$(COMPILE_UACPI_C)
 
-s3test.elf: s3test.o s3test_uacpi.o $(UACPI_OBJS) app/selftest/s3test/s3test.ld
-	$(LD) -m elf_i386 --gc-sections -T app/selftest/s3test/s3test.ld -Map s3test.map -o $@ s3test.o s3test_uacpi.o $(UACPI_OBJS) $(LIBGCC)
+$(SELFTEST_ELF): s3test.o s3test_uacpi.o $(UACPI_OBJS) app/selftest/s3test/s3test.ld
+	$(LD) -m elf_i386 --gc-sections -T app/selftest/s3test/s3test.ld -Map app/selftest/s3test/s3test.map -o $@ s3test.o s3test_uacpi.o $(UACPI_OBJS) $(LIBGCC)

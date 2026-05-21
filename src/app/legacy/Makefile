@@ -7,10 +7,10 @@ LEGACY_OBJS := bios16.o legacy_bda.o legacy_boot.o legacy_debug.o \
 LEGACY_APP_OBJS := legacy_app_entry.o $(LEGACY_OBJS)
 LEGACY_C_OBJS := legacy_app_entry.o $(filter-out bios16.o,$(LEGACY_OBJS))
 
-legacy_app.elf: $(LEGACY_APP_OBJS) app/legacy/legacy.ld
-	$(LD) -m elf_i386 -T app/legacy/legacy.ld -Map legacy_app.map -o $@ $(LEGACY_APP_OBJS)
+$(LEGACY_APP_ELF): $(LEGACY_APP_OBJS) app/legacy/legacy.ld
+	$(LD) -m elf_i386 -T app/legacy/legacy.ld -Map app/legacy/legacy_app.map -o $@ $(LEGACY_APP_OBJS)
 
-legacy_app.bin: legacy_app.elf
+app/legacy/legacy_app.bin: $(LEGACY_APP_ELF)
 	$(OBJCOPY) -O binary $< $@
 
 bios16.o: app/legacy/bios16.asm post_code.inc

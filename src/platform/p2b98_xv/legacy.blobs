@@ -1,5 +1,5 @@
 stage2,stage2/stage2.elf
 stage3,../../stage3/stage3.elf
-legacy,../../legacy_app.elf
+legacy,../../app/legacy/legacy_app.elf
 dsdt,../../dsdt.aml
 stage1,stage1/stage1.elf

@@ -636,8 +636,8 @@ payload blob の場所は boot context ではなく、shared service table の `
 - `src/platform/qemu/stage1/stage1.elf`: QEMU stage1
 - `src/platform/qemu/stage2/stage2.elf`: QEMU stage2
 - `src/stage3/stage3.elf`: high DRAM stage3
-- `src/legacy_app.bin`: legacy app
-- `src/linux_loader_app.bin`: Linux loader app
+- `src/app/legacy/legacy_app.elf`: legacy app
+- `src/app/linux_loader/linux_loader_app.elf`: Linux loader app
 - `src/test_floppy_blob.bin`: legacy test 用差し替え payload
 
 内部名は整理後に変更してよいが、外部から使う `make -C src start qemu_bios.bin test` は壊さない。
@@ -689,7 +689,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - ROM test ELF 起動 glue は `bios_selftest.*` へ分離済み。`stage3/stage3.c` は run-test bit を見て selftest config を渡すだけ。
 - DOS tool / DOS test helper の source は `tools/dos/` へ移動済み。build output は互換のため引き続き `src/*.exe` / `src/*.com` に出す。
 - build generator scripts は `scripts/build/`、QEMU test runner は `scripts/test/` へ移動済み。`make -C src` から呼ぶ前提で、生成物の基準 directory は引き続き `src/`。
-- S3/uACPI selftest source は `src/app/selftest/s3test/` へ移動済み。selftest ROM には `src/s3test.elf` を full ELF のまま `test_elf` payload として入れる。
+- S3/uACPI selftest source は `src/app/selftest/s3test/` へ移動済み。selftest ROM には `src/app/selftest/s3test/s3test.elf` を full ELF のまま `test_elf` payload として入れる。
 - stage3 の実体出力は `stage3/stage3.elf` へ移行済み。互換用に `bios.elf` alias だけを残し、旧 linker-symbol ROM 用の `stage3_blob.bin` / `bios_blob.bin` / `bios_blob.o` 経路は削除済み。
 - BLZ4 blob header は `load_addr` と `BLOB_FLAG_HAS_LOAD_ADDR` を持つ。stage2 / stage3 blob 生成時に load address を埋め、stage1/stage2 は header の load address を優先して展開する。互換のため load address がない blob は caller 指定 destination へ展開する。
 - `scripts/build/gen_rom.py` は追加済み。blob list から payload directory 付き ROM を生成できる。stage1 は ROM 先頭の payload directory を読んで manifest を作れる。`make -C src genrom` で board/profile 6 種の gen_rom 版 ROM を生成できる。既存 `start` / `qemu_bios.bin` target は linux profile の genrom 版をコピーする。`start_legacy` / `qemu_legacy_bios.bin` は legacy profile の genrom 版をコピーする。
@@ -698,13 +698,14 @@ payload blob の場所は boot context ではなく、shared service table の `
 - gen_rom 用に stage directory 配下の ELF alias を作る target を追加済み。stage1 ELF は payload symbol なしでも link できるようにし、`gen_rom.py` は stage1 ELF の alloc section だけを ROM 末尾へ overlay して payload directory を壊さない。
 - `make -C src test` は自作 BIOS の通常 boot path を genrom ROM で確認する。legacy boot/USB MBR/floppy は `qemu_legacy_genrom.bin`、Linux probe は `qemu_linux_genrom.bin` を使う。
 - stage3、P2B98-XV/QEMU stage2、P2B98-XV/QEMU stage1-only ELF の link rule と object list は各 stage directory の `Makefile` へ切り出し済み。現状は top-level `src/Makefile` から include する非再帰 make。通常 ROM target は genrom 版をコピーし、旧 linker-symbol ROM の `start.elf` / `qemu_start.elf` 生成 rule は削除済み。
-- legacy と linux_loader の object list / compile rule は各 app directory の `Makefile` へ切り出し済み。`legacy_app.elf` と `linux_loader_app.elf` は独立 app ELF として作れる。genrom profile ではそれぞれ ROM payload としてロードできる。stage3 には selftest 用 ELF loader helper と、Linux profile 用 low thunk/VBE 呼び出しのための最小 object がまだ残る。
-- `linux_loader_app.elf` / `linux_loader_app.bin` の単体 build target は追加済み。Linux profile の genrom では ROM blob list に入り、stage3 は payload があれば `0x000F0000` へロードして app entry を呼ぶ。payload がない profile では Linux boot を試さない。
-- `legacy_app.elf` / `legacy_app.bin` の単体 build target は追加済み。legacy genrom profile の ROM blob list に入り、stage3 は payload があれば `0x000F0000` へロードして app entry を呼ぶ。boot sector 選択などの後続操作は `legacy_app_exports` 経由で app 側関数を呼ぶ。payload がない profile では Linux 用 direct thunk だけを設置する。
+- legacy と linux_loader の object list / compile rule は各 app directory の `Makefile` へ切り出し済み。`app/legacy/legacy_app.elf` と `app/linux_loader/linux_loader_app.elf` は独立 app ELF として作れる。genrom profile ではそれぞれ ROM payload としてロードできる。stage3 には selftest 用 ELF loader helper と、Linux profile 用 low thunk/VBE 呼び出しのための最小 object がまだ残る。
+- `app/linux_loader/linux_loader_app.elf` の単体 build target は追加済み。Linux profile の genrom では ROM blob list に入り、stage3 は payload があれば `0x000F0000` へロードして app entry を呼ぶ。payload がない profile では Linux boot を試さない。
+- `app/legacy/legacy_app.elf` の単体 build target は追加済み。legacy genrom profile の ROM blob list に入り、stage3 は payload があれば `0x000F0000` へロードして app entry を呼ぶ。boot sector 選択などの後続操作は `legacy_app_exports` 経由で app 側関数を呼ぶ。payload がない profile では Linux 用 direct thunk だけを設置する。
 - selftest/uACPI の object list / compile rule は `app/selftest/s3test/Makefile` へ切り出し済み。旧 linker-symbol ROM 用の `test_elf_blob.o` と旧 `test_elf_blob.bin` target は削除済み。
 - genrom の `test_elf` payload は ELF の PT_LOAD だけを抜かず、ELF file 全体を BLZ4 化する。stage3 の test runner が ELF header を見て `0x00180000` へロードする。
 - stage3 固有 `.c`、platform stage 固有 source、lib/shared helper の compile rule は各 directory の `Makefile` へ切り出し済み。top-level の `CORE_C_OBJS` は module 変数の合成になっている。旧 `start` / `qemu_bios.bin` ROM build rule は platform stage1 `Makefile` へ、genrom board/profile rule は platform board `Makefile` へ移動済み。
 - P2B98-XV/QEMU stage2 と stage3 は root 直下の中間 ELF/map を作らず、各 stage directory の ELF/map へ直接 link する。
+- legacy/linux_loader/selftest app ELF/map も root 直下ではなく各 app directory へ直接 link する。
 - `blob.h` は `src/include/` へ移動済み。root 直下の `bios_pci.h` forwarding header も削除し、PCI header は `lib/pci/` の実体を include path から解決する。
 - `shared_service/service_table.inc` は `shared_service/service_table.h` から生成する。QEMU stage1 asm はこれを include し、shared table size の C/asm 二重定義を避ける。
 
