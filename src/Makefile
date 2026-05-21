@@ -127,7 +127,7 @@ test10.img: $(BUILD_SCRIPTS)/gen_test10.py
 test_floppy_blob.bin: testfd.img $(BUILD_SCRIPTS)/gen_fdos_sparse.py
 	python3 $(BUILD_SCRIPTS)/gen_fdos_sparse.py testfd.img test_floppy_blob.bin
 
-bios.elf: stage3.elf
+bios.elf: $(STAGE3_DIR_ELF)
 	cp $< $@
 
 genrom: $(GENROM_BINS)
@@ -141,6 +141,6 @@ test: stdtest.img usbmbr.img linuxprobe.img linuxprobe_raw.img qemu_legacy_test_
 -include $(DEPS)
 
 clean:
-	rm -f start start_legacy start_legacy_test start.elf start_legacy.elf linuxprobe.elf *.map *.o *.d *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc shared_service/service_table.inc $(GENROM_STAGE_ELFS) platform/p2b98_xv/stage1/*.map platform/qemu/stage1/*.map
+	rm -f start start_legacy start_legacy_test start.elf start_legacy.elf linuxprobe.elf *.map *.o *.d *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc shared_service/service_table.inc $(GENROM_STAGE_ELFS) platform/p2b98_xv/stage1/*.map platform/p2b98_xv/stage2/*.map platform/qemu/stage1/*.map platform/qemu/stage2/*.map stage3/*.map
 
 install-all: install-xrecv-exe install-mem-dmp-exe install-flashutil-exe

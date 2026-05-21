@@ -704,6 +704,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - selftest/uACPI の object list / compile rule は `app/selftest/s3test/Makefile` へ切り出し済み。旧 linker-symbol ROM 用の `test_elf_blob.o` と旧 `test_elf_blob.bin` target は削除済み。
 - genrom の `test_elf` payload は ELF の PT_LOAD だけを抜かず、ELF file 全体を BLZ4 化する。stage3 の test runner が ELF header を見て `0x00180000` へロードする。
 - stage3 固有 `.c`、platform stage 固有 source、lib/shared helper の compile rule は各 directory の `Makefile` へ切り出し済み。top-level の `CORE_C_OBJS` は module 変数の合成になっている。旧 `start` / `qemu_bios.bin` ROM build rule は platform stage1 `Makefile` へ、genrom board/profile rule は platform board `Makefile` へ移動済み。
+- P2B98-XV/QEMU stage2 と stage3 は root 直下の中間 ELF/map を作らず、各 stage directory の ELF/map へ直接 link する。
 - `blob.h` は `src/include/` へ移動済み。root 直下の `bios_pci.h` forwarding header も削除し、PCI header は `lib/pci/` の実体を include path から解決する。
 - `shared_service/service_table.inc` は `shared_service/service_table.h` から生成する。QEMU stage1 asm はこれを include し、shared table size の C/asm 二重定義を避ける。
 
