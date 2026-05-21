@@ -156,18 +156,13 @@ static int acpi_should_rsdt_ref(unsigned int sig) {
 }
 
 static unsigned int acpi_top_reserved_base(unsigned int total_bytes) {
-    if (total_bytes <= 0x00100000u) {
-        return total_bytes;
-    }
-    if (total_bytes <= 0x00200000u) {
-        return 0x00100000u;
-    }
-    return (total_bytes - BIOS_TOP_RESERVED_SIZE) & ~0xfffu;
+    return bios_memory_top_reserved_base_value(total_bytes);
 }
 
 unsigned int acpi_table_base_for_total(unsigned int total_bytes) {
     unsigned int top = acpi_top_reserved_base(total_bytes);
-    if (top >= 0x00100000u && total_bytes >= top + BIOS_TOP_RESERVED_SIZE) {
+    if (top >= BIOS_BASE_MEMORY_LIMIT &&
+        total_bytes >= top + BIOS_TOP_RESERVED_SIZE) {
         return top + ACPI_TABLE_RESERVED_OFFSET;
     }
     return ACPI_LOW_TABLE_LINEAR;
@@ -175,7 +170,8 @@ unsigned int acpi_table_base_for_total(unsigned int total_bytes) {
 
 unsigned int acpi_table_capacity_for_total(unsigned int total_bytes) {
     unsigned int top = acpi_top_reserved_base(total_bytes);
-    if (top >= 0x00100000u && total_bytes >= top + BIOS_TOP_RESERVED_SIZE) {
+    if (top >= BIOS_BASE_MEMORY_LIMIT &&
+        total_bytes >= top + BIOS_TOP_RESERVED_SIZE) {
         return BIOS_TOP_RESERVED_SIZE - ACPI_TABLE_RESERVED_OFFSET;
     }
     return ACPI_LOW_TABLE_CAPACITY;

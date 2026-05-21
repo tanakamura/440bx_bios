@@ -2,6 +2,9 @@
 #define BIOS_MEMORY_H
 
 #define BIOS_TOP_RESERVED_SIZE 0x00100000u
+#define BIOS_BASE_MEMORY_LIMIT 0x00100000u
+#define BIOS_TOP_RESERVED_MIN_TOTAL \
+    (BIOS_BASE_MEMORY_LIMIT + BIOS_TOP_RESERVED_SIZE)
 #define BIOS_E820_TYPE_USABLE 1u
 #define BIOS_E820_TYPE_RESERVED 2u
 
@@ -12,6 +15,17 @@ struct e820_entry {
     unsigned int length_high;
     unsigned int type;
 } __attribute__((packed));
+
+static inline unsigned int
+bios_memory_top_reserved_base_value(unsigned int total_bytes) {
+    if (total_bytes <= BIOS_BASE_MEMORY_LIMIT) {
+        return total_bytes;
+    }
+    if (total_bytes <= BIOS_TOP_RESERVED_MIN_TOTAL) {
+        return BIOS_BASE_MEMORY_LIMIT;
+    }
+    return (total_bytes - BIOS_TOP_RESERVED_SIZE) & ~0xfffu;
+}
 
 unsigned int bios_memory_top_reserved_base(unsigned int total_bytes);
 unsigned int bios_memory_extended_usable_end(unsigned int total_bytes);

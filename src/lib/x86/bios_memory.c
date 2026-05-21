@@ -1,13 +1,7 @@
 #include "bios_memory.h"
 
 unsigned int bios_memory_top_reserved_base(unsigned int total_bytes) {
-    if (total_bytes <= 0x00100000u) {
-        return total_bytes;
-    }
-    if (total_bytes <= 0x00200000u) {
-        return 0x00100000u;
-    }
-    return (total_bytes - BIOS_TOP_RESERVED_SIZE) & ~0xfffu;
+    return bios_memory_top_reserved_base_value(total_bytes);
 }
 
 unsigned int bios_memory_extended_usable_end(unsigned int total_bytes) {
@@ -19,10 +13,10 @@ unsigned int bios_memory_extended_usable_end(unsigned int total_bytes) {
 }
 
 unsigned int bios_memory_e820_entry_count(unsigned int total_bytes) {
-    if (total_bytes <= 0x00100000u) {
+    if (total_bytes <= BIOS_BASE_MEMORY_LIMIT) {
         return 2u;
     }
-    if (bios_memory_top_reserved_base(total_bytes) > 0x00100000u) {
+    if (bios_memory_top_reserved_base(total_bytes) > BIOS_BASE_MEMORY_LIMIT) {
         return 4u;
     }
     return 3u;
@@ -52,21 +46,22 @@ int bios_memory_e820_get_entry(unsigned int total_bytes, unsigned int index,
                            BIOS_E820_TYPE_RESERVED);
             return 0;
         case 2:
-            if (total_bytes <= 0x00100000u) {
+            if (total_bytes <= BIOS_BASE_MEMORY_LIMIT) {
                 return -1;
             }
-            if (usable_end <= 0x00100000u) {
-                e820_set_entry(entry, 0x00100000u,
-                               total_bytes - 0x00100000u,
+            if (usable_end <= BIOS_BASE_MEMORY_LIMIT) {
+                e820_set_entry(entry, BIOS_BASE_MEMORY_LIMIT,
+                               total_bytes - BIOS_BASE_MEMORY_LIMIT,
                                BIOS_E820_TYPE_RESERVED);
             } else {
-                e820_set_entry(entry, 0x00100000u,
-                               usable_end - 0x00100000u,
+                e820_set_entry(entry, BIOS_BASE_MEMORY_LIMIT,
+                               usable_end - BIOS_BASE_MEMORY_LIMIT,
                                BIOS_E820_TYPE_USABLE);
             }
             return 0;
         case 3:
-            if (top_reserved <= 0x00100000u || total_bytes <= top_reserved) {
+            if (top_reserved <= BIOS_BASE_MEMORY_LIMIT ||
+                total_bytes <= top_reserved) {
                 return -1;
             }
             e820_set_entry(entry, top_reserved, total_bytes - top_reserved,
