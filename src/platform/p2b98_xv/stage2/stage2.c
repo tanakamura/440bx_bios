@@ -199,7 +199,7 @@ static void enable_shadow_ram_and_wb(void) {
 }
 
 static void clear_app_shadow_window(void) {
-    volatile unsigned int* p = (volatile unsigned int*)0x000c0000u;
+    volatile unsigned int* p = (volatile unsigned int*)SHARED_ROM_LOW_BASE;
     volatile unsigned int* end = (volatile unsigned int*)0x000fe000u;
 
     while (p < end) {

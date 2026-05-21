@@ -16,7 +16,7 @@
 #define IA32_MTRR_DEF_TYPE 0x2ffu
 #define MTRR_DEF_TYPE_E 0x00000800u
 #define BIOS_RUNTIME_GDT_LINEAR 0x000ff800u
-#define VGA_BIOS_LINEAR 0x000c0000u
+#define VGA_BIOS_LINEAR SHARED_ROM_LOW_BASE
 #define VGA_BIOS_CAPACITY (BIOS_LOAD_LINEAR - VGA_BIOS_LINEAR)
 
 static unsigned char vgabios_shadow_ready;
@@ -129,7 +129,7 @@ static void enable_shadow_dram(void) {
 }
 
 static void clear_shadow_window(void) {
-    volatile unsigned int* p = (volatile unsigned int*)0x000c0000u;
+    volatile unsigned int* p = (volatile unsigned int*)VGA_BIOS_LINEAR;
     volatile unsigned int* end = (volatile unsigned int*)0x000e0000u;
 
     while (p < end) {

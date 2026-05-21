@@ -1,7 +1,9 @@
 #include "legacy_floppy.h"
 #include "legacy_platform.h"
+#include "shared_service/service_table.h"
 
-#define ROM_FREE_DESCRIPTOR_LINEAR 0xfffffff8u
+#define ROM_FREE_DESCRIPTOR_LINEAR \
+    (SHARED_ROM_HIGH_BASE + SHARED_ROM_SIZE - 8u)
 #define LEGACY_FLOPPY_MAGIC 0x30445346u
 #define LEGACY_FLOPPY_HEADER_SIZE 32u
 #define LEGACY_FLOPPY_RUN_SIZE 8u
@@ -50,7 +52,7 @@ void legacy_floppy_probe(void) {
     legacy_floppy_runs = 0;
 
     if (base >= end || end > ROM_FREE_DESCRIPTOR_LINEAR ||
-        base < 0xfff00000u || rom_u32(base) != LEGACY_FLOPPY_MAGIC) {
+        base < SHARED_ROM_HIGH_BASE || rom_u32(base) != LEGACY_FLOPPY_MAGIC) {
         return;
     }
 
