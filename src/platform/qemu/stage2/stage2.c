@@ -251,7 +251,9 @@ __attribute__((section(".stage2.entry"), used)) void qemu_stage2_entry(
     }
 
     zero_bss();
-    serial_write_string("qemu stage2 @ 00080000\r\n");
+    serial_write_string("qemu stage2 @ ");
+    serial_write_hex32(STAGE2_LOAD_LINEAR);
+    serial_write_string("\r\n");
     if (boot_ctx != 0) {
         boot_ctx->flags |= SHARED_BOOT_FLAG_SHADOW_READY;
     }

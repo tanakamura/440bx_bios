@@ -12,6 +12,7 @@
 #include "stage3.h"
 #include "bios_stage_context.h"
 #include "bios_storage.h"
+#include "blob.h"
 #include "post_code.h"
 
 extern void bios_boot_freedos_pm32(void);
@@ -111,7 +112,9 @@ void bios_stage3_run(unsigned int total_bytes) {
     storage_set_scratch_base(bios_top_reserved_base());
     bios_settings_load(&bios_settings);
     outb(0x80, POST_DRAM_STACK);
-    serial_write_string("stage3 @ 00200000\r\n");
+    serial_write_string("stage3 @ ");
+    serial_write_hex32(BIOS_LOAD_LINEAR);
+    serial_write_string("\r\n");
     serial_write_string("post-CAR ok\r\n");
     serial_write_string("DRAM stack @ ");
     serial_write_hex16((unsigned short)(((unsigned int)&stack_cookie) >> 16));

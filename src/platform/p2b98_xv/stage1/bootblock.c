@@ -275,8 +275,9 @@ static void enable_a20_fast(void) {
 }
 
 static int a20_alias_test(void) {
-    volatile unsigned int* low = (volatile unsigned int*)0x00080000u;
-    volatile unsigned int* high = (volatile unsigned int*)0x00180000u;
+    volatile unsigned int* low = (volatile unsigned int*)STAGE2_LOAD_LINEAR;
+    volatile unsigned int* high =
+        (volatile unsigned int*)(STAGE2_LOAD_LINEAR + 0x00100000u);
     unsigned int save_low = *low;
     unsigned int save_high = *high;
     unsigned int v0 = 0x13579bdfu;
@@ -724,7 +725,9 @@ void postcar_bootblock_resume(unsigned int total_bytes) {
     serial_write_string("blobsvc ok\r\n");
     install_shared_service_table(total_bytes, stack_top, service_base);
     serial_write_string("svctab ok\r\n");
-    serial_write_string("Load stage2 @ 00080000...\r\n");
+    serial_write_string("Load stage2 @ ");
+    serial_write_hex32(STAGE2_LOAD_LINEAR);
+    serial_write_string("...\r\n");
     enter_stage2(total_bytes);
     for (;;) {
         __asm__ volatile("hlt");

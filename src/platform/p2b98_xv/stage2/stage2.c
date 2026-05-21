@@ -338,7 +338,9 @@ __attribute__((section(".stage2.entry"), used)) void stage2_entry(
     }
 
     zero_stage2_bss();
-    serial_write_string("stage2 @ 00080000\r\n");
+    serial_write_string("stage2 @ ");
+    serial_write_hex32(STAGE2_LOAD_LINEAR);
+    serial_write_string("\r\n");
     init_l2_cache();
 
     serial_write_string("Stage2 PAM/MTRR...\r\n");
@@ -350,7 +352,9 @@ __attribute__((section(".stage2.entry"), used)) void stage2_entry(
     }
     install_real_acpi_tables(total_bytes, boot_ctx, load);
 
-    serial_write_string("Load stage3 @ 00200000...\r\n");
+    serial_write_string("Load stage3 @ ");
+    serial_write_hex32(BIOS_LOAD_LINEAR);
+    serial_write_string("...\r\n");
     if (load != 0) {
         rc = load(SHARED_PAYLOAD_ID_STAGE3, (void*)BIOS_LOAD_LINEAR,
                   BIOS_LOAD_CAPACITY, &stage3_load, &status, total_bytes);
