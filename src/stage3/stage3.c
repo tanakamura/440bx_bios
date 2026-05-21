@@ -1,4 +1,5 @@
 #include "bios_benchmark.h"
+#include "bios_direct_thunk.h"
 #include "bios_io.h"
 #include "bios_legacy.h"
 #include "bios_linux.h"
@@ -11,7 +12,6 @@
 #include "stage3.h"
 #include "bios_stage_context.h"
 #include "bios_storage.h"
-#include "app/legacy/legacy_thunk.h"
 #include "post_code.h"
 
 extern void bios_boot_freedos_pm32(void);
@@ -140,7 +140,7 @@ void bios_stage3_run(unsigned int total_bytes) {
     install_pm_stack_top();
     install_vgabios_shadow();
     serial_write_string("IVT thunks installed @ ");
-    serial_write_hex32(LEGACY_THUNK_RUNTIME_BASE);
+    serial_write_hex32(BIOS_DIRECT_THUNK_RUNTIME_BASE);
     serial_write_string("\r\n");
     if (try_boot_linux()) {
         for (;;) {

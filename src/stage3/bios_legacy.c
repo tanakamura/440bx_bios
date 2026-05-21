@@ -1,12 +1,12 @@
 #include "bios_legacy.h"
 
 #include "blob.h"
+#include "bios_direct_thunk.h"
 #include "bios_serial.h"
 #include "bios_stage_context.h"
 #include "app/legacy/legacy_boot.h"
 #include "app/legacy/legacy_rm.h"
 #include "app/legacy/legacy_runtime.h"
-#include "app/legacy/legacy_thunk.h"
 
 static const unsigned short bios_ebda_segment = 0x0000u;
 static const unsigned short bios_dos_base_mem_kb = 640u;
@@ -56,7 +56,7 @@ void bios_legacy_install_runtime(
     }
 
     serial_write_string("Legacy app missing; direct thunk only\r\n");
-    legacy_install_direct_thunks(install_shadow);
+    bios_direct_thunk_install(install_shadow);
 }
 
 static int legacy_exports_ready(void) {
@@ -84,7 +84,7 @@ void bios_legacy_install_boot_drive(unsigned char boot_drive) {
         bios_legacy_exports.install_boot_drive(boot_drive);
         return;
     }
-    legacy_install_boot_drive(boot_drive);
+    bios_direct_thunk_install_boot_drive(boot_drive);
 }
 
 void bios_legacy_install_pm_stack_top(unsigned int pm_stack_top) {
@@ -93,7 +93,7 @@ void bios_legacy_install_pm_stack_top(unsigned int pm_stack_top) {
         bios_legacy_exports.install_pm_stack_top(pm_stack_top);
         return;
     }
-    legacy_install_pm_stack_top(pm_stack_top);
+    bios_direct_thunk_install_pm_stack_top(pm_stack_top);
 }
 
 void bios_rm_service(unsigned int vector, struct rm_int13_frame* f) {

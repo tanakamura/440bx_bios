@@ -1,8 +1,8 @@
 #include "bios_linux.h"
 
-#include "app/legacy/legacy_thunk.h"
 #include "blob.h"
 #include "bios_acpi_runtime.h"
+#include "bios_direct_thunk.h"
 #include "bios_memory.h"
 #include "bios_nvram.h"
 #include "bios_rtc.h"
@@ -172,7 +172,7 @@ void bios_linux_fill_loader_config(struct linux_loader_config* loader,
     loader->prepare_platform = prepare_linux_platform;
     loader->init_vgabios = config->init_vgabios;
     loader->record_boot_success = config->record_boot_success;
-    loader->vbe_mode_info_buffer = legacy_vbe_mode_info_buffer;
+    loader->vbe_mode_info_buffer = bios_direct_thunk_vbe_mode_info_buffer;
     loader->vbe_mode_info_pm32 = config->vbe_mode_info_pm32;
     loader->vbe_set_mode_pm32 = config->vbe_set_mode_pm32;
     loader->serial_write_string = serial_write_string;
