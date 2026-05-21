@@ -92,12 +92,3 @@ blob_load_fn bios_stage_context_blob_load(
     }
     return 0;
 }
-
-void* bios_stage_context_blob_stage(const struct bios_stage_context* context) {
-    if (context->shared_service != 0 &&
-        context->shared_service->blob_stage != 0u &&
-        context->shared_service->blob_stage_size >= BLOB_STAGE_CAPACITY) {
-        return (void*)context->shared_service->blob_stage;
-    }
-    return 0;
-}

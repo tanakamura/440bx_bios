@@ -30,8 +30,7 @@ static void install_bios_shadow(void) {
 static void install_vgabios_shadow(void) {
     bios_shadow_install_vgabios(
         bios_stage.vgabios_blob_linear,
-        bios_stage_context_blob_expand(&bios_stage),
-        bios_stage_context_blob_stage(&bios_stage), bios_stage.total_bytes);
+        bios_stage_context_blob_load(&bios_stage), bios_stage.total_bytes);
 }
 
 static void init_vgabios_for_linux(void) {

@@ -20,8 +20,7 @@ extern void* shared_heap_realloc_service(unsigned int total_bytes, void* ptr,
 
 void qemu_install_shared_service_table(unsigned int total_bytes,
                                        unsigned int stack_top,
-                                       unsigned int service_base,
-                                       unsigned int blob_stage) {
+                                       unsigned int service_base) {
     unsigned int table_linear = shared_table_base_from_total(total_bytes);
     unsigned int ptr_slot = shared_table_pointer_slot(total_bytes);
     struct shared_service_table* table =
@@ -57,8 +56,8 @@ void qemu_install_shared_service_table(unsigned int total_bytes,
     table->blob_expand =
         service_base +
         ((unsigned int)blob_expand_service - (unsigned int)__blob_service_start);
-    table->blob_stage = blob_stage;
-    table->blob_stage_size = BLOB_STAGE_CAPACITY;
+    table->blob_stage = 0u;
+    table->blob_stage_size = 0u;
     table->blob_load =
         service_base +
         ((unsigned int)blob_load_service - (unsigned int)__blob_service_start);

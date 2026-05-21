@@ -15,11 +15,11 @@ void bios_selftest_run_elf_blob(const struct bios_selftest_config* config) {
     typedef unsigned int (*test_elf_entry_fn)(unsigned int, unsigned int,
                                              unsigned int, unsigned int);
     const struct bios_stage_context* stage = config->stage;
-    blob_expand_fn expand = bios_stage_context_blob_expand(stage);
-    void* blob_stage = bios_stage_context_blob_stage(stage);
+    blob_load_fn load = bios_stage_context_blob_load(stage);
     struct blob_status status;
     struct linux_loader_config linux_config = {0};
     unsigned char* image = (unsigned char*)LINUX_LOADER_TEST_ELF_IMAGE_LINEAR;
+    unsigned int load_addr = LINUX_LOADER_TEST_ELF_IMAGE_LINEAR;
     unsigned int entry_phys = 0u;
     unsigned int rc;
     int expand_rc;
@@ -28,15 +28,15 @@ void bios_selftest_run_elf_blob(const struct bios_selftest_config* config) {
         serial_write_string("No test ELF blob\r\n");
         return;
     }
-    if (expand == 0 || blob_stage == 0) {
+    if (load == 0) {
         serial_write_string("Test ELF blob service missing\r\n");
         return;
     }
 
     serial_write_string("Run ROM test ELF...\r\n");
-    expand_rc = expand((const void*)stage->test_elf_blob_linear, blob_stage,
-                       image, LINUX_LOADER_TEST_ELF_IMAGE_CAPACITY, &status,
-                       stage->total_bytes);
+    expand_rc = load(SHARED_PAYLOAD_ID_TEST_ELF, image,
+                     LINUX_LOADER_TEST_ELF_IMAGE_CAPACITY, &load_addr, &status,
+                     stage->total_bytes);
     if (expand_rc != 0) {
         serial_write_string("Test ELF blob failed rc=");
         serial_write_hex8((unsigned char)expand_rc);

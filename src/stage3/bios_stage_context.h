@@ -29,6 +29,5 @@ blob_expand_fn bios_stage_context_blob_expand(
     const struct bios_stage_context* context);
 blob_load_fn bios_stage_context_blob_load(
     const struct bios_stage_context* context);
-void* bios_stage_context_blob_stage(const struct bios_stage_context* context);
 
 #endif

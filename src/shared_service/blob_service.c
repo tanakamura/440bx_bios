@@ -516,10 +516,11 @@ BLOBSVC_ENTRY int blob_load_service(unsigned int payload_id, void* fallback_dst,
     struct shared_service_table* service = shared_service_from_total(total_bytes);
     struct shared_payload_entry* payload;
     const void* blob;
+    void* stage;
     unsigned int load_addr;
+    int rc;
 
-    if (service == 0 || service->blob_stage == 0u ||
-        service->blob_stage_size < BLOB_STAGE_CAPACITY) {
+    if (service == 0) {
         blob_status_set(status, BLOB_ERR_SIZE, 0, 0, 0, 0);
         return BLOB_ERR_SIZE;
     }
@@ -536,9 +537,24 @@ BLOBSVC_ENTRY int blob_load_service(unsigned int payload_id, void* fallback_dst,
     if (load_addr_out != 0) {
         *load_addr_out = load_addr;
     }
-    return blob_expand_service(blob, (void*)service->blob_stage,
-                               (void*)load_addr, dst_capacity, status,
-                               total_bytes);
+
+    stage = shared_heap_alloc_service(total_bytes, BLOB_STAGE_CAPACITY);
+    if (stage == 0) {
+        if (service->blob_stage != 0u &&
+            service->blob_stage_size >= BLOB_STAGE_CAPACITY) {
+            stage = (void*)service->blob_stage;
+        } else {
+            blob_status_set(status, BLOB_ERR_SIZE, 0, 0, 0, 0);
+            return BLOB_ERR_SIZE;
+        }
+    }
+
+    rc = blob_expand_service(blob, stage, (void*)load_addr, dst_capacity,
+                             status, total_bytes);
+    if ((unsigned int)stage != service->blob_stage && service->heap_free != 0u) {
+        shared_heap_free_service(total_bytes, stage);
+    }
+    return rc;
 }
 
 #define IA32_MTRR_FIX4K_E0000 0x26cu

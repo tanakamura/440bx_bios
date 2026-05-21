@@ -3,6 +3,7 @@
 #include "bios_io.h"
 #include "bios_pci.h"
 #include "bios_serial.h"
+#include "shared_service/service_table.h"
 
 #define IA32_MTRR_FIX4K_C0000 0x268u
 #define IA32_MTRR_FIX4K_C8000 0x269u
@@ -163,10 +164,10 @@ void bios_shadow_install(unsigned char already_ready) {
 }
 
 void bios_shadow_install_vgabios(unsigned int blob_linear,
-                                 blob_expand_fn expand,
-                                 void* blob_stage,
+                                 blob_load_fn load,
                                  unsigned int total_bytes) {
     struct blob_status status;
+    unsigned int load_addr = VGA_BIOS_LINEAR;
     unsigned int size;
     unsigned int i;
     unsigned char sum = 0u;
@@ -176,14 +177,14 @@ void bios_shadow_install_vgabios(unsigned int blob_linear,
     if (blob_linear == 0u) {
         return;
     }
-    if (expand == 0 || blob_stage == 0) {
+    if (load == 0) {
         serial_write_string("VBIOS blob service missing\r\n");
         return;
     }
 
     serial_write_string("VBIOS @ 000c0000...");
-    rc = expand((const void*)blob_linear, blob_stage, (void*)VGA_BIOS_LINEAR,
-                VGA_BIOS_CAPACITY, &status, total_bytes);
+    rc = load(SHARED_PAYLOAD_ID_VGABIOS, (void*)VGA_BIOS_LINEAR,
+              VGA_BIOS_CAPACITY, &load_addr, &status, total_bytes);
     serial_write_string("\r\n");
     if (rc != 0) {
         serial_write_string("VBIOS blob failed rc=");

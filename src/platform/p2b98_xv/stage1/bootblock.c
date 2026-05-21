@@ -320,13 +320,9 @@ static unsigned int blob_service_base_for_total(unsigned int total_bytes) {
         shared_table_base_from_total(total_bytes), blob_service_size_aligned());
 }
 
-static unsigned int blob_stage_base_for_total(unsigned int total_bytes) {
-    return blob_service_base_for_total(total_bytes) - BLOB_STAGE_CAPACITY;
-}
-
 static unsigned int dram_stack_top(unsigned int total_bytes) {
     if (total_bytes >= 0x00300000u) {
-        return blob_stage_base_for_total(total_bytes);
+        return blob_service_base_for_total(total_bytes);
     }
     return 0x001ff000u;
 }
@@ -581,8 +577,7 @@ static void install_blob_service(unsigned int service_base) {
 
 static void install_shared_service_table(unsigned int total_bytes,
                                          unsigned int stack_top,
-                                         unsigned int service_base,
-                                         unsigned int blob_stage) {
+                                         unsigned int service_base) {
     unsigned int table_linear = shared_table_base_from_total(total_bytes);
     unsigned int ptr_slot = shared_table_pointer_slot(total_bytes);
     struct shared_service_table* table =
@@ -620,8 +615,8 @@ static void install_shared_service_table(unsigned int total_bytes,
     table->blob_expand =
         service_base +
         ((unsigned int)blob_expand_service - (unsigned int)__blob_service_start);
-    table->blob_stage = blob_stage;
-    table->blob_stage_size = BLOB_STAGE_CAPACITY;
+    table->blob_stage = 0u;
+    table->blob_stage_size = 0u;
     table->blob_load =
         service_base +
         ((unsigned int)blob_load_service - (unsigned int)__blob_service_start);
@@ -733,14 +728,12 @@ static unsigned int prepare_runtime_gdt(void) {
 void postcar_bootblock_resume(unsigned int total_bytes) {
     unsigned int stack_top = dram_stack_top(total_bytes);
     unsigned int service_base = blob_service_base_for_total(total_bytes);
-    unsigned int blob_stage = blob_stage_base_for_total(total_bytes);
 
     serial_write_string("bootblock post-CAR\r\n");
     serial_write_string("Install blobsvc...\r\n");
     install_blob_service(service_base);
     serial_write_string("blobsvc ok\r\n");
-    install_shared_service_table(total_bytes, stack_top, service_base,
-                                 blob_stage);
+    install_shared_service_table(total_bytes, stack_top, service_base);
     serial_write_string("svctab ok\r\n");
     serial_write_string("Load stage2 @ 00080000...\r\n");
     enter_stage2(total_bytes);

@@ -136,11 +136,6 @@ static unsigned int memtest_skip_end(
         addr < service->service_base + service->service_size) {
         return service->service_base + service->service_size;
     }
-    if (service != 0 && service->blob_stage != 0u &&
-        service->blob_stage_size != 0u && addr >= service->blob_stage &&
-        addr < service->blob_stage + service->blob_stage_size) {
-        return service->blob_stage + service->blob_stage_size;
-    }
     if (service != 0 && service->table_linear != 0u &&
         service->table_size != 0u && addr >= service->table_linear &&
         addr < service->table_linear + service->table_size) {
