@@ -7,6 +7,8 @@
 #define BLOB_FLAG_HAS_LOAD_ADDR 0x00000004u
 #define BLOB_FLAG_KNOWN (BLOB_FLAG_LZ4_BLOCKS | BLOB_FLAG_HAS_LOAD_ADDR)
 #define BLOB_BLOCK_SIZE 4096u
+#define BLOB_HEADER_SIZE 52u
+#define BLOB_BLOCK_DESC_SIZE 20u
 #define BLOB_OUTPUT_CRC_LIMIT (512u * 1024u)
 
 #define BLOB_STAGE_CAPACITY 8192u
@@ -55,6 +57,11 @@ struct blob_block {
     unsigned int compressed_size;
     unsigned int compressed_crc32;
 };
+
+typedef char blob_header_size_check[
+    sizeof(struct blob_header) == BLOB_HEADER_SIZE ? 1 : -1];
+typedef char blob_block_size_check[
+    sizeof(struct blob_block) == BLOB_BLOCK_DESC_SIZE ? 1 : -1];
 
 struct blob_status {
     int code;

@@ -2,19 +2,56 @@
 from pathlib import Path
 import argparse
 import binascii
+import re
 import struct
 
 
 SECTOR = 512
-MAGIC = 0x345A4C42  # 'BLZ4'
-VERSION = 3
-FLAG_LZ4_BLOCKS = 2
-FLAG_HAS_LOAD_ADDR = 4
-HEADER_SIZE = 52
-BLOCK_SIZE = 4096
-BLOCK_DESC_SIZE = 20
 MINMATCH = 4
 MAX_OFFSET = 0xFFFF
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SRC_DIR = REPO_ROOT / "src"
+
+BLOB_DEFINE_NAMES = {
+    "BLOB_MAGIC",
+    "BLOB_VERSION",
+    "BLOB_FLAG_LZ4_BLOCKS",
+    "BLOB_FLAG_HAS_LOAD_ADDR",
+    "BLOB_BLOCK_SIZE",
+    "BLOB_HEADER_SIZE",
+    "BLOB_BLOCK_DESC_SIZE",
+}
+
+
+def parse_numeric_defines(path: Path) -> dict[str, int]:
+    pattern = re.compile(r"^#define\s+([A-Z0-9_]+)\s+(.+?)\s*$")
+    defines: dict[str, int] = {}
+    for raw_line in path.read_text().splitlines():
+        match = pattern.match(raw_line.strip())
+        if not match:
+            continue
+        name, value = match.groups()
+        if name not in BLOB_DEFINE_NAMES:
+            continue
+        value = value.split("/*", 1)[0].strip()
+        value = re.sub(r"[uUlL]+$", "", value)
+        if not re.fullmatch(r"0x[0-9a-fA-F]+|[0-9]+", value):
+            raise ValueError(f"unsupported define value for {name}: {value}")
+        defines[name] = int(value, 0)
+    missing = sorted(BLOB_DEFINE_NAMES - set(defines))
+    if missing:
+        raise ValueError(f"missing defines: {', '.join(missing)}")
+    return defines
+
+
+BLOB_DEFINES = parse_numeric_defines(SRC_DIR / "include" / "blob.h")
+MAGIC = BLOB_DEFINES["BLOB_MAGIC"]
+VERSION = BLOB_DEFINES["BLOB_VERSION"]
+FLAG_LZ4_BLOCKS = BLOB_DEFINES["BLOB_FLAG_LZ4_BLOCKS"]
+FLAG_HAS_LOAD_ADDR = BLOB_DEFINES["BLOB_FLAG_HAS_LOAD_ADDR"]
+BLOCK_SIZE = BLOB_DEFINES["BLOB_BLOCK_SIZE"]
+HEADER_SIZE = BLOB_DEFINES["BLOB_HEADER_SIZE"]
+BLOCK_DESC_SIZE = BLOB_DEFINES["BLOB_BLOCK_DESC_SIZE"]
 
 
 def le16(buf: bytes, off: int) -> int:

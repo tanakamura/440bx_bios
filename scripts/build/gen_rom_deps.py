@@ -32,6 +32,7 @@ def main() -> int:
 
     deps = [
         make_dep_path(args.blob_list),
+        make_dep_path(gen_rom.SRC_DIR / "include" / "blob.h"),
         make_dep_path(gen_rom.SRC_DIR / "shared_service" / "service_table.h"),
         "../scripts/build/gen_rom.py",
         "../scripts/build/gen_blob.py",

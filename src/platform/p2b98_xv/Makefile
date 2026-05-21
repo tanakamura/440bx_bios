@@ -5,12 +5,12 @@ P2B98_XV_GENROM_BINS := p2b98_xv_legacy_genrom.bin \
 P2B98_XV_BLOB_DEPFILES := platform/p2b98_xv/legacy.blobs.d \
 	platform/p2b98_xv/selftest.blobs.d platform/p2b98_xv/linux.blobs.d
 
-platform/p2b98_xv/%.blobs.d: platform/p2b98_xv/%.blobs $(BUILD_SCRIPTS)/gen_rom_deps.py $(BUILD_SCRIPTS)/gen_rom.py shared_service/service_table.h
+platform/p2b98_xv/%.blobs.d: platform/p2b98_xv/%.blobs $(BUILD_SCRIPTS)/gen_rom_deps.py $(BUILD_SCRIPTS)/gen_rom.py include/blob.h shared_service/service_table.h
 	python3 $(BUILD_SCRIPTS)/gen_rom_deps.py --target p2b98_xv_$*_genrom.bin $< $@
 
 ifneq ($(filter clean,$(MAKECMDGOALS)),clean)
 -include $(P2B98_XV_BLOB_DEPFILES)
 endif
 
-p2b98_xv_%_genrom.bin: platform/p2b98_xv/%.blobs $(BUILD_SCRIPTS)/gen_rom.py $(BUILD_SCRIPTS)/gen_blob.py shared_service/service_table.h
+p2b98_xv_%_genrom.bin: platform/p2b98_xv/%.blobs $(BUILD_SCRIPTS)/gen_rom.py $(BUILD_SCRIPTS)/gen_blob.py include/blob.h shared_service/service_table.h
 	python3 $(BUILD_SCRIPTS)/gen_rom.py $< $@
