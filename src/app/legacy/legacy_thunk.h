@@ -9,7 +9,6 @@ unsigned int legacy_install_bios_thunks(
     int floppy_present, int hdd_present, unsigned short base_mem_kb,
     unsigned short ebda_segment, legacy_thunk_void_fn install_shadow,
     legacy_thunk_void_fn init_pit);
-void legacy_install_direct_thunks(legacy_thunk_void_fn install_shadow);
 void legacy_install_boot_drive(unsigned char boot_drive);
 void legacy_install_pm_stack_top(unsigned int stack_top);
 unsigned char* legacy_vbe_mode_info_buffer(void);

@@ -76,24 +76,6 @@ static unsigned int copy_thunk_code(legacy_thunk_void_fn install_shadow) {
     return thunk_size;
 }
 
-void legacy_install_direct_thunks(legacy_thunk_void_fn install_shadow) {
-    unsigned int i;
-    unsigned int default_linear;
-
-    copy_thunk_code(install_shadow);
-    default_linear =
-        LEGACY_THUNK_RUNTIME_BASE +
-        (unsigned int)(bios16_default - bios16_thunk_start);
-
-    for (i = 0; i < 256u; ++i) {
-        install_ivt_vector((unsigned char)i, default_linear);
-    }
-    install_thunk_vector(0x1c,
-                         LEGACY_THUNK_RUNTIME_BASE +
-                             (unsigned int)(bios16_iret - bios16_thunk_start));
-    serialize_instruction_stream();
-}
-
 unsigned int legacy_install_bios_thunks(
     int floppy_present, int hdd_present, unsigned short base_mem_kb,
     unsigned short ebda_segment, legacy_thunk_void_fn install_shadow,
