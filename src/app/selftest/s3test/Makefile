@@ -21,6 +21,3 @@ uacpi_%.o: ../uACPI/source/%.c
 
 s3test.elf: s3test.o s3test_uacpi.o $(UACPI_OBJS) app/selftest/s3test/s3test.ld
 	$(LD) -m elf_i386 --gc-sections -T app/selftest/s3test/s3test.ld -Map s3test.map -o $@ s3test.o s3test_uacpi.o $(UACPI_OBJS) $(LIBGCC)
-
-test_elf_blob.bin: s3test.elf $(BUILD_SCRIPTS)/gen_blob.py
-	python3 $(BUILD_SCRIPTS)/gen_blob.py s3test.elf test_elf_blob.bin

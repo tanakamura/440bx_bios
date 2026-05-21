@@ -15,6 +15,6 @@ struct bios_selftest_config {
     bios_selftest_void_fn install_vgabios_shadow;
 };
 
-void bios_selftest_run_elf_blob(const struct bios_selftest_config* config);
+void bios_selftest_run_elf_payload(const struct bios_selftest_config* config);
 
 #endif

@@ -11,7 +11,7 @@ static void cpu_serialize(void) {
                      : "eax", "ebx", "ecx", "edx", "memory");
 }
 
-void bios_selftest_run_elf_blob(const struct bios_selftest_config* config) {
+void bios_selftest_run_elf_payload(const struct bios_selftest_config* config) {
     typedef unsigned int (*test_elf_entry_fn)(unsigned int, unsigned int,
                                              unsigned int, unsigned int);
     const struct bios_stage_context* stage = config->stage;
@@ -24,12 +24,12 @@ void bios_selftest_run_elf_blob(const struct bios_selftest_config* config) {
     unsigned int rc;
     int expand_rc;
 
-    if (stage->test_elf_blob_linear == 0u) {
-        serial_write_string("No test ELF blob\r\n");
+    if (stage->test_elf_payload_linear == 0u) {
+        serial_write_string("No test ELF payload\r\n");
         return;
     }
     if (load == 0) {
-        serial_write_string("Test ELF blob service missing\r\n");
+        serial_write_string("Test ELF payload service missing\r\n");
         return;
     }
 
@@ -38,7 +38,7 @@ void bios_selftest_run_elf_blob(const struct bios_selftest_config* config) {
                      LINUX_LOADER_TEST_ELF_IMAGE_CAPACITY, &load_addr, &status,
                      stage->total_bytes);
     if (expand_rc != 0) {
-        serial_write_string("Test ELF blob failed rc=");
+        serial_write_string("Test ELF payload failed rc=");
         serial_write_hex8((unsigned char)expand_rc);
         serial_write_string(" block=");
         serial_write_hex32(status.block);

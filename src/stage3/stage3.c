@@ -82,7 +82,7 @@ static void install_pm_stack_top(void) {
     bios_legacy_install_pm_stack_top(bios_pm_stack_top());
 }
 
-static void run_test_elf_blob(void) {
+static void run_test_elf_payload(void) {
     struct bios_linux_config linux_platform = {0};
     struct bios_selftest_config selftest = {0};
 
@@ -93,7 +93,7 @@ static void run_test_elf_blob(void) {
     selftest.install_boot_drive = install_boot_drive;
     selftest.install_pm_stack_top = install_pm_stack_top;
     selftest.install_vgabios_shadow = install_vgabios_shadow;
-    bios_selftest_run_elf_blob(&selftest);
+    bios_selftest_run_elf_payload(&selftest);
 }
 
 static void nvram_record_boot_success(unsigned char kind) {
@@ -129,7 +129,7 @@ void bios_stage3_run(unsigned int total_bytes, unsigned int aux_blob_linear) {
                               bios_stage.shared_service);
     if (bios_settings.run_test_blob != 0u) {
         bios_settings_consume_test_blob_request(&bios_settings);
-        run_test_elf_blob();
+        run_test_elf_payload();
         serial_write_string("Test blob halted\r\n");
         for (;;) {
             __asm__ volatile("hlt");
