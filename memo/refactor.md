@@ -688,6 +688,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - Linux loader config / platform callback glue は `bios_linux.*` へ分離済み。`stage3/stage3.c` は stage/settings/VBE callback を渡して Linux loader を呼び出すだけ。
 - ROM test ELF 起動 glue は `bios_selftest.*` へ分離済み。`stage3/stage3.c` は run-test bit を見て selftest config を渡すだけ。
 - DOS tool / DOS test helper の source は `tools/dos/` へ移動済み。build output は互換のため引き続き `src/*.exe` / `src/*.com` に出す。
+- QEMU regression 用 boot sector / Linux probe source は `src/tests/boot/` へ移動済み。生成物名は互換のため引き続き `src/*.img` / `src/linuxprobe.elf` に出す。
 - build generator scripts は `scripts/build/`、QEMU test runner は `scripts/test/` へ移動済み。`make -C src` から呼ぶ前提で、生成物の基準 directory は引き続き `src/`。
 - S3/uACPI selftest source は `src/app/selftest/s3test/` へ移動済み。selftest ROM には `src/app/selftest/s3test/s3test.elf` を full ELF のまま `test_elf` payload として入れる。
 - stage3 の実体出力は `stage3/stage3.elf` へ移行済み。互換用に `bios.elf` alias だけを残し、旧 linker-symbol ROM 用の `stage3_blob.bin` / `bios_blob.bin` / `bios_blob.o` 経路は削除済み。

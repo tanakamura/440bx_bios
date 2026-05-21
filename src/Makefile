@@ -64,24 +64,24 @@ dsdt.aml: ../specs/dsdt.dsl $(BUILD_SCRIPTS)/gen_dsdt_aml.py
 testfd.img: $(BUILD_SCRIPTS)/gen_testfd.py
 	python3 $(BUILD_SCRIPTS)/gen_testfd.py
 
-int13probe.bin: int13probe.asm
+int13probe.bin: tests/boot/int13probe.asm
 	nasm -f bin $< -o $@
 
 int13probe.img: int13probe.bin $(BUILD_SCRIPTS)/gen_int13probe.py
 	python3 $(BUILD_SCRIPTS)/gen_int13probe.py
 
-usbmbr.bin: usbmbr.asm
+usbmbr.bin: tests/boot/usbmbr.asm
 	nasm -f bin $< -o $@
 
 usbmbr.img: usbmbr.bin
 	cp $< $@
 	truncate -s 1474560 $@
 
-linuxprobe.o: linuxprobe.asm
+linuxprobe.o: tests/boot/linuxprobe.asm
 	nasm -f elf32 $< -o $@
 
-linuxprobe.elf: linuxprobe.o linuxprobe.ld
-	$(LD) -m elf_i386 -T linuxprobe.ld -o $@ linuxprobe.o
+linuxprobe.elf: linuxprobe.o tests/boot/linuxprobe.ld
+	$(LD) -m elf_i386 -T tests/boot/linuxprobe.ld -o $@ linuxprobe.o
 
 linuxprobe.img linuxprobe_raw.img: linuxprobe.elf $(BUILD_SCRIPTS)/gen_linuxprobe_img.py
 	python3 $(BUILD_SCRIPTS)/gen_linuxprobe_img.py

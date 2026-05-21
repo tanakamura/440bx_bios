@@ -65,7 +65,7 @@ QEMU 標準 BIOS で見る。
 - IRQ0 timer が動き、BDA tick count `0040:006c` が増えること
 - `INT 60h` 経由の flat `read8/write8` が動くこと
 - `INT 15h E820h` が現在の自作 BIOS 用メモリマップを返すこと
-- `src/usbmbr.asm` の最小 MBR が `USBMBR` を出して `isa-debug-exit` で success を返すこと
+- `src/tests/boot/usbmbr.asm` の最小 MBR が `USBMBR` を出して `isa-debug-exit` で success を返すこと
 
 ### Linux Probe
 
@@ -76,7 +76,7 @@ QEMU 標準 BIOS で見る。
 - ELF program header の `PT_LOAD` を physical address へ読み込むこと
 - 第2 partition を optional initrd として読み込み、boot params の `ramdisk_image` / `ramdisk_size` に渡すこと
 - boot params の setup header / E820 / cmdline を作り、`ESI=boot_params` で 32bit entry へ入ること
-- `src/linuxprobe.asm` が `LINUXPROBE` を出して `isa-debug-exit` で success を返すこと
+- `src/tests/boot/linuxprobe.asm` が `LINUXPROBE` を出して `isa-debug-exit` で success を返すこと
 
 ### ROM Test ELF
 
