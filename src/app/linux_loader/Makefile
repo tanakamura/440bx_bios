@@ -9,9 +9,3 @@ $(LINUX_LOADER_APP_ELF): $(LINUX_LOADER_APP_OBJS) app/linux_loader/linux_loader.
 
 app/linux_loader/linux_loader_app.bin: $(LINUX_LOADER_APP_ELF)
 	$(OBJCOPY) -O binary $< $@
-
-app/linux_loader/linux_loader.o: app/linux_loader/linux_loader.c
-	$(COMPILE_C)
-
-app/linux_loader/entry.o: app/linux_loader/entry.c
-	$(COMPILE_C)

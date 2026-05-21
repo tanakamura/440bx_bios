@@ -712,6 +712,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - legacy/linux_loader/selftest app ELF/map も root 直下ではなく各 app directory へ直接 link する。
 - stage/app/lib/shared/platform の C/asm object と generated dependency / stack-usage file は、それぞれの source directory 配下へ出す。root `src/` 直下に残る旧 artifact は互換 target や過去 build 由来の生成物だけに寄せる。
 - board/profile genrom target の依存は `scripts/build/gen_rom_deps.py` で blob list から生成する。不要な profile が VGA BIOS など未使用 payload に依存する状態は解消済み。
+- 通常の同名 `.c` -> `.o` compile は top-level の共通 pattern rule に寄せる。module Makefile は object list/link rule と、asm/uACPI/別名 object などの例外だけを持つ。
 - `blob.h` は `src/include/` へ移動済み。root 直下の `bios_pci.h` forwarding header も削除し、PCI header は `lib/pci/` の実体を include path から解決する。
 - `shared_service/service_table.inc` は `shared_service/service_table.h` から、`include/blob.inc` は `include/blob.h` から生成する。QEMU stage1 asm はこれらを include し、shared table size / stage2 load address / blob status size の C/asm 二重定義を避ける。
 - ROM high alias delta も `shared_service/service_table.h` から `service_table.inc` へ生成し、stage1 C/asm の重複即値を避ける。

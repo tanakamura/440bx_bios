@@ -19,6 +19,3 @@ qemu_legacy_test_bios.bin: qemu_legacy_bios.bin test_floppy_blob.bin $(BUILD_SCR
 
 platform/qemu/stage1/qemu_start.o: platform/qemu/stage1/qemu_start.asm | include/blob.inc shared_service/service_table.inc
 	$(COMPILE_ASM_ELF32)
-
-platform/qemu/stage1/qemu_stage1.o: platform/qemu/stage1/qemu_stage1.c
-	$(COMPILE_C)

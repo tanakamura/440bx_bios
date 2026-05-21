@@ -11,9 +11,6 @@ UACPI_OBJS := $(addsuffix .o,$(addprefix app/selftest/s3test/uacpi_,$(UACPI_SRC_
 SELFTEST_C_OBJS := app/selftest/s3test/s3test.o \
 	app/selftest/s3test/s3test_uacpi.o $(UACPI_OBJS)
 
-app/selftest/s3test/s3test.o: app/selftest/s3test/s3test.c
-	$(COMPILE_C)
-
 app/selftest/s3test/s3test_uacpi.o: app/selftest/s3test/s3test_uacpi.c
 	$(COMPILE_UACPI_C)
 

@@ -13,6 +13,10 @@ COMPILE_C = $(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 COMPILE_UACPI_C = $(CC) $(UACPI_CPPFLAGS) $(UACPI_CFLAGS) -c $< -o $@
 COMPILE_ASM_ELF32 = nasm $(NASMFLAGS) -f elf32 -MD $@.d -MT $@ -MP $< -o $@
 COMPILE_ASM_BIN = nasm $(NASMFLAGS) -f bin -MD $@.d -MT $@ -MP $< -o $@
+
+%.o: %.c
+	$(COMPILE_C)
+
 P2B_STAGE1_ELF := platform/p2b98_xv/stage1/stage1.elf
 P2B_STAGE2_ELF := platform/p2b98_xv/stage2/stage2.elf
 QEMU_STAGE1_ELF := platform/qemu/stage1/stage1.elf

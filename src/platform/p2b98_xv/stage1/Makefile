@@ -19,6 +19,3 @@ start_legacy_test: start_legacy test_floppy_blob.bin $(BUILD_SCRIPTS)/patch_rom_
 
 platform/p2b98_xv/stage1/start.o: platform/p2b98_xv/stage1/start.asm | post_code.inc
 	$(COMPILE_ASM_ELF32)
-
-platform/p2b98_xv/stage1/bootblock.o: platform/p2b98_xv/stage1/bootblock.c
-	$(COMPILE_C)

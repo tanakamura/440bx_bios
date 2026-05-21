@@ -18,9 +18,3 @@ $(LEGACY_APP_ELF): $(LEGACY_APP_OBJS) app/legacy/legacy.ld
 
 app/legacy/legacy_app.bin: $(LEGACY_APP_ELF)
 	$(OBJCOPY) -O binary $< $@
-
-app/legacy/entry.o: app/legacy/entry.c
-	$(COMPILE_C)
-
-app/legacy/legacy_%.o: app/legacy/legacy_%.c
-	$(COMPILE_C)
