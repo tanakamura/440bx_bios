@@ -9,21 +9,8 @@ $(QEMU_STAGE1_ELF): $(QEMU_STAGE1_OBJS) platform/qemu/stage1/stage1.ld
 qemu_bios.bin: qemu_linux_genrom.bin
 	cp $< $@
 
-qemu_start.elf: qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o platform/qemu/stage1/stage1.ld
-	$(LD) -m elf_i386 -T platform/qemu/stage1/stage1.ld -Map qemu.map -o $@ qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o
-
 qemu_legacy_bios.bin: qemu_legacy_genrom.bin
 	cp $< $@
-
-qemu_legacy_start.elf: qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o platform/qemu/stage1/stage1.ld
-	$(LD) -m elf_i386 -T platform/qemu/stage1/stage1.ld -Map qemu_legacy.map -o $@ qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o
-
-qemu_flat_test_bios.bin: qemu_flat_test_start.elf
-	$(OBJCOPY) -O binary $< $@
-	truncate -s 262144 $@
-
-qemu_flat_test_start.elf: qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o platform/qemu/stage1/stage1.ld
-	$(LD) -m elf_i386 -T platform/qemu/stage1/stage1.ld -Map qemu_flat_test.map -o $@ qemu_start.o qemu_stage1.o blob_service.o qemu_stage2_blob.o bios_blob.o test_elf_blob.o
 
 qemu_legacy_test_bios.bin: qemu_legacy_bios.bin test_floppy_blob.bin $(BUILD_SCRIPTS)/patch_rom_free.py
 	cp qemu_legacy_bios.bin $@

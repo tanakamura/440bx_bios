@@ -42,11 +42,6 @@ SHT_PROGBITS = 1
 STAGE1_EXCLUDED_SECTIONS = {
     ".rom_anchor",
     ".rom_free_descriptor",
-    ".biosblob",
-    ".stage2blob",
-    ".dsdtblob",
-    ".vgabiosblob",
-    ".testelfblob",
 }
 
 

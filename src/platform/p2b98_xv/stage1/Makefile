@@ -9,9 +9,6 @@ $(P2B_STAGE1_ELF): $(P2B_STAGE1_OBJS) platform/p2b98_xv/stage1/stage1.ld
 start: p2b98_xv_linux_genrom.bin
 	cp $< $@
 
-start.elf: start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o dsdt_blob.o vgabios_blob.o test_elf_blob.o platform/p2b98_xv/stage1/stage1.ld
-	$(LD) -m elf_i386 -T platform/p2b98_xv/stage1/stage1.ld -Map start.map -o $@ start_asm.o bootblock.o blob_service.o stage2_blob.o bios_blob.o dsdt_blob.o vgabios_blob.o test_elf_blob.o
-
 start_legacy: p2b98_xv_legacy_genrom.bin
 	cp $< $@
 

@@ -1,14 +1,6 @@
 #include "blob.h"
 #include "shared_service/service_table.h"
 
-#define ROM_HIGH_DELTA 0xfff00000u
-
-extern unsigned char __bios_blob_start[] __attribute__((weak));
-extern unsigned char __bios_blob_end[] __attribute__((weak));
-extern unsigned char __stage2_blob_start[] __attribute__((weak));
-extern unsigned char __stage2_blob_end[] __attribute__((weak));
-extern unsigned char __test_elf_blob_start[] __attribute__((weak));
-extern unsigned char __test_elf_blob_end[] __attribute__((weak));
 extern unsigned char __blob_service_start[];
 extern unsigned char __blob_service_end[];
 extern int blob_expand_service(const void* blob, void* stage, void* dst,
@@ -20,29 +12,6 @@ extern int blob_load_service(unsigned int payload_id, void* fallback_dst,
                              unsigned int* load_addr_out,
                              struct blob_status* status,
                              unsigned int total_bytes);
-
-static const unsigned char* rom_high_ptr(const unsigned char* ptr) {
-    return (const unsigned char*)((unsigned int)ptr + ROM_HIGH_DELTA);
-}
-
-static void payload_add(struct shared_payload_manifest* manifest,
-                        unsigned int id, unsigned int type, unsigned int flags,
-                        const unsigned char* start,
-                        const unsigned char* end) {
-    struct shared_payload_entry* entry;
-
-    if (start == end || manifest->entry_count >= SHARED_PAYLOAD_MAX) {
-        return;
-    }
-
-    entry = &manifest->entries[manifest->entry_count++];
-    entry->id = id;
-    entry->type = type;
-    entry->flags = flags;
-    entry->blob_ptr = (unsigned int)start;
-    entry->blob_size = (unsigned int)(end - start);
-    entry->slot_size = entry->blob_size;
-}
 
 void qemu_install_shared_service_table(unsigned int total_bytes,
                                        unsigned int stack_top,
@@ -94,18 +63,7 @@ void qemu_install_shared_service_table(unsigned int total_bytes,
         manifest->magic = SHARED_PAYLOAD_MAGIC;
         manifest->version = SHARED_PAYLOAD_VERSION;
         manifest->entry_count = 0u;
-        payload_add(manifest, SHARED_PAYLOAD_ID_STAGE2,
-                    SHARED_PAYLOAD_TYPE_BLZ4, 0u,
-                    rom_high_ptr(__stage2_blob_start),
-                    rom_high_ptr(__stage2_blob_end));
-        payload_add(manifest, SHARED_PAYLOAD_ID_STAGE3,
-                    SHARED_PAYLOAD_TYPE_BLZ4, 0u,
-                    rom_high_ptr(__bios_blob_start),
-                    rom_high_ptr(__bios_blob_end));
-        payload_add(manifest, SHARED_PAYLOAD_ID_TEST_ELF,
-                    SHARED_PAYLOAD_TYPE_BLZ4, 0u,
-                    rom_high_ptr(__test_elf_blob_start),
-                    rom_high_ptr(__test_elf_blob_end));
+        manifest->reserved = 0u;
     }
 
     ctx->magic = SHARED_BOOT_CONTEXT_MAGIC;

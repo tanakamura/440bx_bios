@@ -48,40 +48,8 @@ CORE_C_OBJS := $(P2B_STAGE1_C_OBJS) $(P2B_STAGE2_C_OBJS) \
 C_DEP_OBJS := $(CORE_C_OBJS) $(SELFTEST_C_OBJS)
 DEPS := $(C_DEP_OBJS:.o=.d)
 
-fdos_blob.bin: ../freedos_boot_fd.img $(BUILD_SCRIPTS)/gen_blob.py
-	python3 $(BUILD_SCRIPTS)/gen_blob.py --fat12-normalize ../freedos_boot_fd.img fdos_blob.bin
-
-fdos_flat_test_blob.bin: custflat.img $(BUILD_SCRIPTS)/gen_blob.py
-	python3 $(BUILD_SCRIPTS)/gen_blob.py --fat12-normalize custflat.img fdos_flat_test_blob.bin
-
-fdos_blob.o: fdos_blob.bin
-	objcopy $(OBJCOPY_ELF_FLAGS) \
-		--rename-section .data=.fdos,alloc,load,readonly,data,contents \
-		$< $@
-
-fdos_flat_test_blob.o: fdos_flat_test_blob.bin
-	objcopy $(OBJCOPY_ELF_FLAGS) \
-		--rename-section .data=.fdos,alloc,load,readonly,data,contents \
-		$< $@
-
 dsdt.aml: ../specs/dsdt.dsl $(BUILD_SCRIPTS)/gen_dsdt_aml.py
 	python3 $(BUILD_SCRIPTS)/gen_dsdt_aml.py ../specs/dsdt.dsl dsdt.aml
-
-dsdt_blob.bin: dsdt.aml $(BUILD_SCRIPTS)/gen_blob.py
-	python3 $(BUILD_SCRIPTS)/gen_blob.py dsdt.aml dsdt_blob.bin
-
-dsdt_blob.o: dsdt_blob.bin
-	objcopy $(OBJCOPY_ELF_FLAGS) \
-		--rename-section .data=.dsdtblob,alloc,load,readonly,data,contents \
-		$< $@
-
-vgabios_blob.bin: ../images/gbsmc.088 $(BUILD_SCRIPTS)/gen_blob.py
-	python3 $(BUILD_SCRIPTS)/gen_blob.py ../images/gbsmc.088 vgabios_blob.bin
-
-vgabios_blob.o: vgabios_blob.bin
-	objcopy $(OBJCOPY_ELF_FLAGS) \
-		--rename-section .data=.vgabiosblob,alloc,load,readonly,data,contents \
-		$< $@
 
 testfd.img: $(BUILD_SCRIPTS)/gen_testfd.py
 	python3 $(BUILD_SCRIPTS)/gen_testfd.py
@@ -153,63 +121,8 @@ stdtest.img custbio.img custflat.img: biostest.exe flattest.exe shutdown.exe fla
 test10.img: $(BUILD_SCRIPTS)/gen_test10.py
 	python3 $(BUILD_SCRIPTS)/gen_test10.py
 
-test10_sparse.bin: test10.img $(BUILD_SCRIPTS)/gen_fdos_sparse.py
-	python3 $(BUILD_SCRIPTS)/gen_fdos_sparse.py test10.img test10_sparse.bin
-
-test10_sparse.o: test10_sparse.bin
-	objcopy $(OBJCOPY_ELF_FLAGS) \
-		--rename-section .data=.test10,alloc,load,readonly,data,contents \
-		$< $@
-
-testfd_sparse.bin: testfd.img $(BUILD_SCRIPTS)/gen_fdos_sparse.py
-	python3 $(BUILD_SCRIPTS)/gen_fdos_sparse.py testfd.img testfd_sparse.bin
-
-testfd_sparse.o: testfd_sparse.bin
-	objcopy $(OBJCOPY_ELF_FLAGS) \
-		--rename-section .data=.testfd,alloc,load,readonly,data,contents \
-		$< $@
-
 test_floppy_blob.bin: testfd.img $(BUILD_SCRIPTS)/gen_fdos_sparse.py
 	python3 $(BUILD_SCRIPTS)/gen_fdos_sparse.py testfd.img test_floppy_blob.bin
-
-stage3.bin: stage3.elf
-	$(OBJCOPY) -O binary $< $@
-
-bios.bin: stage3.bin
-	cp $< $@
-
-stage3_blob.bin: stage3.bin $(BUILD_SCRIPTS)/gen_blob.py
-	python3 $(BUILD_SCRIPTS)/gen_blob.py --load-addr 0x00200000 stage3.bin stage3_blob.bin
-
-bios_blob.bin: stage3_blob.bin
-	cp $< $@
-
-bios_blob.o: bios_blob.bin
-	objcopy $(OBJCOPY_ELF_FLAGS) \
-		--rename-section .data=.biosblob,alloc,load,readonly,data,contents \
-		$< $@
-
-stage2.bin: stage2.elf
-	$(OBJCOPY) -O binary $< $@
-
-stage2_blob.bin: stage2.bin $(BUILD_SCRIPTS)/gen_blob.py
-	python3 $(BUILD_SCRIPTS)/gen_blob.py --load-addr 0x00080000 stage2.bin stage2_blob.bin
-
-stage2_blob.o: stage2_blob.bin
-	objcopy $(OBJCOPY_ELF_FLAGS) \
-		--rename-section .data=.stage2blob,alloc,load,readonly,data,contents \
-		$< $@
-
-qemu_stage2.bin: qemu_stage2.elf
-	$(OBJCOPY) -O binary $< $@
-
-qemu_stage2_blob.bin: qemu_stage2.bin $(BUILD_SCRIPTS)/gen_blob.py
-	python3 $(BUILD_SCRIPTS)/gen_blob.py --load-addr 0x00080000 qemu_stage2.bin qemu_stage2_blob.bin
-
-qemu_stage2_blob.o: qemu_stage2_blob.bin
-	objcopy $(OBJCOPY_ELF_FLAGS) \
-		--rename-section .data=.stage2blob,alloc,load,readonly,data,contents \
-		$< $@
 
 bios.elf: stage3.elf
 	cp $< $@

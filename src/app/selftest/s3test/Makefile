@@ -24,8 +24,3 @@ s3test.elf: s3test.o s3test_uacpi.o $(UACPI_OBJS) app/selftest/s3test/s3test.ld
 
 test_elf_blob.bin: s3test.elf $(BUILD_SCRIPTS)/gen_blob.py
 	python3 $(BUILD_SCRIPTS)/gen_blob.py s3test.elf test_elf_blob.bin
-
-test_elf_blob.o: test_elf_blob.bin
-	objcopy $(OBJCOPY_ELF_FLAGS) \
-		--rename-section .data=.testelfblob,alloc,load,readonly,data,contents \
-		$< $@
