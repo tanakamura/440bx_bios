@@ -231,7 +231,7 @@ stage1 は reset vector から始まり、DRAM 初期化前は RAM/stack/call/pu
 - reset vector から最小初期化を行う。
 - P2B98-XV では SuperIO UART, CAR, SPD read, DRAM init, A20 enable を行う。
 - QEMU では DRAM が最初から使える前提で、同じ ABI に合わせて stage2 をロードする。
-- PIC な shared service code を DRAM 末尾へコピーする。
+- 丸ごとコピーで再配置可能な shared service code を DRAM 末尾へコピーする。
 - shared service table を DRAM 末尾へ作る。
 - DRAM 最後 4 byte に shared service table pointer を書く。
 - shared service table 上の boot context を初期化する。
@@ -288,7 +288,8 @@ shared service は stage 間 ABI の唯一の窓口にする。全 stage と app
 
 配置:
 
-- shared service 関数は PIC でビルドする。
+- shared service 関数は ELF の `-fPIC` ではなく、`.blobsvc*` 内の PC-relative 参照だけで構成し、同一 code block を丸ごとコピーすれば動く形にする。i386 `-fPIC` は GOT/EBX 依存を持ち込みやすいので使わない。
+- build 時に `scripts/build/check_blobsvc_reloc.py` で `.blobsvc*` 内 relocation を検査し、GOT/data/rodata などへの参照が混ざったら stage1 link 前に失敗させる。
 - stage1 が DRAM 初期化後に shared service code と shared service table を DRAM 末尾へ配置する。
 - DRAM 最後 4 byte に shared service table pointer を置く。
 - table pointer が差す先に shared service table を置く。

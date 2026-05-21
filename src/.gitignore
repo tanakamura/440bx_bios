@@ -9,6 +9,7 @@ start_legacy_test
 *.elf
 *.d
 *.su
+*.reloc-ok
 *.map
 *.exe
 *.com
