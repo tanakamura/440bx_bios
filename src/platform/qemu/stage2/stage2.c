@@ -239,23 +239,13 @@ __attribute__((section(".stage2.entry"), used)) void qemu_stage2_entry(
     struct shared_service_table* service =
         shared_service_from_total(total_bytes);
     struct shared_boot_context* boot_ctx = shared_boot_context(service);
-    struct shared_payload_entry* stage3_payload =
-        shared_payload_find(service, SHARED_PAYLOAD_ID_STAGE3);
-    const void* stage3_blob = 0;
-    blob_expand_fn expand = 0;
     blob_load_fn load = 0;
-    unsigned int blob_stage = 0u;
     unsigned int stage3_load = BIOS_LOAD_LINEAR;
     struct blob_status status;
     int rc;
 
-    if (service != 0 && service->blob_expand != 0u) {
-        expand = (blob_expand_fn)service->blob_expand;
+    if (service != 0) {
         load = (blob_load_fn)service->blob_load;
-        blob_stage = service->blob_stage;
-    }
-    if (stage3_payload != 0) {
-        stage3_blob = (const void*)stage3_payload->blob_ptr;
     }
 
     zero_bss();
@@ -269,17 +259,11 @@ __attribute__((section(".stage2.entry"), used)) void qemu_stage2_entry(
         rc = load(SHARED_PAYLOAD_ID_STAGE3, (void*)BIOS_LOAD_LINEAR,
                   BIOS_LOAD_CAPACITY, &stage3_load, &status, total_bytes);
     } else {
-        if (stage3_blob == 0 || expand == 0 || blob_stage == 0u ||
-            service->blob_stage_size < BLOB_STAGE_CAPACITY) {
-            serial_write_string("qemu stage3 blob missing\r\n");
-            outb(0x80u, 0xefu);
-            for (;;) {
-                __asm__ volatile("hlt");
-            }
+        serial_write_string("qemu stage3 blob missing\r\n");
+        outb(0x80u, 0xefu);
+        for (;;) {
+            __asm__ volatile("hlt");
         }
-        stage3_load = blob_load_addr_or(stage3_blob, BIOS_LOAD_LINEAR);
-        rc = expand(stage3_blob, (void*)blob_stage, (void*)stage3_load,
-                    BIOS_LOAD_CAPACITY, &status, total_bytes);
     }
     if (rc != 0) {
         serial_write_string("\r\nqemu stage3 load failed rc=");
