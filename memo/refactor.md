@@ -717,6 +717,8 @@ payload blob の場所は boot context ではなく、shared service table の `
 - `shared_service/service_table.inc` は `shared_service/service_table.h` から、`include/blob.inc` は `include/blob.h` から生成する。QEMU stage1 asm はこれらを include し、shared table size / stage2 load address / blob status size の C/asm 二重定義を避ける。
 - `include/blob.ld` も `include/blob.h` から生成し、stage2/stage3/app linker script の load address / capacity を C header と同期する。
 - ROM low alias base / high alias delta も `shared_service/service_table.h` から `service_table.inc` / `service_table.ld` へ生成し、stage1 C/asm/linker script の重複即値を避ける。
+- `gen_blob.py` は `include/blob.h` から BLZ4 magic/version/flags/header size/block size を読む。BLZ4 header/block descriptor size は C 側 static check で検証する。
+- `gen_rom.py` は `shared_service/service_table.h` から ROM directory magic/version/size/header size/entry size と payload id/type を読む。stage1 は directory header/entry size を ABI 定数と完全一致で検証する。
 - asm object / boot sector / board smoke test は `nasm -MD` で dependency file を生成する。`post_code.inc`, `include/blob.inc`, `shared_service/service_table.inc` は初回生成用の order-only prerequisite にしている。
 
 ## 決定事項
