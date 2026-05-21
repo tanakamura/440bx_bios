@@ -117,9 +117,6 @@ struct shared_service_table {
     unsigned int heap_limit;
     unsigned int boot_context_ptr;
     unsigned int payload_manifest_ptr;
-    unsigned int blob_expand;
-    unsigned int blob_stage;
-    unsigned int blob_stage_size;
     unsigned int blob_load;
     unsigned int heap_alloc;
     unsigned int heap_free;

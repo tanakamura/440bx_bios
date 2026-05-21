@@ -75,15 +75,6 @@ unsigned int bios_stage_context_payload_blob(
     return payload_blob_ptr(context->shared_service, payload_id);
 }
 
-blob_expand_fn bios_stage_context_blob_expand(
-    const struct bios_stage_context* context) {
-    if (context->shared_service != 0 &&
-        context->shared_service->blob_expand != 0u) {
-        return (blob_expand_fn)context->shared_service->blob_expand;
-    }
-    return 0;
-}
-
 blob_load_fn bios_stage_context_blob_load(
     const struct bios_stage_context* context) {
     if (context->shared_service != 0 &&

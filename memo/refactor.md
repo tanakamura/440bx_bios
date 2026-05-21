@@ -339,7 +339,6 @@ heap_free_list
 heap_limit
 boot_context_ptr
 payload_manifest_ptr
-blob_expand
 blob_load
 heap_alloc
 heap_free
@@ -352,7 +351,7 @@ post_code
 panic
 ```
 
-`blob_expand` は、ROM blob pointer と destination を受け取り、block CRC と retry を shared service 内で処理する。stage2/stage3/app は LZ4 や CRC の実装を直接持たない。stage2 以降は ROM linker symbol を直接参照せず、shared service table の `payload_manifest_ptr` から payload を探す。
+`blob_load` は、payload id と fallback destination を受け取り、payload manifest から blob を探して block CRC と retry を shared service 内で処理する。stage2/stage3/app は LZ4 や CRC の実装を直接持たない。stage2 以降は ROM linker symbol を直接参照せず、shared service table の `payload_manifest_ptr` から payload を探す。
 
 ## payload manifest
 
@@ -664,13 +663,13 @@ payload blob の場所は boot context ではなく、shared service table の `
 
 - P2B98-XV stage1/stage2 と QEMU stage1/stage2 は `src/platform/` へ移動済み。P2B98-XV stage1 と QEMU stage1 は DRAM 末尾に shared service code / shared service table / boot context / payload manifest を置き、DRAM 最後 4 byte の pointer から辿れる。stack 初期値は shared service code の直前に置く。
 - shared service code と table ABI は `src/shared_service/` へ移動済み。
-- stage2 は `blob_expand` と stage3 payload を shared service table から使う。payload pointer の旧 aux fallback は削除済み。
+- stage2 は stage3 payload を shared service table の `blob_load` から読む。payload pointer の旧 aux fallback は削除済み。
 - shared service table の `blob_load` は実装済み。stage1/stage2 は次 stage payload の検索、header `load_addr` 適用、展開 staging の選択を `blob_load` に委譲する。stage1/stage2 の旧 linker-symbol/direct `blob_expand` fallback は削除済み。
 - P2B98-XV stage2 の DSDT 展開も `blob_load` 経由へ移行済み。
 - shared tail は 16KiB に広げ、shared heap は tail 内の free-list allocator として初期化済み。`heap_alloc` / `heap_free` / `heap_realloc` は shared service table 経由で呼べる。
 - `blob_load` は blob 展開用 staging を shared heap から一時確保し、展開後に free する。旧 `blob_stage` 固定予約は使わない。
 - blob 展開中の maintenance key は blob service が DRAM 末尾の shared service table pointer から boot context を辿り、`SHARED_BOOT_FLAG_MAINTENANCE_REQUESTED` を直接立てる。旧 aux dword 配列は削除済み。
-- stage3 は VGA BIOS / test ELF payload と `blob_expand` を shared service table から使う。旧 aux fallback と固定 `BLOB_SERVICE_LINEAR` fallback は削除済み。
+- stage3 は VGA BIOS / test ELF payload を `blob_load` で読む。旧 aux fallback、固定 `BLOB_SERVICE_LINEAR` fallback、table 上の直接 `blob_expand` entry は削除済み。
 - ACPI table 構築は stage2 へ移動済み。P2B98-XV stage2 は DSDT blob を展開して RSDT/FADT/FACS/RSDP を作る。QEMU stage2 は fw_cfg の ACPI tables を取得/patch して RSDP を作る。stage3 は board 非依存の ACPI PM event clear / SCI enable だけを持つ。
 - legacy BIOS service の dispatcher / thunk / timer / runtime glue は `app/legacy/` へ移動済み。legacy genrom profile は `legacy_app` を ROM payload に入れ、stage3 が `0x000F0000` へロードして entry を呼ぶ。
 - legacy service は serial/storage/RTC/E820 などの stage3 直参照を `legacy_platform_ops` callback table 経由へ寄せた。`legacy_app_exports` で boot sector 選択 / boot drive 書き込み / PM stack 設定も app 側関数を呼ぶ。stage3 直リンクから legacy service 本体は外し、Linux profile が使う low thunk/VBE 呼び出し用に `bios16.o`, `legacy_thunk.o`, BDA/keyboard/video 初期化の最小 set だけを残している。

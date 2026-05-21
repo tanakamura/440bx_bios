@@ -540,20 +540,13 @@ BLOBSVC_ENTRY int blob_load_service(unsigned int payload_id, void* fallback_dst,
 
     stage = shared_heap_alloc_service(total_bytes, BLOB_STAGE_CAPACITY);
     if (stage == 0) {
-        if (service->blob_stage != 0u &&
-            service->blob_stage_size >= BLOB_STAGE_CAPACITY) {
-            stage = (void*)service->blob_stage;
-        } else {
-            blob_status_set(status, BLOB_ERR_SIZE, 0, 0, 0, 0);
-            return BLOB_ERR_SIZE;
-        }
+        blob_status_set(status, BLOB_ERR_SIZE, 0, 0, 0, 0);
+        return BLOB_ERR_SIZE;
     }
 
     rc = blob_expand_service(blob, stage, (void*)load_addr, dst_capacity,
                              status, total_bytes);
-    if ((unsigned int)stage != service->blob_stage && service->heap_free != 0u) {
-        shared_heap_free_service(total_bytes, stage);
-    }
+    shared_heap_free_service(total_bytes, stage);
     return rc;
 }
 

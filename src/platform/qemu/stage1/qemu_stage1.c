@@ -3,10 +3,6 @@
 
 extern unsigned char __blob_service_start[];
 extern unsigned char __blob_service_end[];
-extern int blob_expand_service(const void* blob, void* stage, void* dst,
-                               unsigned int dst_capacity,
-                               struct blob_status* status,
-                               unsigned int total_bytes);
 extern int blob_load_service(unsigned int payload_id, void* fallback_dst,
                              unsigned int dst_capacity,
                              unsigned int* load_addr_out,
@@ -53,11 +49,6 @@ void qemu_install_shared_service_table(unsigned int total_bytes,
     shared_heap_init(table);
     table->boot_context_ptr = (unsigned int)ctx;
     table->payload_manifest_ptr = (unsigned int)manifest;
-    table->blob_expand =
-        service_base +
-        ((unsigned int)blob_expand_service - (unsigned int)__blob_service_start);
-    table->blob_stage = 0u;
-    table->blob_stage_size = 0u;
     table->blob_load =
         service_base +
         ((unsigned int)blob_load_service - (unsigned int)__blob_service_start);
