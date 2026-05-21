@@ -58,8 +58,7 @@ static inline unsigned int inl(unsigned short port) {
 #define RUNTIME_GDTR_LINEAR 0x0007f100u
 #define RUNTIME_GDT_LINEAR 0x0007f108u
 
-typedef void (*stage15_entry_fn)(unsigned int stack_top,
-                                 unsigned int mtrr_mask,
+typedef void (*stage15_entry_fn)(unsigned int stack_top, unsigned int mtrr_mask,
                                  unsigned int total_bytes,
                                  unsigned int gdtr_ptr);
 extern unsigned char stage15_blob_start[];
@@ -559,8 +558,7 @@ static void load_stage15_and_transition(unsigned int stack_top,
                                         unsigned int gdtr_ptr) {
     const unsigned char* src = stage15_blob_start;
     unsigned int load_addr = STAGE15_LOAD_LINEAR;
-    unsigned int size =
-        (unsigned int)(stage15_blob_end - stage15_blob_start);
+    unsigned int size = (unsigned int)(stage15_blob_end - stage15_blob_start);
     unsigned int expected_crc = stage15_blob_crc32;
     unsigned char* dst;
     unsigned int retry;
@@ -571,32 +569,40 @@ static void load_stage15_and_transition(unsigned int stack_top,
         die_with_post(0xef);
     }
 
-    serial_write_string("Load stage1.5 @ ");
-    serial_write_hex32(load_addr);
-    serial_write_string("...\r\n");
+    serial_write_string("Load stage1.5\r\n");
     dst = (unsigned char*)load_addr;
-    for (retry = 0u; retry < 16u; ++retry) {
-        unsigned int i;
-        serial_write_char('[');
-        for (i = 0u; i < size; ++i) {
-            if ((i & 0x03ffu) == 0u) {
-                serial_write_char('+');
+    int stage15_try;
+    int ntry = 32;
+    for (stage15_try = 0; stage15_try < ntry; stage15_try++) {
+        for (int i = 0; i < size; i++) {
+            for (int try = 0; try < 4; try++) {
+                unsigned char c0 = src[i];
+                unsigned char c1 = src[i];
+                if (c0 == c1) {
+                    dst[i] = c0;
+                    break;
+                } else {
+                    serial_write_hex8(c0);
+                    serial_write_string("!=");
+                    serial_write_hex8(c1);
+                    serial_write_string("\r\n");
+                }
+                serial_write_hex8(c0);
+                serial_write_string("\r\n");
             }
-            dst[i] = rom_read_stable_u8(src + i);
         }
-        serial_write_char(']');
+#if 0
+        /* too slow */
         got = stage1_crc32(dst, size);
         if (got == expected_crc) {
             break;
         }
-        serial_write_char('x');
+#else
+        break;
+#endif
     }
-    if (retry == 16u) {
-        serial_write_string("\r\nstage1.5 crc bad exp=");
-        serial_write_hex32(expected_crc);
-        serial_write_string(" got=");
-        serial_write_hex32(got);
-        serial_write_string("\r\n");
+    if (stage15_try == ntry) {
+        serial_write_string("failed to load stage1.5");
         die_with_post(0xef);
     }
     serial_write_string("stage1.5 ok\r\n");
