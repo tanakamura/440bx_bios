@@ -1,9 +1,10 @@
 OUTPUT_FORMAT(elf32-i386)
 ENTRY(qemu_start)
+INCLUDE shared_service/service_table.ld
 
 SECTIONS
 {
-    . = 0x000C0000;
+    . = SHARED_ROM_LOW_BASE;
 
     .rom_anchor :
     {
@@ -69,8 +70,8 @@ SECTIONS
 
     .rom_free_descriptor :
     {
-        LONG(__rom_free_first + 0xFFF00000)
-        LONG(__rom_free_end + 0xFFF00000)
+        LONG(__rom_free_first + SHARED_ROM_HIGH_DELTA)
+        LONG(__rom_free_end + SHARED_ROM_HIGH_DELTA)
     }
 
     /DISCARD/ :

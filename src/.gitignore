@@ -5,6 +5,7 @@ post_code.inc
 include/blob.inc
 include/blob.ld
 shared_service/service_table.inc
+shared_service/service_table.ld
 start
 start_legacy
 start_legacy_test

@@ -5,6 +5,7 @@ from pathlib import Path
 
 
 EXPORTED = {
+    "SHARED_ROM_LOW_BASE",
     "SHARED_ROM_HIGH_DELTA",
     "SHARED_TABLE_BYTES",
 }
@@ -35,11 +36,17 @@ def main():
     repo_root = Path(__file__).resolve().parents[2]
     src_dir = repo_root / "src"
     defines = parse_numeric_defines(src_dir / "shared_service" / "service_table.h")
-    out = src_dir / "shared_service" / "service_table.inc"
-    lines = ["; generated from shared_service/service_table.h"]
+    inc_out = src_dir / "shared_service" / "service_table.inc"
+    inc_lines = ["; generated from shared_service/service_table.h"]
     for name in sorted(defines):
-        lines.append(f"%define {name} 0x{defines[name]:x}")
-    out.write_text("\n".join(lines) + "\n")
+        inc_lines.append(f"%define {name} 0x{defines[name]:x}")
+    inc_out.write_text("\n".join(inc_lines) + "\n")
+
+    ld_out = src_dir / "shared_service" / "service_table.ld"
+    ld_lines = ["/* generated from shared_service/service_table.h */"]
+    for name in sorted(defines):
+        ld_lines.append(f"{name} = 0x{defines[name]:x};")
+    ld_out.write_text("\n".join(ld_lines) + "\n")
 
 
 if __name__ == "__main__":

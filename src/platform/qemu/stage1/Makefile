@@ -4,7 +4,7 @@ QEMU_STAGE1_C_OBJS := platform/qemu/stage1/qemu_stage1.o
 QEMU_STAGE1_OBJS := platform/qemu/stage1/qemu_start.o \
 	$(QEMU_STAGE1_C_OBJS) $(SHARED_SERVICE_OBJS)
 
-$(QEMU_STAGE1_ELF): $(QEMU_STAGE1_OBJS) $(SHARED_SERVICE_RELOC_CHECK) platform/qemu/stage1/stage1.ld
+$(QEMU_STAGE1_ELF): $(QEMU_STAGE1_OBJS) $(SHARED_SERVICE_RELOC_CHECK) platform/qemu/stage1/stage1.ld shared_service/service_table.ld
 	$(LD) -m elf_i386 -T platform/qemu/stage1/stage1.ld -Map platform/qemu/stage1/stage1.map -o $@ $(QEMU_STAGE1_OBJS)
 
 qemu_bios.bin: qemu_linux_genrom.bin
