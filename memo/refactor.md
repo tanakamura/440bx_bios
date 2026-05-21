@@ -671,6 +671,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - legacy service は serial/storage/RTC/E820 などの stage3 直参照を `legacy_platform_ops` callback table 経由へ寄せた。`legacy_app_exports` で boot sector 選択 / boot drive 書き込み / PM stack 設定も app 側関数を呼ぶ。残る大きな直結は stage3 ELF に残る fallback 用 legacy objects と、Linux profile が使う low thunk/VBE 呼び出し経路。
 - floppy test image probe/state は legacy runtime 側へ移動済み。stage3 は floppy の有無を保持せず、legacy app が自分で BDA/INT13 用 state を作る。
 - Linux kernel/initrd loader と Linux boot params/VBE setup は `app/linux_loader/` へ移動済み。serial/storage/E820 は `linux_loader_config` callback 経由になり、stage3 は NVRAM 設定と ACPI/RTC/VBIOS/storage/memory callback を渡す glue だけ持つ。
+- 通常 boot path では `linux_loader` payload がある profile だけ Linux boot を試す。payload が無い legacy profile では direct fallback せず legacy boot へ進む。
 - NVRAM raw access と設定 decode/save は `bios_nvram.*` へ分離済み。`stage3/stage3.c` には stage3 global へ反映する薄い glue だけ残っている。
 - maintenance prompt は `bios_maintenance.*` へ分離済み。`stage3/stage3.c` は NVRAM 設定ポインタと save callback を渡すだけ。
 - optional memtest とその一時 MTRR UC 化は `bios_memtest.*` へ分離済み。`stage3/stage3.c` は enable flag / DRAM size / shared service table を渡すだけ。
@@ -693,7 +694,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - gen_rom 用に stage directory 配下の ELF alias を作る target を追加済み。stage1 ELF は payload symbol なしでも link できるようにし、`gen_rom.py` は stage1 ELF の alloc section だけを ROM 末尾へ overlay して payload directory を壊さない。
 - `make -C src test` は自作 BIOS の通常 boot path を genrom ROM で確認する。legacy boot/USB MBR/floppy は `qemu_legacy_genrom.bin`、Linux probe は `qemu_linux_genrom.bin` を使う。
 - stage3、P2B98-XV/QEMU stage2、P2B98-XV/QEMU stage1-only ELF の link rule と object list は各 stage directory の `Makefile` へ切り出し済み。現状は top-level `src/Makefile` から include する非再帰 make。通常 ROM target は genrom 版をコピーするが、旧 linker-symbol ROM の `start.elf` / `qemu_start.elf` 生成 rule は移行用に残っている。
-- legacy と linux_loader の object list / compile rule は各 app directory の `Makefile` へ切り出し済み。`legacy_app.elf` と `linux_loader_app.elf` は独立 app ELF として作れる。genrom profile ではそれぞれ ROM payload としてロードできるが、stage3 には互換 fallback と Linux profile 用 thunk のため両方の直リンク object がまだ残る。
+- legacy と linux_loader の object list / compile rule は各 app directory の `Makefile` へ切り出し済み。`legacy_app.elf` と `linux_loader_app.elf` は独立 app ELF として作れる。genrom profile ではそれぞれ ROM payload としてロードできる。stage3 には互換 fallback と selftest 用 ELF loader helper、Linux profile 用 low thunk/VBE 呼び出しのため app object の直リンクがまだ残る。
 - `linux_loader_app.elf` / `linux_loader_app.bin` の単体 build target は追加済み。Linux profile の genrom では ROM blob list に入り、stage3 は payload があれば `0x000F0000` へロードして app entry を呼ぶ。旧 linker 同梱経路は fallback として残る。
 - `legacy_app.elf` / `legacy_app.bin` の単体 build target は追加済み。legacy genrom profile の ROM blob list に入り、stage3 は payload があれば `0x000F0000` へロードして app entry を呼ぶ。boot sector 選択などの後続操作は `legacy_app_exports` 経由で app 側関数を呼ぶ。旧 linker 同梱経路は fallback として残る。
 - selftest/uACPI の object list / compile rule / test ELF blob rule は `app/selftest/s3test/Makefile` へ切り出し済み。生成物名は互換維持のため `src/s3test.elf` / `src/test_elf_blob.bin` のまま。

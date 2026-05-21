@@ -92,8 +92,12 @@ int bios_linux_try_boot(const struct bios_linux_config* config) {
     blob_load_fn load;
 
     bios_linux_fill_loader_config(&loader, config);
+    if (config->stage->linux_loader_blob_linear == 0u) {
+        return 0;
+    }
+
     load = bios_stage_context_blob_load(config->stage);
-    if (config->stage->linux_loader_blob_linear != 0u && load != 0) {
+    if (load != 0) {
         struct blob_status status;
         unsigned int load_addr = BIOS_LINUX_APP_LOAD_FALLBACK;
         int rc = load(SHARED_PAYLOAD_ID_LINUX_LOADER_APP,
@@ -110,5 +114,5 @@ int bios_linux_try_boot(const struct bios_linux_config* config) {
         serial_write_hex32((unsigned int)rc);
         serial_write_string("\r\n");
     }
-    return linux_loader_try_boot(&loader);
+    return 0;
 }
