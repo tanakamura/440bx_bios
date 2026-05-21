@@ -15,7 +15,7 @@ global qemu_start
 
 extern __blob_service_start
 extern __blob_service_end
-extern blob_shadow_load_and_enter
+extern blob_shadow_load_stage2_and_enter
 extern qemu_install_shared_service_table
 
 section .start progbits alloc exec nowrite align=16
@@ -88,14 +88,11 @@ qemu_pm_entry:
 
     sub esp, BLOB_STATUS_SIZE
     mov ebx, esp
-    push dword STAGE2_ENTRY
-    push dword QEMU_TOTAL_BYTES
     push ebx
     push dword STAGE2_LOAD_CAPACITY
     push dword STAGE2_LOAD_LINEAR
-    push dword 0
-    push dword 0
-    mov eax, blob_shadow_load_and_enter
+    push dword QEMU_TOTAL_BYTES
+    mov eax, blob_shadow_load_stage2_and_enter
     sub eax, __blob_service_start
     add eax, ebp
     call eax

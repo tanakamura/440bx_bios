@@ -666,6 +666,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - stage2 は stage3 payload を shared service table の `blob_load` から読む。payload pointer の旧 aux fallback は削除済み。
 - stage2 -> stage3 の entry ABI は `total_dram_bytes` のみを渡す。旧 `aux_blob_linear` は使わない。
 - shared service table の `blob_load` は実装済み。stage1/stage2 は次 stage payload の検索、header `load_addr` 適用、展開 staging の選択を `blob_load` に委譲する。stage1/stage2 の旧 linker-symbol/direct `blob_expand` fallback は削除済み。
+- QEMU stage1 の shadow + stage2 load helper も payload manifest と shared service table の `blob_load` だけを使う。旧 blob pointer / staging pointer fallback は削除済み。
 - P2B98-XV stage2 の DSDT 展開も `blob_load` 経由へ移行済み。
 - shared tail は 16KiB に広げ、shared heap は tail 内の free-list allocator として初期化済み。`heap_alloc` / `heap_free` / `heap_realloc` は shared service table 経由で呼べる。
 - `blob_load` は blob 展開用 staging を shared heap から一時確保し、展開後に free する。旧 `blob_stage` 固定予約は使わない。

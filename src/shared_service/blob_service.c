@@ -621,15 +621,12 @@ static BLOBSVC void blob_enable_ef_shadow(void) {
                      : "eax", "ebx", "ecx", "edx", "memory");
 }
 
-BLOBSVC void blob_shadow_load_and_enter(const void* blob, void* stage,
-                                        void* dst,
-                                        unsigned int dst_capacity,
-                                        struct blob_status* status,
-                                        unsigned int total_bytes,
-                                        unsigned int bios_entry) {
-    typedef void (*bios_entry_fn)(unsigned int);
+BLOBSVC void blob_shadow_load_stage2_and_enter(unsigned int total_bytes,
+                                               unsigned int stage2_load,
+                                               unsigned int dst_capacity,
+                                               struct blob_status* status) {
+    typedef void (*stage2_entry_fn)(unsigned int);
     struct shared_service_table* service;
-    struct shared_payload_entry* payload;
     volatile unsigned int* p;
     volatile unsigned int* end;
     blob_load_fn load = 0;
@@ -638,15 +635,8 @@ BLOBSVC void blob_shadow_load_and_enter(const void* blob, void* stage,
     blob_enable_ef_shadow();
 
     service = shared_service_from_total(total_bytes);
-    payload = shared_payload_find(service, SHARED_PAYLOAD_ID_STAGE2);
-    if (payload != 0) {
-        blob = (const void*)payload->blob_ptr;
-    }
-    bios_entry = blob_load_addr_or(blob, bios_entry);
-    dst = (unsigned char*)bios_entry;
-
-    p = (volatile unsigned int*)dst;
-    end = (volatile unsigned int*)((unsigned int)dst + dst_capacity);
+    p = (volatile unsigned int*)stage2_load;
+    end = (volatile unsigned int*)(stage2_load + dst_capacity);
     while (p < end) {
         *p++ = 0u;
     }
@@ -655,11 +645,11 @@ BLOBSVC void blob_shadow_load_and_enter(const void* blob, void* stage,
         load = (blob_load_fn)service->blob_load;
     }
     if (load != 0) {
-        rc = load(SHARED_PAYLOAD_ID_STAGE2, dst, dst_capacity, &bios_entry,
-                  status, total_bytes);
+        rc = load(SHARED_PAYLOAD_ID_STAGE2, (void*)stage2_load, dst_capacity,
+                  &stage2_load, status, total_bytes);
     } else {
-        rc = blob_expand_service(blob, stage, dst, dst_capacity, status,
-                                 total_bytes);
+        blob_status_set(status, BLOB_ERR_MAGIC, 0u, 0u, 0u, 0u);
+        rc = BLOB_ERR_MAGIC;
     }
     if (rc != 0) {
         outb(0x0080u, 0xefu);
@@ -672,7 +662,7 @@ BLOBSVC void blob_shadow_load_and_enter(const void* blob, void* stage,
                      :
                      :
                      : "eax", "ebx", "ecx", "edx", "memory");
-    ((bios_entry_fn)bios_entry)(total_bytes);
+    ((stage2_entry_fn)stage2_load)(total_bytes);
     for (;;) {
         __asm__ volatile("hlt");
     }
