@@ -134,7 +134,9 @@ void bios_stage3_run(unsigned int total_bytes) {
     if (bios_stage.maintenance_requested != 0u) {
         bios_settings_maintenance_prompt(&bios_settings);
     }
-    storage_scan(total_bytes);
+    if (bios_stage.linux_loader_blob_linear != 0u) {
+        storage_scan(total_bytes);
+    }
     install_bios_thunks();
     install_boot_drive();
     install_pm_stack_top();
