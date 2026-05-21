@@ -417,6 +417,7 @@ stage1,platform/p2b98_xv/stage1/stage1.elf
 - raw binary で load address が不要な payload は `HAS_LOAD_ADDR` を立てない。
 - `stage1` だけは special payload として ROM 末尾に置く。reset vector を含むため、通常 payload area に詰めない。
 - `stage1` 以外は payload directory に登録する。stage1 が起動後に directory を読み、shared service table 上の payload manifest へコピーする。
+- payload directory は 32bit word sum が 0 になる checksum を持つ。stage1 は manifest 作成前に directory header と entry 配列の checksum を検証する。
 - ROM 末尾 8 byte の `rom_free_first`, `rom_free_end` descriptor は `gen_rom.py` が最終 ROM 配置から埋める。
 - `gen_rom_deps.py` は blob list から ROM target の `.d` を生成する。profile ごとの make 依存は、実際に blob list に書かれた payload だけにする。
 
@@ -696,6 +697,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - board/profile ごとの blob list は `platform/qemu/*.blobs` と `platform/p2b98_xv/*.blobs` に追加済み。`genrom` target はこの blob list を入力にする。
 - `.blobsvc` は ROM payload area から stage1 tail 側へ移動済み。payload area は stage2/stage3/app/blob 用に寄せ、stage1 が必要とする shared service code は stage1 image の一部として持つ。
 - gen_rom 用に stage directory 配下の ELF alias を作る target を追加済み。stage1 ELF は payload symbol なしでも link できるようにし、`gen_rom.py` は stage1 ELF の alloc section だけを ROM 末尾へ overlay して payload directory を壊さない。
+- ROM payload directory checksum は実装済み。`gen_rom.py` が header/entry の 32bit word sum を 0 にし、stage1 の manifest reader が検証する。
 - `make -C src test` は自作 BIOS の通常 boot path を genrom ROM で確認する。legacy boot/USB MBR/floppy は `qemu_legacy_genrom.bin`、Linux probe は `qemu_linux_genrom.bin` を使う。
 - stage3、P2B98-XV/QEMU stage2、P2B98-XV/QEMU stage1-only ELF の link rule と object list は各 stage directory の `Makefile` へ切り出し済み。現状は top-level `src/Makefile` から include する非再帰 make。通常 ROM target は genrom 版をコピーし、旧 linker-symbol ROM の `start.elf` / `qemu_start.elf` 生成 rule は削除済み。
 - legacy と linux_loader の object list / compile rule は各 app directory の `Makefile` へ切り出し済み。`app/legacy/legacy_app.elf` と `app/linux_loader/linux_loader_app.elf` は独立 app ELF として作れる。genrom profile ではそれぞれ ROM payload としてロードできる。stage3 は full `linux_loader.o` を直リンクせず、selftest 用の最小 ELF loader/boot_params builder と、Linux/VBE/boot jump 用の共通 `lib/rm_thunk/bios16.o` だけを直接持つ。

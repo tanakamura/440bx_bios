@@ -65,6 +65,7 @@ struct shared_rom_payload_directory {
     unsigned int payload_area_start;
     unsigned int payload_area_end;
     unsigned int stage1_start;
+    unsigned int checksum;
 };
 
 struct shared_rom_payload_directory_entry {
@@ -237,6 +238,7 @@ static inline int shared_payload_manifest_from_rom_directory(
     const struct shared_rom_payload_directory* dir =
         (const struct shared_rom_payload_directory*)rom_high_base;
     const unsigned char* rom = (const unsigned char*)rom_high_base;
+    unsigned int directory_bytes;
     unsigned int i;
 
     if (manifest == 0 || dir->magic != SHARED_ROM_DIRECTORY_MAGIC ||
@@ -250,6 +252,22 @@ static inline int shared_payload_manifest_from_rom_directory(
         dir->stage1_start > SHARED_ROM_SIZE ||
         dir->payload_area_end > dir->stage1_start) {
         return -1;
+    }
+    directory_bytes = dir->header_size + dir->entry_count * dir->entry_size;
+    if (directory_bytes > dir->payload_area_start ||
+        (directory_bytes & 3u) != 0u) {
+        return -1;
+    }
+    {
+        const volatile unsigned int* words =
+            (const volatile unsigned int*)rom_high_base;
+        unsigned int sum = 0u;
+        for (i = 0; i < directory_bytes / 4u; ++i) {
+            sum += words[i];
+        }
+        if (sum != 0u) {
+            return -1;
+        }
     }
 
     manifest->magic = SHARED_PAYLOAD_MAGIC;

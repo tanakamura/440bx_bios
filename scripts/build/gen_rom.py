@@ -17,7 +17,7 @@ PAYLOAD_ALIGN = 16
 
 ROM_MAGIC = 0x304D5242  # 'BRM0'
 ROM_VERSION = 1
-ROM_HEADER_SIZE = 32
+ROM_HEADER_SIZE = 36
 ROM_ENTRY_SIZE = 32
 
 PAYLOAD_IDS = {
@@ -214,6 +214,16 @@ def write_payload(rom: bytearray, cursor: int, payload: bytes) -> int:
     return cursor
 
 
+def write_directory_checksum(rom: bytearray, entry_count: int) -> None:
+    directory_bytes = ROM_HEADER_SIZE + entry_count * ROM_ENTRY_SIZE
+    checksum_off = ROM_HEADER_SIZE - 4
+    struct.pack_into("<I", rom, checksum_off, 0)
+    total = 0
+    for off in range(0, directory_bytes, 4):
+        total = (total + read_u32(rom, off)) & 0xFFFFFFFF
+    struct.pack_into("<I", rom, checksum_off, (-total) & 0xFFFFFFFF)
+
+
 def build_rom(entries: list[tuple[str, Path]]) -> bytes:
     rom = bytearray([0xFF] * ROM_SIZE)
     payload_entries = []
@@ -262,7 +272,7 @@ def build_rom(entries: list[tuple[str, Path]]) -> bytes:
         raise ValueError("payload directory overflow")
 
     struct.pack_into(
-        "<IIIIIIII",
+        "<IIIIIIIII",
         rom,
         0,
         ROM_MAGIC,
@@ -273,12 +283,14 @@ def build_rom(entries: list[tuple[str, Path]]) -> bytes:
         DIRECTORY_BYTES,
         payload_cursor,
         stage1_start,
+        0,
     )
 
     entry_off = ROM_HEADER_SIZE
     for entry in payload_entries:
         struct.pack_into("<IIIIIIII", rom, entry_off, *entry)
         entry_off += ROM_ENTRY_SIZE
+    write_directory_checksum(rom, len(payload_entries))
 
     free_first = ROM_HIGH_BASE + align_up(payload_cursor, PAYLOAD_ALIGN)
     free_end = ROM_HIGH_BASE + stage1_start
