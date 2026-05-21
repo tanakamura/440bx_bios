@@ -1,13 +1,14 @@
-#include "bios_selftest.h"
+#include "app/selftest/s3test/selftest_stage3.h"
 
+#include "app/legacy/legacy_stage3.h"
+#include "app_loader.h"
+#include "app_platform.h"
+#include "app_runtime.h"
 #include "bios_acpi_runtime.h"
-#include "bios_app_platform.h"
-#include "bios_legacy.h"
 #include "bios_memory.h"
 #include "bios_nvram.h"
 #include "bios_rtc.h"
 #include "bios_serial.h"
-#include "bios_shadow.h"
 #include "bios_storage.h"
 #include "selftest_abi.h"
 
@@ -19,8 +20,6 @@
 #define SELFTEST_E820_MAX 128u
 
 #define ELF32_PT_LOAD 1u
-
-extern void bios_call_vgabios_init_pm32(unsigned int bdf);
 
 static void cpu_serialize(void) {
     __asm__ volatile("xorl %%eax, %%eax\n\tcpuid"
@@ -204,30 +203,6 @@ static void selftest_prepare_platform(const struct bios_stage_context* stage) {
         stage->acpi_gpe0, stage->acpi_gpe0_len, stage->acpi_flags);
 }
 
-static unsigned int
-selftest_pm_stack_top(const struct bios_stage_context* stage) {
-    if (stage->shared_service != 0 && stage->shared_service->stack_top != 0u) {
-        return stage->shared_service->stack_top;
-    }
-    if (stage->total_bytes >= 0x00300000u) {
-        return (stage->total_bytes & ~0xfffu) - 0x1000u;
-    }
-    return 0x001ff000u;
-}
-
-static void selftest_install_runtime(const struct bios_selftest_config* config) {
-    const struct bios_stage_context* stage = config->stage;
-
-    bios_shadow_install(stage->shadow_ready);
-    bios_shadow_install_vgabios(stage->vgabios_blob_linear,
-                                bios_stage_context_blob_load(stage),
-                                stage->total_bytes);
-    bios_shadow_init_vgabios(bios_call_vgabios_init_pm32);
-    bios_legacy_install_runtime(stage, config->settings);
-    bios_legacy_install_boot_drive(0x80u);
-    bios_legacy_install_pm_stack_top(selftest_pm_stack_top(stage));
-}
-
 static void selftest_prepare_boot_params(unsigned int total_bytes,
                                          unsigned int entry_phys) {
     unsigned char* bp = (unsigned char*)SELFTEST_BOOT_PARAMS;
@@ -272,13 +247,15 @@ static void selftest_prepare_boot_params(unsigned int total_bytes,
     selftest_put32(bp + 0x0238u, 0u);
 }
 
-void bios_selftest_run_elf_payload(const struct bios_selftest_config* config) {
+void selftest_stage3_run_elf_payload(
+    const struct bios_stage_context* stage,
+    const struct bios_settings* settings,
+    void (*init_vgabios_pm32)(unsigned int bdf)) {
     typedef unsigned int (*test_elf_entry_fn)(
         const struct selftest_runtime_info* info);
-    const struct bios_stage_context* stage = config->stage;
-    blob_load_fn load = bios_stage_context_blob_load(stage);
     struct selftest_runtime_info* info =
         (struct selftest_runtime_info*)SELFTEST_BOOT_PARAMS;
+    blob_load_fn load = bios_stage_context_blob_load(stage);
     struct blob_status status;
     unsigned char* image = (unsigned char*)SELFTEST_ELF_IMAGE_LINEAR;
     unsigned int load_addr = SELFTEST_ELF_IMAGE_LINEAR;
@@ -314,10 +291,13 @@ void bios_selftest_run_elf_payload(const struct bios_selftest_config* config) {
     }
 
     storage_scan(stage->total_bytes);
-    selftest_install_runtime(config);
+    app_install_video_services(stage, init_vgabios_pm32);
+    legacy_stage3_install_runtime(stage, settings);
+    legacy_stage3_install_boot_drive(0x80u);
+    legacy_stage3_install_pm_stack_top(app_pm_stack_top(stage));
     selftest_prepare_platform(stage);
     selftest_prepare_boot_params(stage->total_bytes, entry_phys);
-    bios_app_platform_fill(&info->platform, stage, config->settings);
+    app_platform_fill(&info->platform, stage, settings);
     if (info->platform.acpi_rsdp_linear == 0u) {
         info->platform.acpi_rsdp_linear = SELFTEST_RSDP_LINEAR;
     }

@@ -1,4 +1,4 @@
-#include "bios_shadow.h"
+#include "app_shadow.h"
 
 #include "bios_io.h"
 #include "bios_mtrr.h"
@@ -174,7 +174,7 @@ static void install_runtime_gdt(void) {
     load_bios_gdt((const unsigned long long*)BIOS_RUNTIME_GDT_LINEAR);
 }
 
-void bios_shadow_install(unsigned char already_ready) {
+void app_shadow_install(unsigned char already_ready) {
     if (already_ready != 0u) {
         install_runtime_gdt();
         serial_write_string("PAM shadow already ready\r\n");
@@ -188,8 +188,8 @@ void bios_shadow_install(unsigned char already_ready) {
     install_runtime_gdt();
 }
 
-void bios_shadow_install_vgabios(unsigned int blob_linear, blob_load_fn load,
-                                 unsigned int total_bytes) {
+void app_shadow_install_vgabios(unsigned int blob_linear, blob_load_fn load,
+                                unsigned int total_bytes) {
     struct blob_status status;
     unsigned int load_addr = VGA_BIOS_LINEAR;
     unsigned int size;
@@ -248,7 +248,7 @@ void bios_shadow_install_vgabios(unsigned int blob_linear, blob_load_fn load,
     serial_write_string("*512\r\n");
 }
 
-void bios_shadow_init_vgabios(bios_shadow_vgabios_init_fn init_pm32) {
+void app_shadow_init_vgabios(app_shadow_vgabios_init_fn init_pm32) {
     unsigned int bdf;
 
     if (vgabios_shadow_ready == 0u || vgabios_initialized != 0u ||

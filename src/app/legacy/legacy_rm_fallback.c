@@ -1,6 +1,6 @@
-#include "bios_rm_fallback.h"
+#include "app/legacy/legacy_rm_fallback.h"
 
-#include "bios_direct_thunk.h"
+#include "app/legacy/legacy_direct_thunk.h"
 #include "bios_pci.h"
 #include "bios_serial.h"
 #include "legacy_rm.h"
@@ -46,9 +46,9 @@ static void direct_bda_video_init(void) {
     }
 }
 
-void bios_rm_fallback_install(void) {
+void legacy_rm_fallback_install(void) {
     direct_bda_video_init();
-    bios_direct_thunk_install(0);
+    legacy_direct_thunk_install(0);
 }
 
 void bios_rm_service(unsigned int vector, struct rm_int13_frame* f) {

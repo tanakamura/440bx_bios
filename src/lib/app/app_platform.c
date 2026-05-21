@@ -1,8 +1,8 @@
-#include "bios_app_platform.h"
+#include "app_platform.h"
 
-void bios_app_platform_fill(struct app_platform_info* info,
-                            const struct bios_stage_context* stage,
-                            const struct bios_settings* settings) {
+void app_platform_fill(struct app_platform_info* info,
+                       const struct bios_stage_context* stage,
+                       const struct bios_settings* settings) {
     unsigned int i;
 
     *info = (struct app_platform_info){0};

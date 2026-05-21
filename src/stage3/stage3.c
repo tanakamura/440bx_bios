@@ -1,19 +1,18 @@
 #include "stage3.h"
 
+#include "app/legacy/legacy_direct_thunk.h"
+#include "app/legacy/legacy_stage3.h"
+#include "app/linux_loader/linux_loader_stage3.h"
+#include "app/selftest/s3test/selftest_stage3.h"
+#include "app_runtime.h"
 #include "bios_benchmark.h"
-#include "bios_direct_thunk.h"
 #include "bios_io.h"
-#include "bios_legacy.h"
-#include "bios_linux.h"
 #include "bios_memory.h"
 #include "bios_memtest.h"
-#include "bios_selftest.h"
 #include "bios_serial.h"
 #include "bios_settings.h"
-#include "bios_shadow.h"
 #include "bios_stage_context.h"
 #include "bios_storage.h"
-#include "blob.h"
 #include "post_code.h"
 
 extern void bios_boot_freedos_pm32(void);
@@ -25,68 +24,34 @@ static struct bios_stage_context bios_stage;
 static struct bios_settings bios_settings;
 static unsigned char bios_boot_drive = 0x80u;
 
-static void install_bios_shadow(void) {
-    bios_shadow_install(bios_stage.shadow_ready);
-}
-
-static void install_vgabios_shadow(void) {
-    bios_shadow_install_vgabios(bios_stage.vgabios_blob_linear,
-                                bios_stage_context_blob_load(&bios_stage),
-                                bios_stage.total_bytes);
-}
-
-static void fill_bios_linux_config(struct bios_linux_config* config) {
-    config->stage = &bios_stage;
-    config->settings = &bios_settings;
-}
-
 static void install_bios_thunks(void) {
-    install_bios_shadow();
-    install_vgabios_shadow();
-    bios_shadow_init_vgabios(bios_call_vgabios_init_pm32);
-    bios_legacy_install_runtime(&bios_stage, &bios_settings);
+    app_install_video_services(&bios_stage, bios_call_vgabios_init_pm32);
+    legacy_stage3_install_runtime(&bios_stage, &bios_settings);
 }
 
 static void prepare_boot_sector(void) {
-    bios_boot_drive = bios_legacy_prepare_boot_sector();
+    bios_boot_drive = legacy_stage3_prepare_boot_sector();
 }
 
 static void install_boot_drive(void) {
-    bios_legacy_install_boot_drive(bios_boot_drive);
+    legacy_stage3_install_boot_drive(bios_boot_drive);
 }
 
 static unsigned int bios_top_reserved_base(void) {
     return bios_memory_top_reserved_base(bios_stage.total_bytes);
 }
 
-static unsigned int bios_pm_stack_top(void) {
-    if (bios_stage.shared_service != 0 &&
-        bios_stage.shared_service->stack_top != 0u) {
-        return bios_stage.shared_service->stack_top;
-    }
-    if (bios_stage.total_bytes >= 0x00300000u) {
-        return (bios_stage.total_bytes & ~0xfffu) - 0x1000u;
-    }
-    return 0x001ff000u;
-}
-
 static void install_pm_stack_top(void) {
-    bios_legacy_install_pm_stack_top(bios_pm_stack_top());
+    legacy_stage3_install_pm_stack_top(app_pm_stack_top(&bios_stage));
 }
 
 static void run_test_elf_payload(void) {
-    struct bios_selftest_config selftest = {0};
-
-    selftest.stage = &bios_stage;
-    selftest.settings = &bios_settings;
-    bios_selftest_run_elf_payload(&selftest);
+    selftest_stage3_run_elf_payload(&bios_stage, &bios_settings,
+                                    bios_call_vgabios_init_pm32);
 }
 
 static int try_boot_linux(void) {
-    struct bios_linux_config config = {0};
-
-    fill_bios_linux_config(&config);
-    return bios_linux_try_boot(&config);
+    return linux_loader_stage3_try_boot(&bios_stage, &bios_settings);
 }
 
 void bios_stage3_run(unsigned int total_bytes) {
@@ -129,7 +94,7 @@ void bios_stage3_run(unsigned int total_bytes) {
     install_boot_drive();
     install_pm_stack_top();
     serial_write_string("IVT thunks installed @ ");
-    serial_write_hex32(BIOS_DIRECT_THUNK_RUNTIME_BASE);
+    serial_write_hex32(LEGACY_DIRECT_THUNK_RUNTIME_BASE);
     serial_write_string("\r\n");
     if (try_boot_linux()) {
         for (;;) {

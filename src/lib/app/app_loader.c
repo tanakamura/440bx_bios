@@ -1,10 +1,10 @@
-#include "bios_app_loader.h"
+#include "app_loader.h"
 
-#include "blob.h"
 #include "bios_serial.h"
+#include "blob.h"
 
-unsigned int bios_app_load(const struct bios_stage_context* stage,
-                           unsigned int payload_id, const char* label) {
+unsigned int app_load_payload(const struct bios_stage_context* stage,
+                              unsigned int payload_id, const char* label) {
     blob_load_fn load = bios_stage_context_blob_load(stage);
     struct blob_status status;
     unsigned int load_addr = APP_SLOT_LOAD_LINEAR;
