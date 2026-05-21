@@ -7,7 +7,6 @@ POST_CAR_DONE 10 car done
 POST_ENTER_C 11 enter to C
 POST_LEAVE_CAR 12 leave CAR / switch to DRAM stack
 POST_DRAM_STACK 13 running on DRAM stack
-POST_BIOS_ENTRY 14 entered BIOS payload
 
 POST_PCI_PROBE_START E7 pci probe start
 POST_SMBUS_PROBE_START E8 smbus probe start

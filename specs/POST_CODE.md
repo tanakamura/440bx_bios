@@ -7,7 +7,6 @@
   11  : enter to C
   12  : leave CAR / switch to DRAM stack
   13  : running on DRAM stack
-  14  : entered BIOS payload
 
 E0-EF : tmp
   E7  : pci probe start

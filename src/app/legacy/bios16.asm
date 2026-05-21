@@ -3,8 +3,6 @@
 %define CODE16_SEL 0x18
 %define DATA16_SEL 0x20
 
-%include "post_code.inc"
-
 %define THUNK_LINEAR 0x000fe000
 %define THUNK_SEG (THUNK_LINEAR >> 4)
 %define PM_STACK_TOP_OFF (bios16_pm_stack_top - bios16_thunk_start)
@@ -30,9 +28,7 @@
 bits 32
 
 extern bios_rm_service
-extern bios32_entry_c
 
-global bios32_entry
 global bios_boot_freedos_pm32
 global bios_call_vgabios_init_pm32
 global bios_call_vbe_mode_info_pm32
@@ -55,21 +51,6 @@ global bios16_thunk_end
 global bios16_vbe_mode_info
 global bios16_pm_stack_top
 global bios16_boot_drive
-
-section .entry progbits alloc exec nowrite align=16
-bits 32
-bios32_entry:
-    mov al, POST_BIOS_ENTRY
-    out 0x80, al
-.wait_uart:
-    mov dx, 0x03fd
-    in al, dx
-    test al, 0x20
-    jz .wait_uart
-    mov dx, 0x03f8
-    mov al, 'E'
-    out dx, al
-    jmp bios32_entry_c
 
 section .text progbits alloc exec nowrite align=16
 bios_boot_freedos_pm32:
