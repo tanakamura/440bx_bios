@@ -7,7 +7,7 @@
 #include "app/legacy/legacy_keyboard.h"
 #include "app/legacy/legacy_misc.h"
 #include "app/legacy/legacy_platform.h"
-#include "app/legacy/legacy_rm.h"
+#include "legacy_rm.h"
 #include "app/legacy/legacy_thunk.h"
 #include "app/legacy/legacy_timer.h"
 #include "app/legacy/legacy_time.h"

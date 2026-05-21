@@ -678,6 +678,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - legacy BIOS service の dispatcher / thunk / timer / runtime glue は `app/legacy/` へ移動済み。legacy genrom profile は `legacy_app` を ROM payload に入れ、stage3 が `0x000F0000` へロードして entry を呼ぶ。
 - legacy service は serial/storage/RTC/E820 provider を app 側に直接 link する。`legacy_app_exports` で boot sector 選択 / boot drive 書き込み / PM stack 設定も app 側関数を呼ぶ。stage3 直リンクから legacy service 本体と `legacy_thunk.o` は外し、Linux profile が使う low thunk/VBE 呼び出し用に共通 `lib/rm_thunk/bios16.o` だけを残している。
 - stage3 側へ移した direct thunk installer は legacy app から削除済み。legacy app の `legacy_thunk.*` は full BIOS INT thunk installation だけを持つ。
+- legacy app entry ABI は `include/legacy_app_abi.h`、real-mode service frame は `include/legacy_rm.h` へ切り出し済み。stage3 は legacy app 内部の `legacy_runtime.h` / `legacy_rm.h` を include しない。
 - floppy test image probe/state は legacy runtime 側へ移動済み。stage3 は floppy の有無を保持せず、legacy app が自分で BDA/INT13 用 state を作る。
 - Linux kernel/initrd loader と Linux boot params/VBE setup は `app/linux_loader/` へ移動済み。serial/storage/E820 は `linux_loader_config` callback 経由になり、stage3 は NVRAM 設定と ACPI/RTC/VBIOS/storage/memory callback を渡す glue だけ持つ。
 - 通常 boot path では `linux_loader` payload がある profile だけ Linux boot を試す。payload が無い legacy profile では direct fallback せず legacy boot へ進む。

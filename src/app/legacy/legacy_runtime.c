@@ -4,9 +4,12 @@
 #include "bios_rtc.h"
 #include "bios_serial.h"
 #include "bios_storage.h"
+#include "app/legacy/legacy_boot.h"
 #include "app/legacy/legacy_floppy.h"
 #include "app/legacy/legacy_platform.h"
+#include "app/legacy/legacy_service.h"
 #include "app/legacy/legacy_timer.h"
+#include "app/legacy/legacy_thunk.h"
 
 static void legacy_local_hdd_get_geometry(
     struct legacy_hdd_geometry* geometry) {

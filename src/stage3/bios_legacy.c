@@ -4,9 +4,8 @@
 #include "bios_direct_thunk.h"
 #include "bios_serial.h"
 #include "bios_stage_context.h"
-#include "app/legacy/legacy_boot.h"
-#include "app/legacy/legacy_rm.h"
-#include "app/legacy/legacy_runtime.h"
+#include "legacy_app_abi.h"
+#include "legacy_rm.h"
 
 static const unsigned short bios_ebda_segment = 0x0000u;
 static const unsigned short bios_dos_base_mem_kb = 640u;
