@@ -706,6 +706,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - stage3 固有 `.c`、platform stage 固有 source、lib/shared helper の compile rule は各 directory の `Makefile` へ切り出し済み。top-level の `CORE_C_OBJS` は module 変数の合成になっている。旧 `start` / `qemu_bios.bin` ROM build rule は platform stage1 `Makefile` へ、genrom board/profile rule は platform board `Makefile` へ移動済み。
 - P2B98-XV/QEMU stage2 と stage3 は root 直下の中間 ELF/map を作らず、各 stage directory の ELF/map へ直接 link する。
 - legacy/linux_loader/selftest app ELF/map も root 直下ではなく各 app directory へ直接 link する。
+- stage/app/lib/shared/platform の C/asm object と generated dependency / stack-usage file は、それぞれの source directory 配下へ出す。root `src/` 直下に残る旧 artifact は互換 target や過去 build 由来の生成物だけに寄せる。
 - `blob.h` は `src/include/` へ移動済み。root 直下の `bios_pci.h` forwarding header も削除し、PCI header は `lib/pci/` の実体を include path から解決する。
 - `shared_service/service_table.inc` は `shared_service/service_table.h` から生成する。QEMU stage1 asm はこれを include し、shared table size の C/asm 二重定義を避ける。
 

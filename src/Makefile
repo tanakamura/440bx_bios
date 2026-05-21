@@ -21,6 +21,10 @@ LINUX_LOADER_APP_ELF := app/linux_loader/linux_loader_app.elf
 SELFTEST_ELF := app/selftest/s3test/s3test.elf
 GENROM_STAGE_ELFS := $(P2B_STAGE1_ELF) $(P2B_STAGE2_ELF) \
 	$(QEMU_STAGE1_ELF) $(QEMU_STAGE2_ELF) $(STAGE3_DIR_ELF)
+BUILD_ARTIFACT_DIRS := app/legacy app/linux_loader app/selftest/s3test \
+	lib/acpi lib/pci lib/serial lib/storage lib/x86 shared_service stage3 \
+	platform/p2b98_xv/stage1 platform/p2b98_xv/stage2 \
+	platform/qemu/stage1 platform/qemu/stage2
 
 post_code.h post_code.inc ../specs/POST_CODE.md: post_code.def $(BUILD_SCRIPTS)/gen_post_codes.py
 	python3 $(BUILD_SCRIPTS)/gen_post_codes.py
@@ -144,6 +148,6 @@ test: stdtest.img usbmbr.img linuxprobe.img linuxprobe_raw.img qemu_legacy_test_
 -include $(DEPS)
 
 clean:
-	rm -f start start_legacy start_legacy_test start.elf start_legacy.elf linuxprobe.elf *.map *.o *.d *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc shared_service/service_table.inc $(GENROM_STAGE_ELFS) $(LEGACY_APP_ELF) $(LINUX_LOADER_APP_ELF) $(SELFTEST_ELF) platform/p2b98_xv/stage1/*.map platform/p2b98_xv/stage2/*.map platform/qemu/stage1/*.map platform/qemu/stage2/*.map stage3/*.map app/legacy/*.map app/legacy/*.bin app/linux_loader/*.map app/linux_loader/*.bin app/selftest/s3test/*.map
+	rm -f start start_legacy start_legacy_test start.elf start_legacy.elf linuxprobe.elf *.map *.o *.d *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc shared_service/service_table.inc $(GENROM_STAGE_ELFS) $(LEGACY_APP_ELF) $(LINUX_LOADER_APP_ELF) $(SELFTEST_ELF) $(addsuffix /*.o,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.d,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.su,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.map,$(BUILD_ARTIFACT_DIRS)) app/legacy/*.bin app/linux_loader/*.bin
 
 install-all: install-xrecv-exe install-mem-dmp-exe install-flashutil-exe

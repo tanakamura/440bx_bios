@@ -1,25 +1,27 @@
 # Included from ../Makefile; paths are relative to src/.
 
-STAGE3_CORE_OBJS := stage3_entry.o stage3_runtime.o \
-	bios_acpi_runtime.o bios_benchmark.o bios_legacy.o bios_linux.o \
-	bios_maintenance.o bios_memtest.o bios_selftest.o bios_settings.o \
-	bios_shadow.o bios_stage_context.o
+STAGE3_CORE_OBJS := stage3/entry.o stage3/stage3.o \
+	stage3/bios_acpi_runtime.o stage3/bios_benchmark.o \
+	stage3/bios_legacy.o stage3/bios_linux.o stage3/bios_maintenance.o \
+	stage3/bios_memtest.o stage3/bios_selftest.o stage3/bios_settings.o \
+	stage3/bios_shadow.o stage3/bios_stage_context.o
 STAGE3_LIB_OBJS := $(X86_OBJS) $(SERIAL_OBJS) $(PCI_OBJS) $(STORAGE_OBJS)
 STAGE3_OBJS := $(STAGE3_CORE_OBJS) $(STAGE3_LIB_OBJS)
-STAGE3_C_OBJS := $(filter-out bios16.o,$(STAGE3_CORE_OBJS))
+STAGE3_C_OBJS := $(STAGE3_CORE_OBJS)
 
-STAGE3_LEGACY_THUNK_OBJS := bios16.o legacy_bda.o legacy_keyboard.o \
-	legacy_platform.o legacy_thunk.o legacy_video.o
+STAGE3_LEGACY_THUNK_OBJS := app/legacy/bios16.o app/legacy/legacy_bda.o \
+	app/legacy/legacy_keyboard.o app/legacy/legacy_platform.o \
+	app/legacy/legacy_thunk.o app/legacy/legacy_video.o
 STAGE3_APP_OBJS := $(LINUX_LOADER_OBJS) $(STAGE3_LEGACY_THUNK_OBJS)
 
 $(STAGE3_DIR_ELF): $(STAGE3_OBJS) $(STAGE3_APP_OBJS) stage3/stage3.ld
 	$(LD) -m elf_i386 --gc-sections -T stage3/stage3.ld -Map stage3/stage3.map -o $@ $(STAGE3_OBJS) $(STAGE3_APP_OBJS)
 
-stage3_entry.o: stage3/entry.c
+stage3/entry.o: stage3/entry.c
 	$(COMPILE_C)
 
-stage3_runtime.o: stage3/stage3.c
+stage3/stage3.o: stage3/stage3.c
 	$(COMPILE_C)
 
-bios_%.o: stage3/bios_%.c
+stage3/bios_%.o: stage3/bios_%.c
 	$(COMPILE_C)
