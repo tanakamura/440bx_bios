@@ -3,12 +3,9 @@ bits 16
 %define CODE_SEL 0x08
 %define DATA_SEL 0x10
 %define ROM_HIGH_DELTA 0xFFF00000
-%define BLOB_STATUS_SIZE 20
-%define STAGE2_LOAD_LINEAR 0x00080000
-%define STAGE2_LOAD_CAPACITY 0x00010000
-%define STAGE2_ENTRY 0x00080000
 %define QEMU_TOTAL_BYTES (32 * 1024 * 1024)
 
+%include "include/blob.inc"
 %include "shared_service/service_table.inc"
 
 global qemu_start

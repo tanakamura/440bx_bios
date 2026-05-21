@@ -35,6 +35,9 @@ post_code.h post_code.inc ../specs/POST_CODE.md: post_code.def $(BUILD_SCRIPTS)/
 shared_service/service_table.inc: shared_service/service_table.h $(BUILD_SCRIPTS)/gen_shared_service_asm.py
 	python3 $(BUILD_SCRIPTS)/gen_shared_service_asm.py
 
+include/blob.inc: include/blob.h $(BUILD_SCRIPTS)/gen_blob_asm.py
+	python3 $(BUILD_SCRIPTS)/gen_blob_asm.py
+
 include lib/rm_thunk/Makefile
 include app/legacy/Makefile
 include app/linux_loader/Makefile
@@ -78,4 +81,4 @@ genrom: $(GENROM_BINS)
 -include $(DEPS)
 
 clean:
-	rm -f start start_legacy start_legacy_test start.elf start_legacy.elf linuxprobe.elf *.map *.o *.d *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc shared_service/service_table.inc $(SHARED_SERVICE_RELOC_CHECK) $(GENROM_STAGE_ELFS) $(LEGACY_APP_ELF) $(LINUX_LOADER_APP_ELF) $(SELFTEST_ELF) $(addsuffix /*.o,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.d,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.su,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.map,$(BUILD_ARTIFACT_DIRS)) app/legacy/*.bin app/linux_loader/*.bin
+	rm -f start start_legacy start_legacy_test start.elf start_legacy.elf linuxprobe.elf *.map *.o *.d *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc include/blob.inc shared_service/service_table.inc $(SHARED_SERVICE_RELOC_CHECK) $(GENROM_STAGE_ELFS) $(LEGACY_APP_ELF) $(LINUX_LOADER_APP_ELF) $(SELFTEST_ELF) $(addsuffix /*.o,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.d,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.su,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.map,$(BUILD_ARTIFACT_DIRS)) app/legacy/*.bin app/linux_loader/*.bin

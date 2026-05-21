@@ -10,6 +10,7 @@
 #define BLOB_OUTPUT_CRC_LIMIT (512u * 1024u)
 
 #define BLOB_STAGE_CAPACITY 8192u
+#define BLOB_STATUS_SIZE 20u
 
 #define STAGE2_LOAD_LINEAR 0x00080000u
 #define STAGE2_LOAD_CAPACITY 0x00010000u
@@ -59,6 +60,9 @@ struct blob_status {
     unsigned int got;
     unsigned int output_size;
 };
+
+typedef char blob_status_size_check[
+    sizeof(struct blob_status) == BLOB_STATUS_SIZE ? 1 : -1];
 
 typedef int (*blob_load_fn)(unsigned int payload_id, void* fallback_dst,
                             unsigned int dst_capacity,
