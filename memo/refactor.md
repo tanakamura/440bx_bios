@@ -707,6 +707,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - selftest/uACPI の object list / compile rule は `app/selftest/s3test/Makefile` へ切り出し済み。旧 linker-symbol ROM 用の `test_elf_blob.o` と旧 `test_elf_blob.bin` target は削除済み。
 - genrom の `test_elf` payload は ELF の PT_LOAD だけを抜かず、ELF file 全体を BLZ4 化する。stage3 の test runner が ELF header を見て `0x00180000` へロードする。
 - stage3 固有 `.c`、platform stage 固有 source、lib/shared helper の compile rule は各 directory の `Makefile` へ切り出し済み。top-level の `CORE_C_OBJS` は module 変数の合成になっている。旧 `start` / `qemu_bios.bin` ROM build rule は platform stage1 `Makefile` へ、genrom board/profile rule は platform board `Makefile` へ移動済み。
+- regression boot image / smoke test rule は `src/tests/Makefile`、DOS tool rule は `tools/dos/Makefile` へ切り出し済み。top-level `src/Makefile` は module include と共通 target に寄せる。
 - P2B98-XV/QEMU stage2 と stage3 は root 直下の中間 ELF/map を作らず、各 stage directory の ELF/map へ直接 link する。
 - legacy/linux_loader/selftest app ELF/map も root 直下ではなく各 app directory へ直接 link する。
 - stage/app/lib/shared/platform の C/asm object と generated dependency / stack-usage file は、それぞれの source directory 配下へ出す。root `src/` 直下に残る旧 artifact は互換 target や過去 build 由来の生成物だけに寄せる。
