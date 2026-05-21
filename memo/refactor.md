@@ -5,11 +5,11 @@ stage とディレクトリを整理する。移動だけで済むものは先�
 ## 現状との矛盾点
 
 - `stage2` のロード先は現状 `0x00080000`。旧メモの `0x00100000` は誤り。
-- `stage3` のロード先は現状 `0x000F0000` だが、これは移動する。`0x000F0000` は `app/legacy` や `app/linux_loader` を置く低位 app slot として使う。
-- `stage3` は「PCI/IDE/UHCI など標準処理」と「legacy BIOS service / Linux loader / selftest」を全部含んでいる。責務を分け、`stage3` は高位 DRAM 上の実行基盤、`app/` は個別ロードアドレスを持つ機能モジュールとして整理する。
-- `shared_service` は全 stage に静的リンクするものではなく、stage1 が DRAM 末尾に設置し、DRAM 最後 4 byte の table pointer から辿って呼ぶ runtime service。現状は blob loader がこれに該当する。
-- ACPI table は board 依存入力を持つ。P2B98-XV は `specs/dsdt.dsl` 由来、QEMU は fw_cfg 由来にする必要がある。table 構築と platform 固有 PM I/O 設定は stage2 に置き、stage3 は boot context に渡された port 値で Linux 起動直前の PM event clear / SCI enable だけ行う。
-- `srcipts/` は typo。スクリプトは repo root の `scripts/` に集約する。
+- `stage3` のロード先は `0x00200000`。`0x000F0000-0x000FFFFF` は `app/legacy` や `app/linux_loader` を置く低位 app slot として使う。
+- `stage3` は高位 DRAM 上の実行基盤と platform-independent glue に絞る。legacy BIOS service / Linux loader / selftest は app payload へ分離済みで、stage3 には app 起動と fallback 用の最小 thunk だけを残す。
+- `shared_service` は全 stage に静的リンクするものではなく、stage1 が DRAM 末尾に設置し、DRAM 最後 4 byte の table pointer から辿って呼ぶ runtime service。現状は blob loader と shared heap がこれに該当する。
+- ACPI table は board 依存入力を持つ。P2B98-XV は `specs/dsdt.dsl` 由来、QEMU は fw_cfg 由来にする。table 構築と platform 固有 PM I/O 設定は stage2 に置き、stage3 は boot context に渡された port 値で Linux 起動直前の PM event clear / SCI enable だけ行う。
+- `srcipts/` typo は使わない。スクリプトは repo root の `scripts/` に集約する。
 
 ## 方針
 
@@ -24,14 +24,15 @@ stage とディレクトリを整理する。移動だけで済むものは先�
 - QEMU と実機で同じ stage3 を使う。違いは stage1/stage2 と shared service table の内容だけに閉じ込める。
 - uACPI は自作 AML interpreter の代わりに使う。ただし stage3 には常駐させず、selftest blob 側だけで使う。
 
-## 目標ディレクトリ
+## 現在の主要ディレクトリ
 
 ```
 src/
   include/
-    boot_context.h
-    memory_map.h
     blob.h
+    legacy_app_abi.h
+    legacy_rm.h
+    linux_loader_abi.h
     post_code.h
 
   platform/
@@ -43,78 +44,63 @@ src/
       stage2/
         stage2.c
         stage2.ld
-        l2_cache.c
-        l2_cache.h
-        acpi_platform.c
+        l2_service.c
+        l2_service.h
     qemu/
       stage1/
+        qemu_stage1.c
         qemu_start.asm
         stage1.ld
       stage2/
         stage2.c
         stage2.ld
-        acpi_fwcfg.c
 
   shared_service/
     blob_service.c
-    blob_service.h
     service_table.h
-    service_table_offsets.inc
-    heap.c
 
   stage3/
     entry.c
     stage3.ld
-    boot_context.c
-    maintenance.c
-    nvram.c
+    stage3.c
+    bios_*.c
 
   app/
     legacy/
       legacy.ld
-      bios16.asm
-      int10.c
-      int11.c
-      int12.c
-      int13.c
-      int15.c
-      int16.c
-      int1a.c
+      entry.c
+      legacy_*.c
     linux_loader/
       linux_loader.ld
+      entry.c
       linux_loader.c
-      elf_loader.c
-      linux_params.c
     selftest/
       s3test/
         s3test.c
-        uacpi_kernel.c
+        s3test_uacpi.c
         uacpi_config.h
         s3test.ld
 
   lib/
+    rm_thunk/
+      bios16.asm
     x86/
-      io.h
-      msr.h
-      mtrr.c
-      pic.c
-      pit.c
-      rtc.c
+      bios_io.h
+      bios_memory.c
+      bios_nvram.c
+      bios_rtc.c
     serial/
-      serial.c
-      serial.h
+      bios_serial.c
+      bios_serial.h
     pci/
-      pci.c
-      pci.h
-      pci_assign.c
+      bios_pci.c
+      bios_pci.h
     acpi/
       acpi_tables.c
       acpi_tables.h
     storage/
-      blockdev.h
-      ide.c
-      uhci.c
-      usb_storage.c
+      bios_storage.c
+      bios_storage.h
 ```
 
 Repo root:
@@ -546,9 +532,9 @@ legacy app 切り出し方針:
 
 - 標準 BIOS との比較は media transport ではなく INT 13h service level で合わせる。標準 BIOS は `-fda testfd.img`、自作 BIOS は `FDS0 in ROM free area` でよい。
 - `FDS0` は custom BIOS に test floppy を渡す transport であり、test floppy の中身は BIOS INT 13h/10h だけを使う。test の期待値は stage3 の log ではなく boot sector が出す `SQ` などの guest-visible 結果に寄せる。
-- legacy app は `bios16.asm` と `bios_rm_service` を持つ。stage3 は legacy app をロードして entry を呼ぶだけにする。
+- real-mode thunk asm は共通 `lib/rm_thunk/bios16.asm` に置く。legacy app は `bios_rm_service` と full INT service を持ち、stage3 は legacy app をロードして entry を呼ぶ。Linux/VBIOS/legacy fallback 用に stage3 は同じ thunk object の direct section だけを使う。
 - storage は `lib/storage` 相当として共有し、legacy app から直接使う。難所は storage driver ではなく、現在同一 ELF 内に残る BDA 初期化、INT 10h/11h/12h/13h/15h/16h/1Ah、tick、keyboard、boot drive、`0x7c00` への real-mode jump を legacy app 側へ独立 link/load すること。
-- `bios16.asm` の thunk は runtime では `0x000FE000` にコピーして使う。app ELF 内の `bios16_thunk_start` はコピー元であり、`bios16_thunk_runtime_base` とは分けて考える。
+- `bios16.asm` の thunk は runtime では `0x000FE000` にコピーして使う。ELF 内の `bios16_thunk_start` はコピー元であり、runtime base とは分けて考える。
 - legacy app は `0x000F0000` に配置する。したがって先に stage3 を `0x00200000` へ移して `0x000F0000-0x000FFFFF` を app slot として空ける。
 
 移行中の残依存:
