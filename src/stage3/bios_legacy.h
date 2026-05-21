@@ -4,7 +4,9 @@
 typedef void (*bios_legacy_void_fn)(void);
 typedef void (*bios_legacy_record_boot_success_fn)(unsigned char kind);
 
-void bios_legacy_install_runtime(unsigned int total_bytes,
+struct bios_stage_context;
+
+void bios_legacy_install_runtime(const struct bios_stage_context* stage,
                                  unsigned char boot_priority,
                                  bios_legacy_record_boot_success_fn record_boot_success,
                                  bios_legacy_void_fn boot_pm32,

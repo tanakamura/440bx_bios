@@ -50,8 +50,7 @@ static void fill_bios_linux_config(struct bios_linux_config* config) {
 }
 
 static void install_bios_thunks(void) {
-    bios_legacy_install_runtime(bios_stage.total_bytes,
-                                bios_settings.boot_priority,
+    bios_legacy_install_runtime(&bios_stage, bios_settings.boot_priority,
                                 nvram_record_boot_success,
                                 bios_boot_freedos_pm32, install_bios_shadow);
 }

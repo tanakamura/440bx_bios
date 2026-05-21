@@ -18,6 +18,7 @@ void bios_stage_context_load(struct bios_stage_context* context,
 
     context->total_bytes = total_bytes;
     context->vgabios_blob_linear = 0u;
+    context->legacy_app_blob_linear = 0u;
     context->linux_loader_blob_linear = 0u;
     context->test_elf_blob_linear = 0u;
     context->rsdp_linear = 0u;
@@ -49,6 +50,11 @@ void bios_stage_context_load(struct bios_stage_context* context,
     blob = payload_blob_ptr(context->shared_service, SHARED_PAYLOAD_ID_VGABIOS);
     if (blob != 0u) {
         context->vgabios_blob_linear = blob;
+    }
+    blob = payload_blob_ptr(context->shared_service,
+                            SHARED_PAYLOAD_ID_LEGACY_APP);
+    if (blob != 0u) {
+        context->legacy_app_blob_linear = blob;
     }
     blob = payload_blob_ptr(context->shared_service,
                             SHARED_PAYLOAD_ID_LINUX_LOADER_APP);

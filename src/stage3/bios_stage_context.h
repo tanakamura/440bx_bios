@@ -7,6 +7,7 @@
 struct bios_stage_context {
     unsigned int total_bytes;
     unsigned int vgabios_blob_linear;
+    unsigned int legacy_app_blob_linear;
     unsigned int linux_loader_blob_linear;
     unsigned int test_elf_blob_linear;
     unsigned int rsdp_linear;

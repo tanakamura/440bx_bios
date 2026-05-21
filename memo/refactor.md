@@ -170,20 +170,20 @@ stage2 が使う DSDT などの board 固有 ACPI 入力はここでは別扱い
 
 | motherboard | app      | app 用 payload |
 |-------------|----------|----------------|
-| qemu        | legacy   | none。必要なら `test_floppy` |
-| p2b98_xv    | legacy   | none。必要なら `test_floppy` |
+| qemu        | legacy   | `legacy_app`。必要なら ROM free area に `test_floppy` |
+| p2b98_xv    | legacy   | `legacy_app`。必要なら ROM free area に `test_floppy` |
 | qemu        | selftest | none |
 | p2b98_xv    | selftest | none |
-| qemu        | linux    | `vgabios` |
-| p2b98_xv    | linux    | `vgabios` |
+| qemu        | linux    | `linux_loader`, `vgabios` |
+| p2b98_xv    | linux    | `linux_loader`, `vgabios` |
 
 `test_floppy` は legacy test 用の差し替え可能 payload。通常の legacy ROM には不要。
 
 移行中の状態:
 
-- legacy profile は optional payload を link せず、必要な test media だけ ROM free area へ後差しする。
+- legacy profile は `legacy_app` を payload として link する。必要な test media だけ ROM free area へ後差しする。
 - `app/legacy/bios16.asm` と legacy service の一部は `app/legacy/` へ移動済み。現状は `legacy_floppy`, BDA 初期化, INT 10h/11h/12h/13h/15h/16h/17h/1Ah/60h が legacy 側 module になっている。
-- `bios_rm_service` dispatcher と thunk/IVT/DPT 設置は `app/legacy/` へ移動済み。現状は同一 ELF に link し、stage3 が `legacy_service_init()` で context を渡している。
+- `bios_rm_service` dispatcher と thunk/IVT/DPT 設置は `app/legacy/` へ移動済み。legacy genrom profile では `legacy_app` payload を `0x000F0000` にロードして entry を呼ぶ。互換 fallback と Linux profile 用 thunk のため、stage3 にはまだ legacy object の直リンクが残る。
 - E820/memory map は `bios_memory.*`、RTC は `bios_rtc.*` へ分離済み。legacy service からは `legacy_platform_ops` callback 経由で呼ぶ。
 - selftest profile は現状まだ `test_elf_blob` に依存している。build matrix の「selftest の app 用 payload なし」を実装するには、先に `selftest_app` を stage3 から切り出す必要がある。
 - stage3 main flow は `stage3/stage3.*` へ分離済み。`stage3/entry.c` は legacy asm entry からの BSS clear と stage3 run wrapper だけを持つ。linker script も `stage3/stage3.ld` へ移動済み。
@@ -667,8 +667,8 @@ payload blob の場所は boot context ではなく、shared service table の `
 - blob 展開中の maintenance key は blob service が DRAM 末尾の shared service table pointer から boot context を辿り、`SHARED_BOOT_FLAG_MAINTENANCE_REQUESTED` を直接立てる。旧 aux dword 配列は削除済み。
 - stage3 は VGA BIOS / test ELF payload と `blob_expand` を shared service table から使う。旧 aux fallback と固定 `BLOB_SERVICE_LINEAR` fallback は削除済み。
 - ACPI table 構築は stage2 へ移動済み。P2B98-XV stage2 は DSDT blob を展開して RSDT/FADT/FACS/RSDP を作る。QEMU stage2 は fw_cfg の ACPI tables を取得/patch して RSDP を作る。stage3 は board 非依存の ACPI PM event clear / SCI enable だけを持つ。
-- legacy BIOS service の dispatcher / thunk / timer / runtime glue は `app/legacy/` へ移動済み。ただし legacy app 単体 blob 化と `0x000F0000` 配置は未完了。
-- legacy service は serial/storage/RTC/E820 などの stage3 直参照を `legacy_platform_ops` callback table 経由へ寄せた。残る大きな直結は app としての entry/link/load ABI。
+- legacy BIOS service の dispatcher / thunk / timer / runtime glue は `app/legacy/` へ移動済み。legacy genrom profile は `legacy_app` を ROM payload に入れ、stage3 が `0x000F0000` へロードして entry を呼ぶ。
+- legacy service は serial/storage/RTC/E820 などの stage3 直参照を `legacy_platform_ops` callback table 経由へ寄せた。`legacy_app_exports` で boot sector 選択 / boot drive 書き込み / PM stack 設定も app 側関数を呼ぶ。残る大きな直結は stage3 ELF に残る fallback 用 legacy objects と、Linux profile が使う low thunk/VBE 呼び出し経路。
 - floppy test image probe/state は legacy runtime 側へ移動済み。stage3 は floppy の有無を保持せず、legacy app が自分で BDA/INT13 用 state を作る。
 - Linux kernel/initrd loader と Linux boot params/VBE setup は `app/linux_loader/` へ移動済み。serial/storage/E820 は `linux_loader_config` callback 経由になり、stage3 は NVRAM 設定と ACPI/RTC/VBIOS/storage/memory callback を渡す glue だけ持つ。
 - NVRAM raw access と設定 decode/save は `bios_nvram.*` へ分離済み。`stage3/stage3.c` には stage3 global へ反映する薄い glue だけ残っている。
@@ -693,9 +693,9 @@ payload blob の場所は boot context ではなく、shared service table の `
 - gen_rom 用に stage directory 配下の ELF alias を作る target を追加済み。stage1 ELF は payload symbol なしでも link できるようにし、`gen_rom.py` は stage1 ELF の alloc section だけを ROM 末尾へ overlay して payload directory を壊さない。
 - `make -C src test` は生成 ROM 経路の最低限確認として `qemu_legacy_genrom.bin` の IDE boot も実行する。
 - stage3、P2B98-XV/QEMU stage2、P2B98-XV/QEMU stage1-only ELF の link rule と object list は各 stage directory の `Makefile` へ切り出し済み。現状は top-level `src/Makefile` から include する非再帰 make。
-- legacy と linux_loader の object list / compile rule は各 app directory の `Makefile` へ切り出し済み。まだ stage3 と同一 ELF に link しており、独立 app ELF/blob 化は未完了。
+- legacy と linux_loader の object list / compile rule は各 app directory の `Makefile` へ切り出し済み。`legacy_app.elf` と `linux_loader_app.elf` は独立 app ELF として作れる。genrom profile ではそれぞれ ROM payload としてロードできるが、stage3 には互換 fallback と Linux profile 用 thunk のため両方の直リンク object がまだ残る。
 - `linux_loader_app.elf` / `linux_loader_app.bin` の単体 build target は追加済み。Linux profile の genrom では ROM blob list に入り、stage3 は payload があれば `0x000F0000` へロードして app entry を呼ぶ。旧 linker 同梱経路は fallback として残る。
-- `legacy_app.elf` / `legacy_app.bin` の単体 build target は追加済み。まだ ROM blob list には入れておらず、stage3 から app としてロードする ABI 接続も未完了。
+- `legacy_app.elf` / `legacy_app.bin` の単体 build target は追加済み。legacy genrom profile の ROM blob list に入り、stage3 は payload があれば `0x000F0000` へロードして app entry を呼ぶ。boot sector 選択などの後続操作は `legacy_app_exports` 経由で app 側関数を呼ぶ。旧 linker 同梱経路は fallback として残る。
 - selftest/uACPI の object list / compile rule / test ELF blob rule は `app/selftest/s3test/Makefile` へ切り出し済み。生成物名は互換維持のため `src/s3test.elf` / `src/test_elf_blob.bin` のまま。
 - stage3 固有 `.c`、platform stage 固有 source、lib/shared helper の compile rule は各 directory の `Makefile` へ切り出し済み。top-level の `CORE_C_OBJS` は module 変数の合成になっている。旧 `start` / `qemu_bios.bin` ROM build rule は platform stage1 `Makefile` へ、genrom board/profile rule は platform board `Makefile` へ移動済み。
 
