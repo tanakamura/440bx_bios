@@ -99,6 +99,8 @@ struct shared_boot_context {
     unsigned int acpi_gpe0;
     unsigned int acpi_gpe0_len;
     unsigned int acpi_flags;
+    unsigned int acpi_table_base;
+    unsigned int acpi_table_size;
 };
 
 struct shared_service_table {

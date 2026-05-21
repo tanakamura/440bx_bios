@@ -229,6 +229,8 @@ static void install_qemu_acpi_tables(unsigned int total_bytes,
         boot_ctx->acpi_gpe0 = QEMU_ACPI_PM_BASE + 0x0cu;
         boot_ctx->acpi_gpe0_len = ACPI_GPE0_LEN;
         boot_ctx->acpi_flags = 0u;
+        boot_ctx->acpi_table_base = base;
+        boot_ctx->acpi_table_size = (size + 0xfffu) & ~0xfffu;
     }
     serial_write_string("ACPI qemu tables ok\r\n");
 }

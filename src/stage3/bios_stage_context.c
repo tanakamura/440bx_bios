@@ -27,6 +27,8 @@ void bios_stage_context_load(struct bios_stage_context* context,
     context->acpi_gpe0 = 0u;
     context->acpi_gpe0_len = 0u;
     context->acpi_flags = 0u;
+    context->acpi_table_base = 0u;
+    context->acpi_table_size = 0u;
     context->maintenance_requested = 0u;
     context->shadow_ready = 0u;
     context->shared_service = shared_service_from_total(total_bytes);
@@ -45,6 +47,8 @@ void bios_stage_context_load(struct bios_stage_context* context,
         context->acpi_gpe0 = boot_ctx->acpi_gpe0;
         context->acpi_gpe0_len = boot_ctx->acpi_gpe0_len;
         context->acpi_flags = boot_ctx->acpi_flags;
+        context->acpi_table_base = boot_ctx->acpi_table_base;
+        context->acpi_table_size = boot_ctx->acpi_table_size;
     }
 
     blob = payload_blob_ptr(context->shared_service, SHARED_PAYLOAD_ID_VGABIOS);

@@ -314,6 +314,9 @@ static void install_real_acpi_tables(unsigned int total_bytes,
     acpi_build_real_tables(base, dsdt, status.output_size);
     if (boot_ctx != 0) {
         boot_ctx->rsdp_linear = ACPI_RSDP_LINEAR;
+        boot_ctx->acpi_table_base = base;
+        boot_ctx->acpi_table_size =
+            (0x1000u + status.output_size + 0xfffu) & ~0xfffu;
     }
     enable_platform_pm_io(boot_ctx);
     serial_write_string("ACPI real tables ok\r\n");
