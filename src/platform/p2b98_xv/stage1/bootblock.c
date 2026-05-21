@@ -54,6 +54,9 @@ static inline unsigned int inl(unsigned short port) {
 #define SMBHSTSTS_DEV_ERR 0x04
 #define SMBHSTSTS_BUS_ERR 0x08
 #define SMBHSTSTS_FAILED 0x10
+
+#define RUNTIME_GDTR_LINEAR 0x0007f100u
+#define RUNTIME_GDT_LINEAR 0x0007f108u
 extern void postcar_transition(unsigned int stack_top, unsigned int mtrr_mask,
                                unsigned int total_bytes, unsigned int gdtr_ptr);
 extern unsigned char __blob_service_start[];
@@ -692,9 +695,9 @@ static unsigned int prepare_runtime_gdt(void) {
         0x0000000000000000ull, 0x00cf9b000000ffffull, 0x00cf93000000ffffull,
         0x00009b0fe000ffffull, 0x0000930fe000ffffull,
     };
-    volatile unsigned char* gdtr = (volatile unsigned char*)0x0007f100u;
+    volatile unsigned char* gdtr = (volatile unsigned char*)RUNTIME_GDTR_LINEAR;
     volatile unsigned long long* gdt =
-        (volatile unsigned long long*)0x0007f108u;
+        (volatile unsigned long long*)RUNTIME_GDT_LINEAR;
     unsigned int i;
 
     gdtr[0] = (unsigned char)((sizeof(gdt_template) - 1u) & 0xffu);
@@ -705,14 +708,14 @@ static unsigned int prepare_runtime_gdt(void) {
     }
 
     {
-        unsigned int base = 0x0007f108u;
+        unsigned int base = RUNTIME_GDT_LINEAR;
         gdtr[2] = (unsigned char)(base & 0xffu);
         gdtr[3] = (unsigned char)((base >> 8) & 0xffu);
         gdtr[4] = (unsigned char)((base >> 16) & 0xffu);
         gdtr[5] = (unsigned char)((base >> 24) & 0xffu);
     }
 
-    return 0x0007f100u;
+    return RUNTIME_GDTR_LINEAR;
 }
 
 void postcar_bootblock_resume(unsigned int total_bytes) {
