@@ -714,6 +714,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - board/profile genrom target の依存は `scripts/build/gen_rom_deps.py` で blob list から生成する。不要な profile が VGA BIOS など未使用 payload に依存する状態は解消済み。
 - `blob.h` は `src/include/` へ移動済み。root 直下の `bios_pci.h` forwarding header も削除し、PCI header は `lib/pci/` の実体を include path から解決する。
 - `shared_service/service_table.inc` は `shared_service/service_table.h` から、`include/blob.inc` は `include/blob.h` から生成する。QEMU stage1 asm はこれらを include し、shared table size / stage2 load address / blob status size の C/asm 二重定義を避ける。
+- ROM high alias delta も `shared_service/service_table.h` から `service_table.inc` へ生成し、stage1 C/asm の重複即値を避ける。
 - asm object / boot sector / board smoke test は `nasm -MD` で dependency file を生成する。`post_code.inc`, `include/blob.inc`, `shared_service/service_table.inc` は初回生成用の order-only prerequisite にしている。
 
 ## 決定事項

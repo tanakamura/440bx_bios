@@ -5,6 +5,7 @@ from pathlib import Path
 
 
 EXPORTED = {
+    "SHARED_ROM_HIGH_DELTA",
     "SHARED_TABLE_BYTES",
 }
 

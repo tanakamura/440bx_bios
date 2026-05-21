@@ -54,8 +54,6 @@ static inline unsigned int inl(unsigned short port) {
 #define SMBHSTSTS_DEV_ERR 0x04
 #define SMBHSTSTS_BUS_ERR 0x08
 #define SMBHSTSTS_FAILED 0x10
-#define ROM_HIGH_DELTA 0xfff00000u
-
 extern void postcar_transition(unsigned int stack_top, unsigned int mtrr_mask,
                                unsigned int total_bytes, unsigned int gdtr_ptr);
 extern unsigned char __blob_service_start[];
@@ -158,7 +156,7 @@ static void pci_write8(unsigned char bus, unsigned char device,
 }
 
 static const unsigned char* rom_high_ptr(const unsigned char* ptr) {
-    return (const unsigned char*)((unsigned int)ptr + ROM_HIGH_DELTA);
+    return (const unsigned char*)((unsigned int)ptr + SHARED_ROM_HIGH_DELTA);
 }
 
 static unsigned char rom_read_stable_u8(const unsigned char* ptr) {
@@ -624,8 +622,8 @@ static void install_shared_service_table(unsigned int total_bytes,
         ((unsigned int)shared_heap_realloc_service -
          (unsigned int)__blob_service_start);
 
-    if (shared_payload_manifest_from_rom_directory(manifest, 0xfffc0000u) !=
-        0) {
+    if (shared_payload_manifest_from_rom_directory(
+            manifest, SHARED_ROM_HIGH_BASE) != 0) {
         manifest->magic = SHARED_PAYLOAD_MAGIC;
         manifest->version = SHARED_PAYLOAD_VERSION;
         manifest->entry_count = 0u;

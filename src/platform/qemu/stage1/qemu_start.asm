@@ -2,7 +2,6 @@ bits 16
 
 %define CODE_SEL 0x08
 %define DATA_SEL 0x10
-%define ROM_HIGH_DELTA 0xFFF00000
 %define QEMU_TOTAL_BYTES (32 * 1024 * 1024)
 
 %include "include/blob.inc"
@@ -68,7 +67,7 @@ qemu_pm_entry:
     mov ebp, eax
     mov esp, eax
 
-    mov esi, __blob_service_start + ROM_HIGH_DELTA
+    mov esi, __blob_service_start + SHARED_ROM_HIGH_DELTA
     mov edi, ebp
     mov ecx, __blob_service_end
     sub ecx, __blob_service_start

@@ -65,8 +65,8 @@ void qemu_install_shared_service_table(unsigned int total_bytes,
         ((unsigned int)shared_heap_realloc_service -
          (unsigned int)__blob_service_start);
 
-    if (shared_payload_manifest_from_rom_directory(manifest, 0xfffc0000u) !=
-        0) {
+    if (shared_payload_manifest_from_rom_directory(
+            manifest, SHARED_ROM_HIGH_BASE) != 0) {
         manifest->magic = SHARED_PAYLOAD_MAGIC;
         manifest->version = SHARED_PAYLOAD_VERSION;
         manifest->entry_count = 0u;
