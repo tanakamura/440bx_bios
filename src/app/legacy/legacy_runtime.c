@@ -91,20 +91,18 @@ void legacy_runtime_init(const struct legacy_runtime_config* config) {
 
     legacy_runtime_fill_local_platform_ops(&local_ops);
     legacy_platform_init(&local_ops);
+    legacy_boot_init(&config->platform);
     storage_set_scratch_base(bios_memory_top_reserved_base(
-        config->total_bytes));
-    storage_scan(config->total_bytes);
+        config->platform.total_bytes));
+    storage_scan(config->platform.total_bytes);
     legacy_floppy_probe();
     floppy_dpt_linear = legacy_install_bios_thunks(
         legacy_floppy_present(), bios_hdd_is_present(), config->base_mem_kb,
-        config->ebda_segment, config->install_shadow, 0);
+        config->ebda_segment, 0, 0);
 
-    context.total_bytes = config->total_bytes;
+    context.platform = config->platform;
     context.floppy_dpt_linear = floppy_dpt_linear;
     context.base_mem_kb = config->base_mem_kb;
-    context.boot_priority = config->boot_priority;
-    context.record_boot_success = config->record_boot_success;
-    context.boot_pm32 = config->boot_pm32;
     legacy_service_init(&context);
     legacy_timer_init();
     legacy_runtime_fill_exports(config->exports);

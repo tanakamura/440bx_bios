@@ -128,6 +128,40 @@ static void clear_shadow_window(void) {
     }
 }
 
+static unsigned int find_vga_pci_bdf(void) {
+    unsigned char bus;
+    unsigned char dev;
+    unsigned char fn;
+
+    for (bus = 0u; bus < 16u; ++bus) {
+        for (dev = 0u; dev < 32u; ++dev) {
+            unsigned short vendor0 = pci_read16(bus, dev, 0, 0x00u);
+            unsigned char header0;
+            unsigned char fn_count;
+
+            if (vendor0 == 0xffffu) {
+                continue;
+            }
+            header0 = pci_read8(bus, dev, 0, 0x0eu);
+            fn_count = (header0 & 0x80u) != 0u ? 8u : 1u;
+            for (fn = 0u; fn < fn_count; ++fn) {
+                unsigned int id = pci_read32(bus, dev, fn, 0x00u);
+                unsigned int class_code;
+
+                if ((id & 0xffffu) == 0xffffu) {
+                    continue;
+                }
+                class_code = pci_read32(bus, dev, fn, 0x08u) >> 8;
+                if (((class_code >> 16) & 0xffu) == 0x03u) {
+                    return ((unsigned int)bus << 8) | ((unsigned int)dev << 3) |
+                           (unsigned int)fn;
+                }
+            }
+        }
+    }
+    return 0xffffffffu;
+}
+
 static void install_runtime_gdt(void) {
     volatile unsigned long long* gdt =
         (volatile unsigned long long*)BIOS_RUNTIME_GDT_LINEAR;
@@ -154,8 +188,7 @@ void bios_shadow_install(unsigned char already_ready) {
     install_runtime_gdt();
 }
 
-void bios_shadow_install_vgabios(unsigned int blob_linear,
-                                 blob_load_fn load,
+void bios_shadow_install_vgabios(unsigned int blob_linear, blob_load_fn load,
                                  unsigned int total_bytes) {
     struct blob_status status;
     unsigned int load_addr = VGA_BIOS_LINEAR;
@@ -215,14 +248,23 @@ void bios_shadow_install_vgabios(unsigned int blob_linear,
     serial_write_string("*512\r\n");
 }
 
-void bios_shadow_init_vgabios(bios_shadow_void_fn init_pm32) {
+void bios_shadow_init_vgabios(bios_shadow_vgabios_init_fn init_pm32) {
+    unsigned int bdf;
+
     if (vgabios_shadow_ready == 0u || vgabios_initialized != 0u ||
         init_pm32 == 0) {
         return;
     }
-    serial_write_string("VBIOS init C000:0003...\r\n");
+    bdf = find_vga_pci_bdf();
+    if (bdf == 0xffffffffu) {
+        serial_write_string("VBIOS init skipped: no VGA PCI dev\r\n");
+        return;
+    }
+    serial_write_string("VBIOS init C000:0003 bdf=");
+    serial_write_hex16((unsigned short)bdf);
+    serial_write_string("...\r\n");
     cache_writeback_invalidate();
-    init_pm32();
+    init_pm32(bdf);
     cache_writeback_invalidate();
     vgabios_initialized = 1u;
     serial_write_string("VBIOS init returned\r\n");

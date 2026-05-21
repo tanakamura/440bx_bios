@@ -2,4 +2,5 @@ stage2_raw,stage2/stage2.elf
 stage3,../../stage3/stage3.elf
 legacy,../../app/legacy/legacy_app.elf
 dsdt,../../dsdt.aml
+vgabios,../../../images/gbsmc.088
 stage1,stage1/stage1.elf

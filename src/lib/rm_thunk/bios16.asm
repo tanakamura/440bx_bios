@@ -22,6 +22,7 @@
 %define VBE_MODE_OFF (bios16_vbe_mode - bios16_thunk_start)
 %define VBE_STATUS_OFF (bios16_vbe_status - bios16_thunk_start)
 %define VBE_MODE_INFO_OFF (bios16_vbe_mode_info - bios16_thunk_start)
+%define VGABIOS_BDF_OFF (bios16_vgabios_bdf - bios16_thunk_start)
 %define BOOT_DRIVE_OFF (bios16_boot_drive - bios16_thunk_start)
 %define PM_RETURN_ESP_OFF (bios16_pm_return_esp - bios16_thunk_start)
 
@@ -49,6 +50,7 @@ global bios16_default
 global bios16_iret
 global bios16_direct_thunk_end
 global bios16_thunk_end
+global bios16_vbe_status
 global bios16_vbe_mode_info
 global bios16_pm_stack_top
 global bios16_boot_drive
@@ -59,6 +61,8 @@ bios_boot_freedos_pm32:
     jmp dword CODE16_SEL:(pm16_boot_entry - bios16_thunk_start)
 
 bios_call_vgabios_init_pm32:
+    mov eax, [esp + 4]
+    mov [THUNK_LINEAR + VGABIOS_BDF_OFF], ax
     pushfd
     pushad
     mov [THUNK_LINEAR + PM_RETURN_ESP_OFF], esp
@@ -176,6 +180,8 @@ bios16_vbe_status:
     dw 0
 bios16_vbe_mode_info:
     times 256 db 0
+bios16_vgabios_bdf:
+    dw 0
 
 pm16_boot_entry:
     mov ax, DATA16_SEL
@@ -285,7 +291,7 @@ rm_boot_entry:
 rm_vgabios_entry:
     cli
     cld
-    mov al, 0xfe
+    mov al, 0xff
     out 0x21, al
     mov al, 0xff
     out 0xa1, al
@@ -295,12 +301,12 @@ rm_vgabios_entry:
     mov ss, ax
     mov sp, 0x8000
     xor bp, bp
+    mov ax, [cs:VGABIOS_BDF_OFF]
     xor bx, bx
     xor cx, cx
     xor dx, dx
     xor si, si
     xor di, di
-    sti
     db 0x9a
     dw 0x0003
     dw 0xc000

@@ -5,7 +5,7 @@
 
 #define LEGACY_THUNK_RUNTIME_BASE 0x000fe000u
 
-typedef legacy_app_void_fn legacy_thunk_void_fn;
+typedef void (*legacy_thunk_void_fn)(void);
 
 unsigned int legacy_install_bios_thunks(
     int floppy_present, int hdd_present, unsigned short base_mem_kb,

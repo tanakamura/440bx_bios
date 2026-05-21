@@ -13,6 +13,8 @@
 #include "app/legacy/legacy_time.h"
 #include "app/legacy/legacy_video.h"
 
+extern void bios_boot_freedos_pm32(void);
+
 static struct legacy_service_context legacy_context;
 
 static void rm_set_cf(struct rm_int13_frame* f) { f->flags |= 0x0001u; }
@@ -45,7 +47,7 @@ void bios_rm_service(unsigned int vector, struct rm_int13_frame* f) {
             legacy_int13_service(f, legacy_context.floppy_dpt_linear);
             return;
         case 0x15:
-            legacy_int15_service(f, legacy_context.total_bytes);
+            legacy_int15_service(f, legacy_context.platform.total_bytes);
             return;
         case 0x16:
             legacy_int16_service(f);
@@ -54,12 +56,9 @@ void bios_rm_service(unsigned int vector, struct rm_int13_frame* f) {
             legacy_int17_service(f);
             return;
         case 0x19: {
-            unsigned char boot_drive = legacy_prepare_boot_sector(
-                legacy_context.boot_priority, legacy_context.record_boot_success);
+            unsigned char boot_drive = legacy_prepare_boot_sector();
             legacy_install_boot_drive(boot_drive);
-            if (legacy_context.boot_pm32 != 0) {
-                legacy_context.boot_pm32();
-            }
+            bios_boot_freedos_pm32();
             return;
         }
         case 0x1a:

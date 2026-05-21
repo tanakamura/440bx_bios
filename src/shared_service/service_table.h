@@ -1,6 +1,8 @@
 #ifndef SERVICE_TABLE_H
 #define SERVICE_TABLE_H
 
+#include "bios_nvram.h"
+
 #define SHARED_SERVICE_MAGIC 0x53565342u
 #define SHARED_SERVICE_VERSION 1u
 #define SHARED_PAYLOAD_MAGIC 0x504c4242u
@@ -87,6 +89,16 @@ struct shared_rom_payload_directory_entry {
     unsigned int payload_crc32;
 };
 
+struct shared_nvram_snapshot {
+    unsigned int magic;
+    unsigned char flags0;
+    unsigned char boot_priority;
+    unsigned char vmlinux_partition;
+    unsigned char enable_memtest;
+    unsigned char run_test_blob;
+    char linux_cmdline_suffix[BIOS_NVRAM_CMDLINE_MAX];
+};
+
 typedef char shared_rom_payload_directory_size_check[
     sizeof(struct shared_rom_payload_directory) ==
             SHARED_ROM_DIRECTORY_HEADER_SIZE
@@ -121,6 +133,7 @@ struct shared_boot_context {
     unsigned int acpi_flags;
     unsigned int acpi_table_base;
     unsigned int acpi_table_size;
+    struct shared_nvram_snapshot nvram;
 };
 
 struct shared_service_table {

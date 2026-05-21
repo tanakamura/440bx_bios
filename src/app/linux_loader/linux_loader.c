@@ -1,5 +1,13 @@
 #include "app/linux_loader/linux_loader.h"
 
+#include "bios_acpi_runtime.h"
+#include "bios_memory.h"
+#include "bios_nvram.h"
+#include "bios_rtc.h"
+#include "bios_serial.h"
+#include "bios_storage.h"
+#include "shared_service/service_table.h"
+
 #define LINUX_SECTOR_BUF 0x00080000u
 #define LINUX_PHDR_BUF 0x00088000u
 #define LINUX_CMDLINE 0x00098000u
@@ -56,6 +64,26 @@ static struct linux_vbe_lfb linux_vbe;
 static struct linux_deferred_segment linux_deferred[LINUX_DEFER_SEG_MAX];
 static const struct linux_loader_config* linux_active_config;
 
+#define CFG_TOTAL_BYTES(c) ((c)->platform.total_bytes)
+#define CFG_RSDP(c) ((c)->platform.acpi_rsdp_linear)
+#define CFG_PM1_EVT(c) ((c)->platform.acpi_pm1_evt)
+#define CFG_PM1_CNT(c) ((c)->platform.acpi_pm1_cnt)
+#define CFG_GPE0(c) ((c)->platform.acpi_gpe0)
+#define CFG_GPE0_LEN(c) ((c)->platform.acpi_gpe0_len)
+#define CFG_ACPI_FLAGS(c) ((c)->platform.acpi_flags)
+#define CFG_ACPI_TABLE_BASE(c) ((c)->platform.acpi_table_base)
+#define CFG_ACPI_TABLE_SIZE(c) ((c)->platform.acpi_table_size)
+#define CFG_FLAGS0(c) ((c)->platform.nvram.flags0)
+#define CFG_BOOT_PRIORITY(c) ((c)->platform.nvram.boot_priority)
+#define CFG_VMLINUX_PART(c) ((c)->platform.nvram.vmlinux_partition)
+#define CFG_CMDLINE(c) ((c)->platform.nvram.linux_cmdline_suffix)
+
+extern void bios_call_vbe_mode_info_pm32(unsigned int mode);
+extern void bios_call_vbe_set_mode_pm32(unsigned int mode);
+extern unsigned char bios16_thunk_start[];
+extern unsigned char bios16_vbe_status[];
+extern unsigned char bios16_vbe_mode_info[];
+
 static unsigned int linux_align_up(unsigned int value, unsigned int align) {
     return (value + align - 1u) & ~(align - 1u);
 }
@@ -69,105 +97,155 @@ static void linux_loader_set_active_config(
     linux_active_config = config;
 }
 
-static void serial_write_string(const char* s) {
-    if (linux_active_config != 0 && linux_active_config->serial_write_string) {
-        linux_active_config->serial_write_string(s);
-    }
-}
-
-static void serial_write_hex8(unsigned char value) {
-    if (linux_active_config != 0 && linux_active_config->serial_write_hex8) {
-        linux_active_config->serial_write_hex8(value);
-    }
-}
-
-static void serial_write_hex16(unsigned short value) {
-    if (linux_active_config != 0 && linux_active_config->serial_write_hex16) {
-        linux_active_config->serial_write_hex16(value);
-    }
-}
-
-static void serial_write_hex32(unsigned int value) {
-    if (linux_active_config != 0 && linux_active_config->serial_write_hex32) {
-        linux_active_config->serial_write_hex32(value);
-    }
-}
-
-static void serial_write_u32(unsigned int value) {
-    if (linux_active_config != 0 && linux_active_config->serial_write_u32) {
-        linux_active_config->serial_write_u32(value);
-    }
-}
-
 static unsigned char linux_hdd_is_present(void) {
-    if (linux_active_config == 0 || linux_active_config->hdd_is_present == 0) {
-        return 0u;
-    }
-    return linux_active_config->hdd_is_present();
+    return bios_hdd_is_present();
 }
 
 static unsigned char linux_hdd_current_kind(void) {
-    if (linux_active_config == 0 || linux_active_config->hdd_current_kind == 0) {
-        return LINUX_LOADER_HDD_KIND_NONE;
-    }
-    return linux_active_config->hdd_current_kind();
+    return bios_hdd_current_kind();
 }
 
 static unsigned char linux_hdd_select_kind(unsigned char kind) {
-    if (linux_active_config == 0 || linux_active_config->hdd_select_kind == 0) {
-        return 0u;
-    }
-    return linux_active_config->hdd_select_kind(kind);
+    return bios_hdd_select_kind(kind);
 }
 
-static void linux_hdd_get_geometry(
-    struct linux_loader_hdd_geometry* geometry) {
+static void linux_hdd_get_geometry(struct linux_loader_hdd_geometry* geometry) {
+    struct bios_hdd_geometry bios_geometry;
+
     if (geometry == 0) {
         return;
     }
-    if (linux_active_config != 0 && linux_active_config->hdd_get_geometry) {
-        linux_active_config->hdd_get_geometry(geometry);
-        return;
-    }
-    geometry->total_sectors = 0u;
-    geometry->cylinders = 0u;
-    geometry->heads = 0u;
-    geometry->sectors_per_track = 0u;
+    bios_hdd_get_geometry(&bios_geometry);
+    geometry->total_sectors = bios_geometry.total_sectors;
+    geometry->cylinders = bios_geometry.cylinders;
+    geometry->heads = bios_geometry.heads;
+    geometry->sectors_per_track = bios_geometry.sectors_per_track;
 }
 
 static int linux_hdd_read_sectors(unsigned int lba, unsigned int count,
                                   unsigned int dest) {
-    if (linux_active_config == 0 || linux_active_config->hdd_read_sectors == 0) {
-        return -1;
-    }
-    return linux_active_config->hdd_read_sectors(lba, count, dest);
+    return bios_hdd_read_sectors(lba, count, dest);
 }
 
 static unsigned int linux_memory_extended_usable_end(unsigned int total_bytes) {
-    if (linux_active_config == 0 ||
-        linux_active_config->memory_extended_usable_end == 0) {
-        return 0u;
+    return bios_memory_extended_usable_end(total_bytes);
+}
+
+static int linux_acpi_reserved_range(const struct linux_loader_config* config,
+                                     unsigned int* base, unsigned int* end) {
+    unsigned int range_base;
+    unsigned int range_end;
+
+    if (CFG_ACPI_TABLE_BASE(config) < 0x00100000u ||
+        CFG_ACPI_TABLE_SIZE(config) == 0u ||
+        CFG_ACPI_TABLE_BASE(config) >= CFG_TOTAL_BYTES(config)) {
+        return 0;
     }
-    return linux_active_config->memory_extended_usable_end(total_bytes);
+
+    range_base = CFG_ACPI_TABLE_BASE(config);
+    range_end = range_base + CFG_ACPI_TABLE_SIZE(config);
+    if (range_end < range_base || range_end > CFG_TOTAL_BYTES(config)) {
+        range_end = CFG_TOTAL_BYTES(config);
+    }
+    if (range_end <= range_base) {
+        return 0;
+    }
+
+    *base = range_base;
+    *end = range_end;
+    return 1;
 }
 
 static unsigned int linux_memory_e820_entry_count(unsigned int total_bytes) {
-    if (linux_active_config == 0 ||
-        linux_active_config->memory_e820_entry_count == 0) {
-        return 0u;
+    unsigned int acpi_base;
+    unsigned int acpi_end;
+    unsigned int count;
+
+    if (linux_active_config == 0 || total_bytes <= 0x00100000u ||
+        !linux_acpi_reserved_range(linux_active_config, &acpi_base,
+                                   &acpi_end)) {
+        return bios_memory_e820_entry_count(total_bytes);
     }
-    return linux_active_config->memory_e820_entry_count(total_bytes);
+
+    count = 2u;
+    if (acpi_base > 0x00100000u) {
+        ++count;
+    }
+    ++count;
+    if (acpi_end < total_bytes) {
+        ++count;
+    }
+    return count;
 }
 
-static int linux_memory_e820_get_entry(
-    unsigned int total_bytes, unsigned int index,
-    struct linux_loader_e820_entry* entry) {
-    if (linux_active_config == 0 ||
-        linux_active_config->memory_e820_get_entry == 0) {
+static int linux_memory_e820_get_entry(unsigned int total_bytes,
+                                       unsigned int index,
+                                       struct linux_loader_e820_entry* entry) {
+    struct e820_entry bios_entry;
+    unsigned int acpi_base;
+    unsigned int acpi_end;
+
+    if (linux_active_config != 0 && total_bytes > 0x00100000u &&
+        linux_acpi_reserved_range(linux_active_config, &acpi_base,
+                                  &acpi_end)) {
+        if (index == 0u) {
+            entry->base_low = 0x00000000u;
+            entry->base_high = 0u;
+            entry->length_low = 0x0009fc00u;
+            entry->length_high = 0u;
+            entry->type = BIOS_E820_TYPE_USABLE;
+            return 0;
+        }
+        if (index == 1u) {
+            entry->base_low = 0x0009fc00u;
+            entry->base_high = 0u;
+            entry->length_low = 0x00060400u;
+            entry->length_high = 0u;
+            entry->type = BIOS_E820_TYPE_RESERVED;
+            return 0;
+        }
+
+        index -= 2u;
+        if (acpi_base > 0x00100000u) {
+            if (index == 0u) {
+                entry->base_low = 0x00100000u;
+                entry->base_high = 0u;
+                entry->length_low = acpi_base - 0x00100000u;
+                entry->length_high = 0u;
+                entry->type = BIOS_E820_TYPE_USABLE;
+                return 0;
+            }
+            --index;
+        }
+        if (index == 0u) {
+            entry->base_low = acpi_base;
+            entry->base_high = 0u;
+            entry->length_low = acpi_end - acpi_base;
+            entry->length_high = 0u;
+            entry->type = BIOS_E820_TYPE_RESERVED;
+            return 0;
+        }
+        --index;
+        if (acpi_end < total_bytes && index == 0u) {
+            entry->base_low = acpi_end;
+            entry->base_high = 0u;
+            entry->length_low = total_bytes - acpi_end;
+            entry->length_high = 0u;
+            entry->type = BIOS_E820_TYPE_USABLE;
+            return 0;
+        }
         return -1;
     }
-    return linux_active_config->memory_e820_get_entry(total_bytes, index,
-                                                      entry);
+
+    if (bios_memory_e820_get_entry(total_bytes, index, &bios_entry) != 0) {
+        return -1;
+    }
+    entry->base_low = bios_entry.base_low;
+    entry->base_high = bios_entry.base_high;
+    entry->length_low = bios_entry.length_low;
+    entry->length_high = bios_entry.length_high;
+    entry->type = bios_entry.type;
+    return 0;
 }
 
 static unsigned int tsc_low(void) {
@@ -239,7 +317,7 @@ static void linux_apply_deferred_segments(
 }
 
 static unsigned int linux_usable_end(const struct linux_loader_config* config) {
-    return linux_memory_extended_usable_end(config->total_bytes);
+    return linux_memory_extended_usable_end(CFG_TOTAL_BYTES(config));
 }
 
 static unsigned short linux_le16(const unsigned char* p) {
@@ -263,12 +341,17 @@ static void linux_put32(unsigned char* p, unsigned int value) {
     p[3] = (unsigned char)(value >> 24);
 }
 
-static unsigned char* vbe_mode_info(
-    const struct linux_loader_config* config) {
-    if (config->vbe_mode_info_buffer == 0) {
-        return 0;
-    }
-    return config->vbe_mode_info_buffer();
+static unsigned char* vbe_mode_info(const struct linux_loader_config* config) {
+    (void)config;
+    return (unsigned char*)(0x000fe000u +
+                            (unsigned int)(bios16_vbe_mode_info -
+                                           bios16_thunk_start));
+}
+
+static volatile unsigned short* vbe_status_ptr(void) {
+    return (volatile unsigned short*)(0x000fe000u +
+                                      (unsigned int)(bios16_vbe_status -
+                                                     bios16_thunk_start));
 }
 
 static unsigned short vbe_info16(const struct linux_loader_config* config,
@@ -292,14 +375,15 @@ static int vbe_query_mode(const struct linux_loader_config* config,
     unsigned int i;
     unsigned int status;
 
-    if (info == 0 || config->vbe_mode_info_pm32 == 0) {
+    if (info == 0) {
         return -1;
     }
     for (i = 0u; i < 256u; ++i) {
         info[i] = 0u;
     }
     cache_writeback_invalidate();
-    status = config->vbe_mode_info_pm32(mode);
+    bios_call_vbe_mode_info_pm32(mode);
+    status = *vbe_status_ptr();
     cache_writeback_invalidate();
     if ((unsigned short)status != VBE_SUCCESS) {
         serial_write_string("VBE 4F01 failed mode=");
@@ -316,11 +400,10 @@ static int vbe_set_mode(const struct linux_loader_config* config,
                         unsigned short mode) {
     unsigned int status;
 
-    if (config->vbe_set_mode_pm32 == 0) {
-        return -1;
-    }
+    (void)config;
     cache_writeback_invalidate();
-    status = config->vbe_set_mode_pm32(mode);
+    bios_call_vbe_set_mode_pm32(mode);
+    status = *vbe_status_ptr();
     cache_writeback_invalidate();
     if ((unsigned short)status != VBE_SUCCESS) {
         serial_write_string("VBE 4F02 failed mode=");
@@ -333,8 +416,7 @@ static int vbe_set_mode(const struct linux_loader_config* config,
     return 0;
 }
 
-static int linux_set_vbe_1024x768(
-    const struct linux_loader_config* config) {
+static int linux_set_vbe_1024x768(const struct linux_loader_config* config) {
     unsigned short attrs;
     unsigned short width;
     unsigned short height;
@@ -345,7 +427,7 @@ static int linux_set_vbe_1024x768(
     unsigned char* info;
 
     linux_vbe.ready = 0u;
-    if (config->enable_vesa_1024_768 == 0u ||
+    if ((CFG_FLAGS0(config) & BIOS_NVRAM_FLAGS0_VESA_1024_768) == 0u ||
         vbe_query_mode(config, mode) != 0) {
         return -1;
     }
@@ -487,9 +569,9 @@ static int linux_read_partition(unsigned int index,
     return linux_parse_mbr_partition(index, part, mbr);
 }
 
-static int linux_select_kernel_source(
-    const struct linux_loader_config* config, struct linux_partition* part,
-    unsigned char* whole_disk) {
+static int linux_select_kernel_source(const struct linux_loader_config* config,
+                                      struct linux_partition* part,
+                                      unsigned char* whole_disk) {
     unsigned char* sector0 = (unsigned char*)LINUX_SECTOR_BUF;
 
     *whole_disk = 0u;
@@ -504,7 +586,7 @@ static int linux_select_kernel_source(
         *whole_disk = 1u;
         return 0;
     }
-    return linux_parse_mbr_partition(config->vmlinux_partition, part, sector0);
+    return linux_parse_mbr_partition(CFG_VMLINUX_PART(config), part, sector0);
 }
 
 static int linux_partition_contains(const struct linux_partition* part,
@@ -651,35 +733,35 @@ static void linux_write_cmdline(const struct linux_loader_config* config) {
     unsigned char* dst = (unsigned char*)LINUX_CMDLINE;
 
     i = 0u;
-    if (config->enable_serial_console != 0u) {
+    if ((CFG_FLAGS0(config) & BIOS_NVRAM_FLAGS0_SERIAL_CONSOLE) != 0u) {
         static const char serial_text[] = LINUX_SERIAL_CMDLINE_TEXT;
         unsigned int j;
-        for (j = 0u; serial_text[j] != '\0' &&
-                    i + 1u < LINUX_CMDLINE_CAPACITY;
+        for (j = 0u; serial_text[j] != '\0' && i + 1u < LINUX_CMDLINE_CAPACITY;
              ++j) {
             dst[i++] = (unsigned char)serial_text[j];
         }
     }
-    if (config->cmdline_suffix != 0 && config->cmdline_suffix[0] != '\0' &&
+    if (CFG_CMDLINE(config)[0] != '\0' &&
         i != 0u && i + 1u < LINUX_CMDLINE_CAPACITY) {
         dst[i++] = ' ';
     }
-    if (config->cmdline_suffix != 0 && config->cmdline_suffix[0] != '\0') {
+    if (CFG_CMDLINE(config)[0] != '\0') {
         unsigned int j;
-        for (j = 0; config->cmdline_suffix[j] != '\0' &&
+        for (j = 0; CFG_CMDLINE(config)[j] != '\0' &&
                     i + 1u < LINUX_CMDLINE_CAPACITY;
              ++j) {
-            dst[i++] = (unsigned char)config->cmdline_suffix[j];
+            dst[i++] = (unsigned char)CFG_CMDLINE(config)[j];
         }
     }
     dst[i] = '\0';
 }
 
-static void linux_setup_boot_params(
-    const struct linux_loader_config* config, unsigned int entry_phys,
-    unsigned int initrd_base, unsigned int initrd_size) {
+static void linux_setup_boot_params(const struct linux_loader_config* config,
+                                    unsigned int entry_phys,
+                                    unsigned int initrd_base,
+                                    unsigned int initrd_size) {
     unsigned char* bp = (unsigned char*)LINUX_LOADER_BOOT_PARAMS;
-    unsigned int count = linux_memory_e820_entry_count(config->total_bytes);
+    unsigned int count = linux_memory_e820_entry_count(CFG_TOTAL_BYTES(config));
     unsigned int i;
     unsigned int alt_mem_kb = 0u;
     unsigned int usable_end = linux_usable_end(config);
@@ -697,8 +779,8 @@ static void linux_setup_boot_params(
     linux_memset(bp, 0u, 4096u);
     linux_write_cmdline(config);
 
-    if (config->acpi_rsdp_linear != 0u) {
-        linux_put32(bp + 0x070u, config->acpi_rsdp_linear);
+    if (CFG_RSDP(config) != 0u) {
+        linux_put32(bp + 0x070u, CFG_RSDP(config));
         linux_put32(bp + 0x074u, 0u);
     }
 
@@ -706,7 +788,7 @@ static void linux_setup_boot_params(
     bp[0x01e8u] = (unsigned char)count;
     for (i = 0; i < count; ++i) {
         struct linux_loader_e820_entry entry;
-        if (linux_memory_e820_get_entry(config->total_bytes, i, &entry) != 0) {
+        if (linux_memory_e820_get_entry(CFG_TOTAL_BYTES(config), i, &entry) != 0) {
             break;
         }
         linux_memcpy(bp + LINUX_E820_TABLE_OFF + i * sizeof(entry), &entry,
@@ -729,21 +811,50 @@ static void linux_setup_boot_params(
     linux_put32(bp + 0x0238u, LINUX_CMDLINE_CAPACITY);
 }
 
-void linux_loader_prepare_boot_params(
-    const struct linux_loader_config* config, unsigned int entry_phys,
-    unsigned int initrd_base, unsigned int initrd_size) {
+void linux_loader_prepare_boot_params(const struct linux_loader_config* config,
+                                      unsigned int entry_phys,
+                                      unsigned int initrd_base,
+                                      unsigned int initrd_size) {
     linux_loader_set_active_config(config);
-    if (config->init_vgabios != 0) {
-        config->init_vgabios();
-    }
-    if (config->prepare_platform != 0) {
-        config->prepare_platform();
-    }
+    bios_rtc_prepare_for_linux(bios_nvram_enable_extended_cmos);
+    bios_acpi_install_for_linux(CFG_RSDP(config), CFG_PM1_EVT(config),
+                                CFG_PM1_CNT(config), CFG_GPE0(config),
+                                CFG_GPE0_LEN(config), CFG_ACPI_FLAGS(config));
     linux_setup_boot_params(config, entry_phys, initrd_base, initrd_size);
-    if (config->enable_vesa_1024_768 != 0u) {
+    if ((CFG_FLAGS0(config) & BIOS_NVRAM_FLAGS0_VESA_1024_768) != 0u) {
         if (linux_set_vbe_1024x768(config) == 0) {
             linux_apply_vbe_screen_info();
         }
+    }
+}
+
+static void linux_record_boot_success(const struct linux_loader_config* config) {
+    unsigned char kind;
+
+    if (CFG_BOOT_PRIORITY(config) != BIOS_NVRAM_BOOT_PRIORITY_AUTO) {
+        return;
+    }
+    kind = linux_hdd_current_kind();
+    if (kind != BIOS_HDD_KIND_IDE && kind != BIOS_HDD_KIND_USB) {
+        return;
+    }
+    bios_nvram_save_boot_priority(kind);
+    serial_write_string("boot priority learned=");
+    serial_write_u32(kind);
+    serial_write_string("\r\n");
+}
+
+static void linux_release_boot_services(const struct linux_loader_config* config) {
+    volatile unsigned int* slot;
+    struct shared_service_table* shared;
+
+    shared = shared_service_from_total(CFG_TOTAL_BYTES(config));
+    if (shared == 0) {
+        return;
+    }
+    slot = (volatile unsigned int*)shared_table_pointer_slot(CFG_TOTAL_BYTES(config));
+    if (*slot == (unsigned int)shared) {
+        *slot = 0u;
     }
 }
 
@@ -764,8 +875,7 @@ static void linux_jump(unsigned int entry_phys) {
 }
 
 int linux_loader_load_elf_image(const struct linux_loader_config* config,
-                                unsigned char* elf,
-                                unsigned int image_size,
+                                unsigned char* elf, unsigned int image_size,
                                 unsigned int* entry_phys) {
     unsigned int entry;
     unsigned int phoff;
@@ -873,7 +983,7 @@ static int try_boot_linux_current(const struct linux_loader_config* config) {
         serial_write_string("Linux disk start=");
     } else {
         serial_write_string("Linux part");
-        serial_write_u32((unsigned int)config->vmlinux_partition + 1u);
+        serial_write_u32((unsigned int)CFG_VMLINUX_PART(config) + 1u);
         serial_write_string(" start=");
     }
     serial_write_hex32(kernel_part.start_lba);
@@ -952,7 +1062,7 @@ static int try_boot_linux_current(const struct linux_loader_config* config) {
         return 0;
     }
 
-    if (!whole_disk && config->vmlinux_partition != 1u &&
+    if (!whole_disk && CFG_VMLINUX_PART(config) != 1u &&
         linux_read_partition(1u, &initrd_part) == 0 &&
         linux_load_initrd(config, &initrd_part, load_high, &initrd_base,
                           &initrd_size) == 0) {
@@ -968,7 +1078,8 @@ static int try_boot_linux_current(const struct linux_loader_config* config) {
     if (defer_total != 0u) {
         unsigned int defer_limit = initrd_base != 0u ? initrd_base : usable_end;
 
-        if (defer_total > defer_limit || defer_limit - defer_total < load_high) {
+        if (defer_total > defer_limit ||
+            defer_limit - defer_total < load_high) {
             serial_write_string("Linux defer buffer no room\r\n");
             return 0;
         }
@@ -1037,12 +1148,8 @@ static int try_boot_linux_current(const struct linux_loader_config* config) {
 
     linux_loader_prepare_boot_params(config, entry_phys, initrd_base,
                                      initrd_size);
-    if (config->record_boot_success != 0) {
-        config->record_boot_success(linux_hdd_current_kind());
-    }
-    if (config->release_boot_services != 0) {
-        config->release_boot_services();
-    }
+    linux_record_boot_success(config);
+    linux_release_boot_services(config);
     serial_write_string("Boot Linux entry=");
     serial_write_hex32(entry_phys);
     serial_write_string(" params=");
@@ -1055,13 +1162,15 @@ static int try_boot_linux_current(const struct linux_loader_config* config) {
 
 int linux_loader_try_boot(const struct linux_loader_config* config) {
     linux_loader_set_active_config(config);
-    if (config->boot_priority == LINUX_LOADER_BOOT_PRIORITY_IDE) {
+    storage_set_scratch_base(bios_memory_top_reserved_base(CFG_TOTAL_BYTES(config)));
+    storage_scan(CFG_TOTAL_BYTES(config));
+    if (CFG_BOOT_PRIORITY(config) == LINUX_LOADER_BOOT_PRIORITY_IDE) {
         if (linux_hdd_select_kind(LINUX_LOADER_HDD_KIND_IDE) == 0u) {
             return 0;
         }
         return try_boot_linux_current(config);
     }
-    if (config->boot_priority == LINUX_LOADER_BOOT_PRIORITY_USB) {
+    if (CFG_BOOT_PRIORITY(config) == LINUX_LOADER_BOOT_PRIORITY_USB) {
         if (linux_hdd_select_kind(LINUX_LOADER_HDD_KIND_USB) == 0u) {
             return 0;
         }

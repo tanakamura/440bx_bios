@@ -1,11 +1,10 @@
 #ifndef LEGACY_BOOT_H
 #define LEGACY_BOOT_H
 
+#include "app_platform_abi.h"
 #include "legacy_app_abi.h"
 
-typedef legacy_app_record_success_fn legacy_boot_record_success_fn;
-
-unsigned char legacy_prepare_boot_sector(
-    unsigned char boot_priority, legacy_boot_record_success_fn record_success);
+void legacy_boot_init(const struct app_platform_info* platform);
+unsigned char legacy_prepare_boot_sector(void);
 
 #endif
