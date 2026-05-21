@@ -30,6 +30,9 @@
 #define SHARED_ROM_DIRECTORY_MAGIC 0x304d5242u
 #define SHARED_ROM_DIRECTORY_VERSION 1u
 #define SHARED_ROM_DIRECTORY_ENTRY_MAX SHARED_PAYLOAD_MAX
+#define SHARED_ROM_DIRECTORY_BYTES 0x2000u
+#define SHARED_ROM_DIRECTORY_HEADER_SIZE 36u
+#define SHARED_ROM_DIRECTORY_ENTRY_SIZE 32u
 #define SHARED_ROM_SIZE (256u * 1024u)
 #define SHARED_ROM_LOW_BASE 0x000c0000u
 #define SHARED_ROM_HIGH_BASE 0xfffc0000u
@@ -81,6 +84,17 @@ struct shared_rom_payload_directory_entry {
     unsigned int load_addr;
     unsigned int reserved;
 };
+
+typedef char shared_rom_payload_directory_size_check[
+    sizeof(struct shared_rom_payload_directory) ==
+            SHARED_ROM_DIRECTORY_HEADER_SIZE
+        ? 1
+        : -1];
+typedef char shared_rom_payload_directory_entry_size_check[
+    sizeof(struct shared_rom_payload_directory_entry) ==
+            SHARED_ROM_DIRECTORY_ENTRY_SIZE
+        ? 1
+        : -1];
 
 struct shared_boot_context {
     unsigned int magic;
