@@ -732,11 +732,13 @@ void linux_loader_prepare_boot_params(
         config->prepare_platform();
     }
     linux_setup_boot_params(config, entry_phys, initrd_base, initrd_size);
-    if (config->init_vgabios != 0) {
-        config->init_vgabios();
-    }
-    if (linux_set_vbe_1024x768(config) == 0) {
-        linux_apply_vbe_screen_info();
+    if (config->enable_vesa_1024_768 != 0u) {
+        if (config->init_vgabios != 0) {
+            config->init_vgabios();
+        }
+        if (linux_set_vbe_1024x768(config) == 0) {
+            linux_apply_vbe_screen_info();
+        }
     }
 }
 
