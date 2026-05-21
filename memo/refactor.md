@@ -689,7 +689,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - NVRAM 設定 state / maintenance prompt glue / boot priority learn は `bios_settings.*` へ分離済み。`stage3/stage3.c` は `struct bios_settings` を各 app config に渡すだけ。
 - legacy platform ops / runtime config / boot drive glue は `bios_legacy.*` へ分離済み。`stage3/stage3.c` は boot priority と callbacks を渡して legacy app を呼び出すだけ。
 - Linux loader config / platform callback glue は `bios_linux.*` へ分離済み。`stage3/stage3.c` は stage/settings/VBE callback を渡して Linux loader を呼び出すだけ。
-- Linux 起動直前に Linux loader callback から DRAM 末尾の shared service table pointer を消す。E820 はまだ top reserved 1MiB を reserved のまま渡しているため、shared service/ACPI/scratch 領域の OS への完全解放は未完。
+- Linux 起動直前に Linux loader callback から DRAM 末尾の shared service table pointer を消す。Linux boot path の E820 は stage2 が記録した `acpi_table_base/acpi_table_size` だけを reserved にし、ACPI table より上の旧 shared service/scratch 領域は usable として返す。legacy INT15 E820 は互換性優先で従来の top reserved 1MiB を維持する。
 - Linux loader は `runtime_protect_base/size` を受け取り、kernel `PT_LOAD` が stage3 runtime window と重なる場合は高位 DRAM へ一旦読み込む。storage/serial/ACPI/VBE/NVRAM callbacks が終わった直後、Linux entry へ飛ぶ直前に app 側 code だけで本来の物理アドレスへコピーする。これで kernel load 中に stage3 callback 本体を上書きしない。
 - ROM test ELF 起動 glue は `bios_selftest.*` へ分離済み。`stage3/stage3.c` は run-test bit を見て selftest config を渡すだけ。
 - DOS tool / DOS test helper の source は `tools/dos/` へ移動済み。build output は互換のため引き続き `src/*.exe` / `src/*.com` に出す。

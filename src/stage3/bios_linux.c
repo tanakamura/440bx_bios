@@ -17,6 +17,43 @@ static struct bios_linux_config active_config;
 typedef int (*linux_loader_app_entry_fn)(
     const struct linux_loader_config* loader);
 
+static void linux_e820_set_entry(struct linux_loader_e820_entry* entry,
+                                 unsigned int base, unsigned int length,
+                                 unsigned int type) {
+    entry->base_low = base;
+    entry->base_high = 0u;
+    entry->length_low = length;
+    entry->length_high = 0u;
+    entry->type = type;
+}
+
+static int linux_acpi_reserved_range(unsigned int total_bytes,
+                                     unsigned int* base,
+                                     unsigned int* end) {
+    const struct bios_stage_context* stage = active_config.stage;
+    unsigned int range_base;
+    unsigned int range_end;
+
+    if (stage == 0 || stage->acpi_table_base < 0x00100000u ||
+        stage->acpi_table_size == 0u ||
+        stage->acpi_table_base >= total_bytes) {
+        return 0;
+    }
+
+    range_base = stage->acpi_table_base;
+    range_end = range_base + stage->acpi_table_size;
+    if (range_end < range_base || range_end > total_bytes) {
+        range_end = total_bytes;
+    }
+    if (range_end <= range_base) {
+        return 0;
+    }
+
+    *base = range_base;
+    *end = range_end;
+    return 1;
+}
+
 static void linux_hdd_get_geometry_cb(
     struct linux_loader_hdd_geometry* geometry) {
     struct bios_hdd_geometry bios_geometry;
@@ -28,14 +65,76 @@ static void linux_hdd_get_geometry_cb(
     geometry->sectors_per_track = bios_geometry.sectors_per_track;
 }
 
+static unsigned int linux_memory_e820_entry_count_cb(
+    unsigned int total_bytes) {
+    unsigned int acpi_base;
+    unsigned int acpi_end;
+    unsigned int count;
+
+    if (total_bytes <= 0x00100000u ||
+        !linux_acpi_reserved_range(total_bytes, &acpi_base, &acpi_end)) {
+        return bios_memory_e820_entry_count(total_bytes);
+    }
+
+    count = 2u;
+    if (acpi_base > 0x00100000u) {
+        ++count;
+    }
+    ++count;
+    if (acpi_end < total_bytes) {
+        ++count;
+    }
+    return count;
+}
+
 static int linux_memory_e820_get_entry_cb(unsigned int total_bytes,
                                           unsigned int index,
                                           struct linux_loader_e820_entry* entry) {
     struct e820_entry bios_entry;
+    unsigned int acpi_base;
+    unsigned int acpi_end;
+
+    if (total_bytes > 0x00100000u &&
+        linux_acpi_reserved_range(total_bytes, &acpi_base, &acpi_end)) {
+        if (index == 0u) {
+            linux_e820_set_entry(entry, 0x00000000u, 0x0009fc00u,
+                                 BIOS_E820_TYPE_USABLE);
+            return 0;
+        }
+        if (index == 1u) {
+            linux_e820_set_entry(entry, 0x0009fc00u, 0x00060400u,
+                                 BIOS_E820_TYPE_RESERVED);
+            return 0;
+        }
+
+        index -= 2u;
+        if (acpi_base > 0x00100000u) {
+            if (index == 0u) {
+                linux_e820_set_entry(entry, 0x00100000u,
+                                     acpi_base - 0x00100000u,
+                                     BIOS_E820_TYPE_USABLE);
+                return 0;
+            }
+            --index;
+        }
+        if (index == 0u) {
+            linux_e820_set_entry(entry, acpi_base, acpi_end - acpi_base,
+                                 BIOS_E820_TYPE_RESERVED);
+            return 0;
+        }
+        --index;
+        if (acpi_end < total_bytes && index == 0u) {
+            linux_e820_set_entry(entry, acpi_end, total_bytes - acpi_end,
+                                 BIOS_E820_TYPE_USABLE);
+            return 0;
+        }
+        return -1;
+    }
 
     if (bios_memory_e820_get_entry(total_bytes, index, &bios_entry) != 0) {
         return -1;
     }
+
     entry->base_low = bios_entry.base_low;
     entry->base_high = bios_entry.base_high;
     entry->length_low = bios_entry.length_low;
@@ -87,7 +186,7 @@ void bios_linux_fill_loader_config(struct linux_loader_config* loader,
     loader->hdd_get_geometry = linux_hdd_get_geometry_cb;
     loader->hdd_read_sectors = bios_hdd_read_sectors;
     loader->memory_extended_usable_end = bios_memory_extended_usable_end;
-    loader->memory_e820_entry_count = bios_memory_e820_entry_count;
+    loader->memory_e820_entry_count = linux_memory_e820_entry_count_cb;
     loader->memory_e820_get_entry = linux_memory_e820_get_entry_cb;
     loader->runtime_protect_base = BIOS_LOAD_LINEAR;
     loader->runtime_protect_size = BIOS_LOAD_CAPACITY;
