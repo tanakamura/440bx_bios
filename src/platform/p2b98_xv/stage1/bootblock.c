@@ -57,20 +57,11 @@ static inline unsigned int inl(unsigned short port) {
 
 #define RUNTIME_GDTR_LINEAR 0x0007f100u
 #define RUNTIME_GDT_LINEAR 0x0007f108u
-extern void postcar_transition(unsigned int stack_top, unsigned int mtrr_mask,
-                               unsigned int total_bytes, unsigned int gdtr_ptr);
-extern unsigned char __blob_service_start[];
-extern unsigned char __blob_service_end[];
-extern int blob_load_service(unsigned int payload_id, void* fallback_dst,
-                             unsigned int dst_capacity,
-                             unsigned int* load_addr_out,
-                             struct blob_status* status,
-                             unsigned int total_bytes);
-extern void* shared_heap_alloc_service(unsigned int total_bytes,
-                                       unsigned int size);
-extern void shared_heap_free_service(unsigned int total_bytes, void* ptr);
-extern void* shared_heap_realloc_service(unsigned int total_bytes, void* ptr,
-                                         unsigned int size);
+
+typedef void (*stage15_entry_fn)(unsigned int stack_top,
+                                 unsigned int mtrr_mask,
+                                 unsigned int total_bytes,
+                                 unsigned int gdtr_ptr);
 
 static void serial_write_char(char c) {
     while ((inb(0x03f8 + 5) & 0x20) == 0) {
@@ -156,10 +147,6 @@ static void pci_write8(unsigned char bus, unsigned char device,
                            ((unsigned int)function << 8) | (reg & 0xfcu);
     outl(0x0cf8, address);
     outb((unsigned short)(0x0cfc + reg_lo), val);
-}
-
-static const unsigned char* rom_high_ptr(const unsigned char* ptr) {
-    return (const unsigned char*)((unsigned int)ptr + SHARED_ROM_HIGH_DELTA);
 }
 
 static unsigned char rom_read_stable_u8(const unsigned char* ptr) {
@@ -308,19 +295,9 @@ static unsigned int dram_mtrr_mask(unsigned int total_bytes) {
     return (~(size - 1u) & 0xfffff000u) | 0x00000800u;
 }
 
-static unsigned int blob_service_size_aligned(void) {
-    return shared_align_up(
-        (unsigned int)(__blob_service_end - __blob_service_start), 16u);
-}
-
-static unsigned int blob_service_base_for_total(unsigned int total_bytes) {
-    return shared_service_base_from_table(
-        shared_table_base_from_total(total_bytes), blob_service_size_aligned());
-}
-
 static unsigned int dram_stack_top(unsigned int total_bytes) {
     if (total_bytes >= 0x00300000u) {
-        return blob_service_base_for_total(total_bytes);
+        return shared_table_base_from_total(total_bytes);
     }
     return 0x001ff000u;
 }
@@ -554,130 +531,157 @@ static int dram_init_from_spd(const unsigned char* spd, unsigned char spd_slot,
     return 0;
 }
 
-static void install_blob_service(unsigned int service_base) {
-    const unsigned char* src = rom_high_ptr(__blob_service_start);
-    unsigned char* dst = (unsigned char*)service_base;
-    unsigned int size =
-        (unsigned int)(__blob_service_end - __blob_service_start);
+static unsigned int stage1_crc32_update(unsigned int crc, unsigned char byte) {
+    unsigned int i;
+    crc ^= byte;
+    for (i = 0; i < 8u; ++i) {
+        unsigned int mask = 0u - (crc & 1u);
+        crc = (crc >> 1) ^ (0xedb88320u & mask);
+    }
+    return crc;
+}
+
+static unsigned int stage1_crc32(const unsigned char* data, unsigned int len) {
+    unsigned int crc = 0xffffffffu;
+    unsigned int i;
+    for (i = 0; i < len; ++i) {
+        crc = stage1_crc32_update(crc, data[i]);
+    }
+    return crc ^ 0xffffffffu;
+}
+
+static unsigned int rom_read_stable_u32(unsigned int linear) {
+    unsigned int v = 0u;
+    v |= (unsigned int)rom_read_stable_u8((const unsigned char*)linear);
+    v |= (unsigned int)rom_read_stable_u8((const unsigned char*)(linear + 1u))
+         << 8;
+    v |= (unsigned int)rom_read_stable_u8((const unsigned char*)(linear + 2u))
+         << 16;
+    v |= (unsigned int)rom_read_stable_u8((const unsigned char*)(linear + 3u))
+         << 24;
+    return v;
+}
+
+static int find_stage15_payload(unsigned int* rom_linear_out,
+                                unsigned int* load_addr_out,
+                                unsigned int* size_out,
+                                unsigned int* crc_out) {
+    unsigned int base = SHARED_ROM_HIGH_BASE;
+    unsigned int entry_count;
+    unsigned int payload_start;
+    unsigned int payload_end;
+    unsigned int stage1_start;
+    unsigned int directory_bytes;
+    unsigned int sum = 0u;
     unsigned int i;
 
-    for (i = 0; i < size; ++i) {
-        dst[i] = rom_read_stable_u8(src + i);
+    if (rom_read_stable_u32(base + 0u) != SHARED_ROM_DIRECTORY_MAGIC ||
+        rom_read_stable_u32(base + 4u) != SHARED_ROM_DIRECTORY_VERSION ||
+        rom_read_stable_u32(base + 8u) != SHARED_ROM_DIRECTORY_HEADER_SIZE ||
+        rom_read_stable_u32(base + 12u) != SHARED_ROM_DIRECTORY_ENTRY_SIZE) {
+        return -1;
     }
+
+    entry_count = rom_read_stable_u32(base + 16u);
+    payload_start = rom_read_stable_u32(base + 20u);
+    payload_end = rom_read_stable_u32(base + 24u);
+    stage1_start = rom_read_stable_u32(base + 28u);
+    if (entry_count > SHARED_ROM_DIRECTORY_ENTRY_MAX ||
+        payload_start < SHARED_ROM_DIRECTORY_HEADER_SIZE ||
+        payload_end > SHARED_ROM_SIZE || payload_start > payload_end ||
+        stage1_start > SHARED_ROM_SIZE || payload_end > stage1_start) {
+        return -1;
+    }
+
+    directory_bytes =
+        SHARED_ROM_DIRECTORY_HEADER_SIZE + entry_count * SHARED_ROM_DIRECTORY_ENTRY_SIZE;
+    if (directory_bytes > payload_start || (directory_bytes & 3u) != 0u) {
+        return -1;
+    }
+    for (i = 0u; i < directory_bytes; i += 4u) {
+        sum += rom_read_stable_u32(base + i);
+    }
+    if (sum != 0u) {
+        return -1;
+    }
+
+    for (i = 0u; i < entry_count; ++i) {
+        unsigned int off =
+            SHARED_ROM_DIRECTORY_HEADER_SIZE + i * SHARED_ROM_DIRECTORY_ENTRY_SIZE;
+        unsigned int id = rom_read_stable_u32(base + off + 0u);
+        unsigned int type = rom_read_stable_u32(base + off + 4u);
+        unsigned int rom_offset = rom_read_stable_u32(base + off + 12u);
+        unsigned int blob_size = rom_read_stable_u32(base + off + 16u);
+        unsigned int slot_size = rom_read_stable_u32(base + off + 20u);
+        unsigned int load_addr = rom_read_stable_u32(base + off + 24u);
+        unsigned int crc = rom_read_stable_u32(base + off + 28u);
+
+        if (id != SHARED_PAYLOAD_ID_STAGE15) {
+            continue;
+        }
+        if (type != SHARED_PAYLOAD_TYPE_RAW || blob_size == 0u ||
+            rom_offset < payload_start || rom_offset > payload_end ||
+            blob_size > payload_end - rom_offset || slot_size < blob_size ||
+            load_addr != STAGE15_LOAD_LINEAR ||
+            blob_size > STAGE15_LOAD_CAPACITY) {
+            return -1;
+        }
+        *rom_linear_out = base + rom_offset;
+        *load_addr_out = load_addr;
+        *size_out = blob_size;
+        *crc_out = crc;
+        return 0;
+    }
+    return -1;
+}
+
+static void load_stage15_and_transition(unsigned int stack_top,
+                                        unsigned int wb_mask,
+                                        unsigned int total_bytes,
+                                        unsigned int gdtr_ptr) {
+    unsigned int rom_linear = 0u;
+    unsigned int load_addr = 0u;
+    unsigned int size = 0u;
+    unsigned int expected_crc = 0u;
+    unsigned char* dst;
+    unsigned int retry;
+    unsigned int got = 0u;
+
+    if (find_stage15_payload(&rom_linear, &load_addr, &size, &expected_crc) !=
+        0) {
+        serial_write_string("stage1.5 missing\r\n");
+        die_with_post(0xef);
+    }
+
+    serial_write_string("Load stage1.5 @ ");
+    serial_write_hex32(load_addr);
+    serial_write_string("...\r\n");
+    dst = (unsigned char*)load_addr;
+    for (retry = 0u; retry < 16u; ++retry) {
+        unsigned int i;
+        for (i = 0u; i < size; ++i) {
+            dst[i] = rom_read_stable_u8((const unsigned char*)(rom_linear + i));
+        }
+        got = stage1_crc32(dst, size);
+        if (got == expected_crc) {
+            break;
+        }
+        serial_write_char('x');
+    }
+    if (retry == 16u) {
+        serial_write_string("\r\nstage1.5 crc bad exp=");
+        serial_write_hex32(expected_crc);
+        serial_write_string(" got=");
+        serial_write_hex32(got);
+        serial_write_string("\r\n");
+        die_with_post(0xef);
+    }
+    serial_write_string("stage1.5 ok\r\n");
     __asm__ volatile("xorl %%eax, %%eax\n\tcpuid"
                      :
                      :
                      : "eax", "ebx", "ecx", "edx", "memory");
-}
-
-static void install_shared_service_table(unsigned int total_bytes,
-                                         unsigned int stack_top,
-                                         unsigned int service_base) {
-    unsigned int table_linear = shared_table_base_from_total(total_bytes);
-    unsigned int ptr_slot = shared_table_pointer_slot(total_bytes);
-    struct shared_service_table* table =
-        (struct shared_service_table*)table_linear;
-    struct shared_payload_manifest* manifest;
-    struct shared_boot_context* ctx;
-    unsigned char* heap_base;
-    unsigned int i;
-
-    for (i = 0; i < SHARED_TABLE_BYTES; ++i) {
-        ((volatile unsigned char*)table_linear)[i] = 0u;
-    }
-
-    manifest = (struct shared_payload_manifest*)shared_align_up(
-        table_linear + sizeof(*table), 16u);
-    ctx = (struct shared_boot_context*)shared_align_up(
-        (unsigned int)(manifest + 1), 16u);
-    heap_base = (unsigned char*)shared_align_up((unsigned int)(ctx + 1), 16u);
-
-    table->magic = SHARED_SERVICE_MAGIC;
-    table->version = SHARED_SERVICE_VERSION;
-    table->size = sizeof(*table);
-    table->total_dram_bytes = total_bytes;
-    table->service_base = service_base;
-    table->service_size =
-        (unsigned int)(__blob_service_end - __blob_service_start);
-    table->table_linear = table_linear;
-    table->table_size = SHARED_TABLE_BYTES;
-    table->stack_top = stack_top;
-    table->heap_base = (unsigned int)heap_base;
-    table->heap_limit = ptr_slot;
-    shared_heap_init(table);
-    table->boot_context_ptr = (unsigned int)ctx;
-    table->payload_manifest_ptr = (unsigned int)manifest;
-    table->blob_load = service_base + ((unsigned int)blob_load_service -
-                                       (unsigned int)__blob_service_start);
-    table->heap_alloc =
-        service_base + ((unsigned int)shared_heap_alloc_service -
-                        (unsigned int)__blob_service_start);
-    table->heap_free = service_base + ((unsigned int)shared_heap_free_service -
-                                       (unsigned int)__blob_service_start);
-    table->heap_realloc =
-        service_base + ((unsigned int)shared_heap_realloc_service -
-                        (unsigned int)__blob_service_start);
-
-    if (shared_payload_manifest_from_rom_directory(manifest,
-                                                   SHARED_ROM_HIGH_BASE) != 0) {
-        manifest->magic = SHARED_PAYLOAD_MAGIC;
-        manifest->version = SHARED_PAYLOAD_VERSION;
-        manifest->entry_count = 0u;
-        manifest->reserved = 0u;
-    }
-
-    ctx->magic = SHARED_BOOT_CONTEXT_MAGIC;
-    ctx->version = SHARED_BOOT_CONTEXT_VERSION;
-    ctx->size = sizeof(*ctx);
-    ctx->total_dram_bytes = total_bytes;
-    ctx->flags = SHARED_BOOT_FLAG_PLATFORM_P2B98_XV;
-    ctx->platform_id = SHARED_BOOT_FLAG_PLATFORM_P2B98_XV;
-    {
-        struct shared_payload_entry* dsdt_payload =
-            shared_payload_find(table, SHARED_PAYLOAD_ID_DSDT);
-        if (dsdt_payload != 0) {
-            ctx->acpi_input_ptr = dsdt_payload->blob_ptr;
-            ctx->acpi_input_size = dsdt_payload->blob_size;
-        }
-    }
-
-    *(volatile unsigned int*)ptr_slot = (unsigned int)table;
-}
-
-static void enter_stage2(unsigned int total_bytes) {
-    typedef void (*stage2_entry_fn)(unsigned int);
-    struct blob_status status;
-    struct shared_service_table* service =
-        shared_service_from_total(total_bytes);
-    blob_load_fn load = 0;
-    unsigned int stage2_load = STAGE2_LOAD_LINEAR;
-    int rc;
-
-    if (service != 0) {
-        load = (blob_load_fn)service->blob_load;
-    }
-
-    if (load != 0) {
-        rc = load(SHARED_PAYLOAD_ID_STAGE2, (void*)STAGE2_LOAD_LINEAR,
-                  STAGE2_LOAD_CAPACITY, &stage2_load, &status, total_bytes);
-    } else {
-        serial_write_string("blobsvc missing\r\n");
-        die_with_post(0xef);
-    }
-    if (rc != 0) {
-        serial_write_string("\r\nstage2 load failed rc=");
-        serial_write_hex8((unsigned char)rc);
-        serial_write_string(" block=");
-        serial_write_hex32(status.block);
-        serial_write_string(" exp=");
-        serial_write_hex32(status.expected);
-        serial_write_string(" got=");
-        serial_write_hex32(status.got);
-        serial_write_string("\r\n");
-        die_with_post(0xef);
-    }
-
-    ((stage2_entry_fn)stage2_load)(total_bytes);
+    ((stage15_entry_fn)load_addr)(stack_top, wb_mask, total_bytes, gdtr_ptr);
     die_with_post(0xef);
 }
 
@@ -707,18 +711,6 @@ static unsigned int prepare_runtime_gdt(void) {
     }
 
     return RUNTIME_GDTR_LINEAR;
-}
-
-void postcar_bootblock_resume(unsigned int total_bytes) {
-    unsigned int stack_top = dram_stack_top(total_bytes);
-    unsigned int service_base = blob_service_base_for_total(total_bytes);
-
-    install_blob_service(service_base);
-    install_shared_service_table(total_bytes, stack_top, service_base);
-    enter_stage2(total_bytes);
-    for (;;) {
-        __asm__ volatile("hlt");
-    }
 }
 
 void c_entry(void) {
@@ -793,7 +785,8 @@ void c_entry(void) {
     new_stack_top = dram_stack_top(total_bytes);
 
     runtime_gdtr = prepare_runtime_gdt();
-    postcar_transition(new_stack_top, wb_mask, total_bytes, runtime_gdtr);
+    load_stage15_and_transition(new_stack_top, wb_mask, total_bytes,
+                                runtime_gdtr);
     for (;;) {
     }
 }

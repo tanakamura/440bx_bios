@@ -259,6 +259,11 @@ static BLOBSVC unsigned int blob_crc32(const unsigned char* data,
     return crc ^ 0xffffffffu;
 }
 
+BLOBSVC_ENTRY unsigned int blob_crc32_service(const void* data,
+                                              unsigned int len) {
+    return blob_crc32((const unsigned char*)data, len);
+}
+
 static BLOBSVC_INLINE unsigned char blob_read_stable_u8(
     const unsigned char* ptr) {
     volatile const unsigned char* p = (volatile const unsigned char*)ptr;
@@ -284,6 +289,16 @@ static BLOBSVC_INLINE unsigned char blob_read_stable_u8(
         return e;
     }
     return e;
+}
+
+static BLOBSVC unsigned int blob_crc32_stable(const unsigned char* data,
+                                              unsigned int len) {
+    unsigned int crc = 0xffffffffu;
+    unsigned int i;
+    for (i = 0; i < len; ++i) {
+        crc = blob_crc32_update(crc, blob_read_stable_u8(data + i));
+    }
+    return crc ^ 0xffffffffu;
 }
 
 static BLOBSVC int blob_lz4_read_len(const unsigned char* src,
@@ -533,6 +548,23 @@ BLOBSVC_ENTRY int blob_load_service(unsigned int payload_id, void* fallback_dst,
     }
 
     blob = (const void*)payload->blob_ptr;
+    if (payload->blob_crc32 != 0u) {
+        unsigned int retry;
+        unsigned int got = 0u;
+        for (retry = 0u; retry < 8u; ++retry) {
+            got = blob_crc32_stable((const unsigned char*)blob,
+                                    payload->blob_size);
+            if (got == payload->blob_crc32) {
+                break;
+            }
+            serial_write_char('X');
+        }
+        if (retry == 8u) {
+            blob_status_set(status, BLOB_ERR_CRC, 0xffffffffu,
+                            payload->blob_crc32, got, payload->blob_size);
+            return BLOB_ERR_CRC;
+        }
+    }
     load_addr = blob_load_addr_or(blob, (unsigned int)fallback_dst);
     if (load_addr_out != 0) {
         *load_addr_out = load_addr;

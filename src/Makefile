@@ -18,6 +18,7 @@ COMPILE_ASM_BIN = nasm $(NASMFLAGS) -f bin -MD $@.d -MT $@ -MP $< -o $@
 	$(COMPILE_C)
 
 P2B_STAGE1_ELF := platform/p2b98_xv/stage1/stage1.elf
+P2B_STAGE15_ELF := platform/p2b98_xv/stage15/stage15.elf
 P2B_STAGE2_ELF := platform/p2b98_xv/stage2/stage2.elf
 QEMU_STAGE1_ELF := platform/qemu/stage1/stage1.elf
 QEMU_STAGE2_ELF := platform/qemu/stage2/stage2.elf
@@ -25,12 +26,13 @@ STAGE3_DIR_ELF := stage3/stage3.elf
 LEGACY_APP_ELF := app/legacy/legacy_app.elf
 LINUX_LOADER_APP_ELF := app/linux_loader/linux_loader_app.elf
 SELFTEST_ELF := app/selftest/s3test/s3test.elf
-GENROM_STAGE_ELFS := $(P2B_STAGE1_ELF) $(P2B_STAGE2_ELF) \
+GENROM_STAGE_ELFS := $(P2B_STAGE1_ELF) $(P2B_STAGE15_ELF) $(P2B_STAGE2_ELF) \
 	$(QEMU_STAGE1_ELF) $(QEMU_STAGE2_ELF) $(STAGE3_DIR_ELF)
 BUILD_ARTIFACT_DIRS := app/legacy app/linux_loader app/selftest/s3test \
 	lib/acpi lib/pci lib/rm_thunk lib/serial lib/storage lib/x86 \
 	shared_service stage3 \
-	platform/p2b98_xv/stage1 platform/p2b98_xv/stage2 \
+	platform/p2b98_xv/stage1 platform/p2b98_xv/stage15 \
+	platform/p2b98_xv/stage2 \
 	platform/qemu/stage1 platform/qemu/stage2
 
 post_code.h post_code.inc ../specs/POST_CODE.md: post_code.def $(BUILD_SCRIPTS)/gen_post_codes.py
@@ -57,19 +59,22 @@ include stage3/Makefile
 include ../tools/dos/Makefile
 include platform/p2b98_xv/Makefile
 include platform/p2b98_xv/stage1/Makefile
+include platform/p2b98_xv/stage15/Makefile
 include platform/p2b98_xv/stage2/Makefile
 include platform/qemu/Makefile
 include platform/qemu/stage1/Makefile
 include platform/qemu/stage2/Makefile
 
 GENROM_BINS := $(P2B98_XV_GENROM_BINS) $(QEMU_GENROM_BINS)
-CORE_C_OBJS := $(P2B_STAGE1_C_OBJS) $(P2B_STAGE2_C_OBJS) \
+CORE_C_OBJS := $(P2B_STAGE1_C_OBJS) $(P2B_STAGE15_C_OBJS) \
+	$(P2B_STAGE2_C_OBJS) \
 	$(QEMU_STAGE1_C_OBJS) $(QEMU_STAGE2_C_OBJS) \
 	$(ACPI_OBJS) $(SHARED_SERVICE_OBJS) $(X86_OBJS) \
 	$(SERIAL_OBJS) $(PCI_OBJS) $(STORAGE_OBJS) \
 	$(STAGE3_C_OBJS) $(LINUX_LOADER_C_OBJS) $(LEGACY_C_OBJS)
 C_DEP_OBJS := $(CORE_C_OBJS) $(SELFTEST_C_OBJS)
 ASM_DEP_TARGETS := $(RM_THUNK_BIOS16_OBJ) platform/p2b98_xv/stage1/start.o \
+	platform/p2b98_xv/stage15/stage15_entry.o \
 	platform/qemu/stage1/qemu_start.o int13probe.bin usbmbr.bin \
 	linuxprobe.o linuxprobe_overlap.o romtest
 DEPS := $(C_DEP_OBJS:.o=.d) $(addsuffix .d,$(ASM_DEP_TARGETS))

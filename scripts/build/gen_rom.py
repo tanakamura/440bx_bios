@@ -6,6 +6,7 @@ import argparse
 import re
 import struct
 import sys
+import zlib
 
 import gen_blob
 
@@ -31,6 +32,7 @@ SHARED_CONSTANT_NAMES = {
     "SHARED_ROM_LOW_BASE",
     "SHARED_ROM_HIGH_BASE",
     "SHARED_PAYLOAD_ID_STAGE2",
+    "SHARED_PAYLOAD_ID_STAGE15",
     "SHARED_PAYLOAD_ID_STAGE3",
     "SHARED_PAYLOAD_ID_LEGACY_APP",
     "SHARED_PAYLOAD_ID_LINUX_LOADER_APP",
@@ -89,6 +91,7 @@ ROM_HEADER_SIZE = SHARED["SHARED_ROM_DIRECTORY_HEADER_SIZE"]
 ROM_ENTRY_SIZE = SHARED["SHARED_ROM_DIRECTORY_ENTRY_SIZE"]
 
 PAYLOAD_IDS = {
+    "stage15": SHARED["SHARED_PAYLOAD_ID_STAGE15"],
     "stage2": SHARED["SHARED_PAYLOAD_ID_STAGE2"],
     "stage3": SHARED["SHARED_PAYLOAD_ID_STAGE3"],
     "legacy": SHARED["SHARED_PAYLOAD_ID_LEGACY_APP"],
@@ -305,7 +308,11 @@ def build_rom(entries: list[tuple[str, Path]]) -> bytes:
 
         data, load_addr = read_payload(path, extract_elf=(kind != "test_elf"))
         payload_id = PAYLOAD_IDS[kind]
-        payload_type = PAYLOAD_TYPE_RAW if kind == "test_floppy" else PAYLOAD_TYPE_BLZ4
+        payload_type = (
+            PAYLOAD_TYPE_RAW
+            if kind == "test_floppy" or kind == "stage15"
+            else PAYLOAD_TYPE_BLZ4
+        )
         if payload_type == PAYLOAD_TYPE_BLZ4:
             payload, _, _ = gen_blob.make_blob(data, load_addr)
         else:
@@ -324,7 +331,7 @@ def build_rom(entries: list[tuple[str, Path]]) -> bytes:
                 len(payload),
                 len(payload),
                 0 if load_addr is None else load_addr,
-                0,
+                zlib.crc32(payload) & 0xFFFFFFFF,
             )
         )
 

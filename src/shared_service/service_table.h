@@ -4,7 +4,7 @@
 #define SHARED_SERVICE_MAGIC 0x53565342u
 #define SHARED_SERVICE_VERSION 1u
 #define SHARED_PAYLOAD_MAGIC 0x504c4242u
-#define SHARED_PAYLOAD_VERSION 1u
+#define SHARED_PAYLOAD_VERSION 2u
 #define SHARED_BOOT_CONTEXT_MAGIC 0x42544358u
 #define SHARED_BOOT_CONTEXT_VERSION 1u
 
@@ -13,6 +13,7 @@
 #define SHARED_HEAP_ALIGN 16u
 #define SHARED_HEAP_MIN_BLOCK 32u
 
+#define SHARED_PAYLOAD_ID_STAGE15 10u
 #define SHARED_PAYLOAD_ID_STAGE2 1u
 #define SHARED_PAYLOAD_ID_STAGE3 2u
 #define SHARED_PAYLOAD_ID_LEGACY_APP 3u
@@ -28,7 +29,7 @@
 #define SHARED_PAYLOAD_TYPE_RAW 3u
 
 #define SHARED_ROM_DIRECTORY_MAGIC 0x304d5242u
-#define SHARED_ROM_DIRECTORY_VERSION 1u
+#define SHARED_ROM_DIRECTORY_VERSION 2u
 #define SHARED_ROM_DIRECTORY_ENTRY_MAX SHARED_PAYLOAD_MAX
 #define SHARED_ROM_DIRECTORY_BYTES 0x2000u
 #define SHARED_ROM_DIRECTORY_HEADER_SIZE 36u
@@ -52,6 +53,7 @@ struct shared_payload_entry {
     unsigned int blob_ptr;
     unsigned int blob_size;
     unsigned int slot_size;
+    unsigned int blob_crc32;
 };
 
 struct shared_payload_manifest {
@@ -82,7 +84,7 @@ struct shared_rom_payload_directory_entry {
     unsigned int blob_size;
     unsigned int slot_size;
     unsigned int load_addr;
-    unsigned int reserved;
+    unsigned int payload_crc32;
 };
 
 typedef char shared_rom_payload_directory_size_check[
@@ -314,6 +316,7 @@ static inline int shared_payload_manifest_from_rom_directory(
         dst->blob_ptr = rom_high_base + src->rom_offset;
         dst->blob_size = src->blob_size;
         dst->slot_size = src->slot_size;
+        dst->blob_crc32 = src->payload_crc32;
     }
     return 0;
 }

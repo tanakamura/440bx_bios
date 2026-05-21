@@ -1,3 +1,4 @@
+stage15,stage15/stage15.elf
 stage2,stage2/stage2.elf
 stage3,../../stage3/stage3.elf
 legacy,../../app/legacy/legacy_app.elf

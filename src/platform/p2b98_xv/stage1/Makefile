@@ -1,10 +1,9 @@
 # Included from ../../../Makefile; paths are relative to src/.
 
 P2B_STAGE1_C_OBJS := platform/p2b98_xv/stage1/bootblock.o
-P2B_STAGE1_OBJS := platform/p2b98_xv/stage1/start.o $(P2B_STAGE1_C_OBJS) \
-	$(SHARED_SERVICE_OBJS)
+P2B_STAGE1_OBJS := platform/p2b98_xv/stage1/start.o $(P2B_STAGE1_C_OBJS)
 
-$(P2B_STAGE1_ELF): $(P2B_STAGE1_OBJS) $(SHARED_SERVICE_RELOC_CHECK) platform/p2b98_xv/stage1/stage1.ld shared_service/service_table.ld
+$(P2B_STAGE1_ELF): $(P2B_STAGE1_OBJS) platform/p2b98_xv/stage1/stage1.ld shared_service/service_table.ld
 	$(LD) -m elf_i386 -T platform/p2b98_xv/stage1/stage1.ld -Map platform/p2b98_xv/stage1/stage1.map -o $@ $(P2B_STAGE1_OBJS)
 
 start: p2b98_xv_linux_genrom.bin
