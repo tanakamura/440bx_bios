@@ -8,3 +8,4 @@ p2b98_xv_%_genrom.bin: platform/p2b98_xv/%.blobs $(GENROM_STAGE_ELFS) dsdt.aml .
 
 p2b98_xv_legacy_genrom.bin: legacy_app.elf
 p2b98_xv_linux_genrom.bin: linux_loader_app.elf
+p2b98_xv_selftest_genrom.bin: s3test.elf

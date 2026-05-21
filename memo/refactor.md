@@ -172,8 +172,8 @@ stage2 が使う DSDT などの board 固有 ACPI 入力はここでは別扱い
 |-------------|----------|----------------|
 | qemu        | legacy   | `legacy_app`。必要なら ROM free area に `test_floppy` |
 | p2b98_xv    | legacy   | `legacy_app`。必要なら ROM free area に `test_floppy` |
-| qemu        | selftest | none |
-| p2b98_xv    | selftest | none |
+| qemu        | selftest | `test_elf` |
+| p2b98_xv    | selftest | `test_elf` |
 | qemu        | linux    | `linux_loader`, `vgabios` |
 | p2b98_xv    | linux    | `linux_loader`, `vgabios` |
 
@@ -185,7 +185,7 @@ stage2 が使う DSDT などの board 固有 ACPI 入力はここでは別扱い
 - `app/legacy/bios16.asm` と legacy service の一部は `app/legacy/` へ移動済み。現状は `legacy_floppy`, BDA 初期化, INT 10h/11h/12h/13h/15h/16h/17h/1Ah/60h が legacy 側 module になっている。
 - `bios_rm_service` dispatcher と thunk/IVT/DPT 設置は `app/legacy/` へ移動済み。legacy genrom profile では `legacy_app` payload を `0x000F0000` にロードして entry を呼ぶ。stage3 に残す legacy 直リンクは Linux 起動前の IVT/thunk 設置に必要な最小 thunk 部分だけに縮小済み。
 - E820/memory map は `bios_memory.*`、RTC は `bios_rtc.*` へ分離済み。legacy service からは `legacy_platform_ops` callback 経由で呼ぶ。
-- selftest profile は現状まだ `test_elf_blob` に依存している。build matrix の「selftest の app 用 payload なし」を実装するには、先に `selftest_app` を stage3 から切り出す必要がある。
+- selftest profile は `test_elf` payload を ROM に入れる。これは app slot へ直接入る app payload ではなく、stage3 の test runner が ELF として読み込む payload。
 - stage3 main flow は `stage3/stage3.*` へ分離済み。`stage3/entry.c` は stage2 からロード先先頭に jump される entry と stage3 run wrapper だけを持つ。linker script も `stage3/stage3.ld` へ移動済み。
 - stage3 は `0x00200000` にロードされる。app slot の `0x000F0000` とは分離済み。
 - C は `-ffunction-sections -fdata-sections`、stage3 link は `--gc-sections` を使う。stage3 entry はロード先先頭に残す必要があるため `.entry` に固定して `KEEP()` する。
@@ -702,6 +702,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - `linux_loader_app.elf` / `linux_loader_app.bin` の単体 build target は追加済み。Linux profile の genrom では ROM blob list に入り、stage3 は payload があれば `0x000F0000` へロードして app entry を呼ぶ。payload がない profile では Linux boot を試さない。
 - `legacy_app.elf` / `legacy_app.bin` の単体 build target は追加済み。legacy genrom profile の ROM blob list に入り、stage3 は payload があれば `0x000F0000` へロードして app entry を呼ぶ。boot sector 選択などの後続操作は `legacy_app_exports` 経由で app 側関数を呼ぶ。payload がない profile では Linux 用 direct thunk だけを設置する。
 - selftest/uACPI の object list / compile rule / test ELF blob rule は `app/selftest/s3test/Makefile` へ切り出し済み。生成物名は互換維持のため `src/s3test.elf` / `src/test_elf_blob.bin` のまま。旧 linker-symbol ROM 用の `test_elf_blob.o` は削除済み。
+- genrom の `test_elf` payload は ELF の PT_LOAD だけを抜かず、ELF file 全体を BLZ4 化する。stage3 の test runner が ELF header を見て `0x00180000` へロードする。
 - stage3 固有 `.c`、platform stage 固有 source、lib/shared helper の compile rule は各 directory の `Makefile` へ切り出し済み。top-level の `CORE_C_OBJS` は module 変数の合成になっている。旧 `start` / `qemu_bios.bin` ROM build rule は platform stage1 `Makefile` へ、genrom board/profile rule は platform board `Makefile` へ移動済み。
 - `shared_service/service_table.inc` は `shared_service/service_table.h` から生成する。QEMU stage1 asm はこれを include し、shared table size の C/asm 二重定義を避ける。
 

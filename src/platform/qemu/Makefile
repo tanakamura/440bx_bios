@@ -8,3 +8,4 @@ qemu_%_genrom.bin: platform/qemu/%.blobs $(GENROM_STAGE_ELFS) dsdt.aml ../images
 
 qemu_legacy_genrom.bin: legacy_app.elf
 qemu_linux_genrom.bin: linux_loader_app.elf
+qemu_selftest_genrom.bin: s3test.elf

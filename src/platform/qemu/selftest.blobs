@@ -1,3 +1,4 @@
 stage2,stage2/stage2.elf
 stage3,../../stage3/stage3.elf
+test_elf,../../s3test.elf
 stage1,stage1/stage1.elf

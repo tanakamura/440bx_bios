@@ -161,9 +161,9 @@ def extract_stage1_overlays(data: bytes) -> list[tuple[int, bytes]]:
     return overlays
 
 
-def read_payload(path: Path) -> tuple[bytes, int | None]:
+def read_payload(path: Path, extract_elf: bool = True) -> tuple[bytes, int | None]:
     data = path.read_bytes()
-    if is_elf32(data):
+    if extract_elf and is_elf32(data):
         image, load_addr = extract_elf_load_image(data)
         return image, load_addr
     return data, None
@@ -233,7 +233,7 @@ def build_rom(entries: list[tuple[str, Path]]) -> bytes:
                 stage1_start = min(stage1_start, off)
             continue
 
-        data, load_addr = read_payload(path)
+        data, load_addr = read_payload(path, extract_elf=(kind != "test_elf"))
         payload_id = PAYLOAD_IDS[kind]
         payload_type = PAYLOAD_TYPE_RAW if kind == "test_floppy" else PAYLOAD_TYPE_BLZ4
         if payload_type == PAYLOAD_TYPE_BLZ4:

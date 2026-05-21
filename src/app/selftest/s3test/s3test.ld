@@ -3,7 +3,7 @@ ENTRY(s3test_entry)
 
 SECTIONS
 {
-    . = 0x00200000;
+    . = 0x00180000;
 
     .text :
     {
