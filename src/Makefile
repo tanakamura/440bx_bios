@@ -70,6 +70,8 @@ ASM_DEP_TARGETS := $(RM_THUNK_BIOS16_OBJ) platform/p2b98_xv/stage1/start.o \
 	linuxprobe.o linuxprobe_overlap.o romtest
 DEPS := $(C_DEP_OBJS:.o=.d) $(addsuffix .d,$(ASM_DEP_TARGETS))
 
+$(C_DEP_OBJS): | post_code.h
+
 dsdt.aml: ../specs/dsdt.dsl $(BUILD_SCRIPTS)/gen_dsdt_aml.py
 	python3 $(BUILD_SCRIPTS)/gen_dsdt_aml.py ../specs/dsdt.dsl dsdt.aml
 
@@ -81,4 +83,4 @@ genrom: $(GENROM_BINS)
 -include $(DEPS)
 
 clean:
-	rm -f start start_legacy start_legacy_test start.elf start_legacy.elf linuxprobe.elf *.map *.o *.d *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc include/blob.inc shared_service/service_table.inc $(SHARED_SERVICE_RELOC_CHECK) $(GENROM_STAGE_ELFS) $(LEGACY_APP_ELF) $(LINUX_LOADER_APP_ELF) $(SELFTEST_ELF) $(addsuffix /*.o,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.d,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.su,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.map,$(BUILD_ARTIFACT_DIRS)) app/legacy/*.bin app/linux_loader/*.bin
+	rm -f start start_legacy start_legacy_test start.elf start_legacy.elf linuxprobe.elf *.map *.o *.d *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc include/blob.inc shared_service/service_table.inc $(SHARED_SERVICE_RELOC_CHECK) $(GENROM_STAGE_ELFS) $(LEGACY_APP_ELF) $(LINUX_LOADER_APP_ELF) $(SELFTEST_ELF) $(P2B98_XV_BLOB_DEPFILES) $(QEMU_BLOB_DEPFILES) $(addsuffix /*.o,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.d,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.su,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.map,$(BUILD_ARTIFACT_DIRS)) app/legacy/*.bin app/linux_loader/*.bin

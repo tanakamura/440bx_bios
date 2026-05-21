@@ -418,6 +418,7 @@ stage1,platform/p2b98_xv/stage1/stage1.elf
 - `stage1` だけは special payload として ROM 末尾に置く。reset vector を含むため、通常 payload area に詰めない。
 - `stage1` 以外は payload directory に登録する。stage1 が起動後に directory を読み、shared service table 上の payload manifest へコピーする。
 - ROM 末尾 8 byte の `rom_free_first`, `rom_free_end` descriptor は `gen_rom.py` が最終 ROM 配置から埋める。
+- `gen_rom_deps.py` は blob list から ROM target の `.d` を生成する。profile ごとの make 依存は、実際に blob list に書かれた payload だけにする。
 
 blob list は build matrix ごとに持つ。
 
@@ -708,6 +709,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - P2B98-XV/QEMU stage2 と stage3 は root 直下の中間 ELF/map を作らず、各 stage directory の ELF/map へ直接 link する。
 - legacy/linux_loader/selftest app ELF/map も root 直下ではなく各 app directory へ直接 link する。
 - stage/app/lib/shared/platform の C/asm object と generated dependency / stack-usage file は、それぞれの source directory 配下へ出す。root `src/` 直下に残る旧 artifact は互換 target や過去 build 由来の生成物だけに寄せる。
+- board/profile genrom target の依存は `scripts/build/gen_rom_deps.py` で blob list から生成する。不要な profile が VGA BIOS など未使用 payload に依存する状態は解消済み。
 - `blob.h` は `src/include/` へ移動済み。root 直下の `bios_pci.h` forwarding header も削除し、PCI header は `lib/pci/` の実体を include path から解決する。
 - `shared_service/service_table.inc` は `shared_service/service_table.h` から、`include/blob.inc` は `include/blob.h` から生成する。QEMU stage1 asm はこれらを include し、shared table size / stage2 load address / blob status size の C/asm 二重定義を避ける。
 - asm object / boot sector / board smoke test は `nasm -MD` で dependency file を生成する。`post_code.inc`, `include/blob.inc`, `shared_service/service_table.inc` は初回生成用の order-only prerequisite にしている。
