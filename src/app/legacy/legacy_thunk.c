@@ -25,10 +25,17 @@ static void serialize_instruction_stream(void) {
     __asm__ volatile("jmp 1f\n1:" : : : "memory");
 }
 
+static void write_linear16(unsigned int linear, unsigned short value) {
+    __asm__ volatile("movw %w0, (%1)"
+                     :
+                     : "r"(value), "r"(linear)
+                     : "memory");
+}
+
 static void install_ivt_vector(unsigned char vector, unsigned int linear) {
-    volatile unsigned short* ivt = (volatile unsigned short*)0x00000000u;
     unsigned short offset;
     unsigned short segment;
+    unsigned int ivt_linear = (unsigned int)vector * 4u;
 
     if (linear >= 0x000ffff0u && linear <= 0x0010ffefu) {
         segment = 0xffffu;
@@ -38,18 +45,18 @@ static void install_ivt_vector(unsigned char vector, unsigned int linear) {
         offset = (unsigned short)(linear & 0x000fu);
     }
 
-    ivt[(unsigned int)vector * 2u + 0u] = offset;
-    ivt[(unsigned int)vector * 2u + 1u] = segment;
+    write_linear16(ivt_linear, offset);
+    write_linear16(ivt_linear + 2u, segment);
 }
 
 static void install_thunk_vector(unsigned char vector, unsigned int linear) {
-    volatile unsigned short* ivt = (volatile unsigned short*)0x00000000u;
     unsigned short segment = (unsigned short)(LEGACY_THUNK_RUNTIME_BASE >> 4);
     unsigned short offset =
         (unsigned short)(linear - LEGACY_THUNK_RUNTIME_BASE);
+    unsigned int ivt_linear = (unsigned int)vector * 4u;
 
-    ivt[(unsigned int)vector * 2u + 0u] = offset;
-    ivt[(unsigned int)vector * 2u + 1u] = segment;
+    write_linear16(ivt_linear, offset);
+    write_linear16(ivt_linear + 2u, segment);
 }
 
 static unsigned int copy_thunk_code(legacy_thunk_void_fn install_shadow) {

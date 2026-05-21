@@ -19,8 +19,8 @@ $(LEGACY_APP_ELF): $(LEGACY_APP_OBJS) app/legacy/legacy.ld
 app/legacy/legacy_app.bin: $(LEGACY_APP_ELF)
 	$(OBJCOPY) -O binary $< $@
 
-app/legacy/bios16.o: app/legacy/bios16.asm post_code.inc
-	nasm $(NASMFLAGS) -f elf32 $< -o $@
+app/legacy/bios16.o: app/legacy/bios16.asm | post_code.inc
+	$(COMPILE_ASM_ELF32)
 
 app/legacy/entry.o: app/legacy/entry.c
 	$(COMPILE_C)

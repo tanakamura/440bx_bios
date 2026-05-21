@@ -11,6 +11,8 @@ BUILD_SCRIPTS := ../scripts/build
 TEST_SCRIPTS := ../scripts/test
 COMPILE_C = $(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 COMPILE_UACPI_C = $(CC) $(UACPI_CPPFLAGS) $(UACPI_CFLAGS) -c $< -o $@
+COMPILE_ASM_ELF32 = nasm $(NASMFLAGS) -f elf32 -MD $@.d -MT $@ -MP $< -o $@
+COMPILE_ASM_BIN = nasm $(NASMFLAGS) -f bin -MD $@.d -MT $@ -MP $< -o $@
 P2B_STAGE1_ELF := platform/p2b98_xv/stage1/stage1.elf
 P2B_STAGE2_ELF := platform/p2b98_xv/stage2/stage2.elf
 QEMU_STAGE1_ELF := platform/qemu/stage1/stage1.elf
@@ -58,7 +60,10 @@ CORE_C_OBJS := $(P2B_STAGE1_C_OBJS) $(P2B_STAGE2_C_OBJS) \
 	$(SERIAL_OBJS) $(PCI_OBJS) $(STORAGE_OBJS) \
 	$(STAGE3_C_OBJS) $(LINUX_LOADER_C_OBJS) $(LEGACY_C_OBJS)
 C_DEP_OBJS := $(CORE_C_OBJS) $(SELFTEST_C_OBJS)
-DEPS := $(C_DEP_OBJS:.o=.d)
+ASM_DEP_TARGETS := app/legacy/bios16.o platform/p2b98_xv/stage1/start.o \
+	platform/qemu/stage1/qemu_start.o int13probe.bin usbmbr.bin \
+	linuxprobe.o linuxprobe_overlap.o romtest
+DEPS := $(C_DEP_OBJS:.o=.d) $(addsuffix .d,$(ASM_DEP_TARGETS))
 
 dsdt.aml: ../specs/dsdt.dsl $(BUILD_SCRIPTS)/gen_dsdt_aml.py
 	python3 $(BUILD_SCRIPTS)/gen_dsdt_aml.py ../specs/dsdt.dsl dsdt.aml

@@ -184,7 +184,7 @@ stage2 が使う DSDT などの board 固有 ACPI 入力はここでは別扱い
 - legacy profile は `legacy_app` を payload として link する。必要な test media だけ ROM free area へ後差しする。
 - `app/legacy/bios16.asm` と legacy service の一部は `app/legacy/` へ移動済み。現状は `legacy_floppy`, BDA 初期化, INT 10h/11h/12h/13h/15h/16h/17h/1Ah/60h が legacy 側 module になっている。
 - `bios_rm_service` dispatcher と thunk/IVT/DPT 設置は `app/legacy/` へ移動済み。legacy genrom profile では `legacy_app` payload を `0x000F0000` にロードして entry を呼ぶ。stage3 に残す legacy 直リンクは Linux 起動前の IVT/thunk 設置に必要な最小 thunk 部分だけに縮小済み。
-- E820/memory map は `bios_memory.*`、RTC は `bios_rtc.*` へ分離済み。legacy service からは `legacy_platform_ops` callback 経由で呼ぶ。
+- E820/memory map は `bios_memory.*`、RTC は `bios_rtc.*` へ分離済み。legacy app は必要な provider を app 側へ link して直接呼ぶ。
 - selftest profile は `test_elf` payload を ROM に入れる。これは app slot へ直接入る app payload ではなく、stage3 の test runner が ELF として読み込む payload。
 - stage3 main flow は `stage3/stage3.*` へ分離済み。`stage3/entry.c` は stage2 からロード先先頭に jump される entry と stage3 run wrapper だけを持つ。linker script も `stage3/stage3.ld` へ移動済み。
 - stage3 は `0x00200000` にロードされる。app slot の `0x000F0000` とは分離済み。
@@ -385,8 +385,8 @@ slot_size
 
 Makefile は手書き header 依存をやめ、compiler generated dependency を使う。
 
-- C compile は `-MMD -MP` で `.d` を生成し、各 Makefile が `-include $(OBJS:.o=.d)` する。
-- asm 依存も可能なら `nasm -M` 相当で生成する。難しければ asm は当面明示依存を最小限に残すが、C header 依存は手で書かない。
+- C compile は `-MMD -MP` で `.d` を生成し、top-level `src/Makefile` が module object list から `-include` する。
+- asm 依存も `nasm -MD -MT -MP` で `.d` を生成する。生成 `.inc` は初回生成のため order-only prerequisite に残すが、include 依存の追跡は `.d` に寄せる。
 - top-level `src/Makefile` は orchestration だけに寄せる。stage/app ごとの object list、linker script、link rule は各 directory の Makefile に持たせる。
 - stage/app の build artifact は各 directory 配下または共通 `build/<target>/...` に出し、root `src/` 直下の object 増殖を止める。
 - 外部互換の target 名 `make -C src start qemu_bios.bin test` は維持する。
@@ -553,11 +553,12 @@ legacy app 切り出し方針:
 
 移行中の残依存:
 
-- `app/legacy/bios16.asm` から呼ぶ `bios_rm_service` は `app/legacy/legacy_service.c` 側に移動済み。legacy app は独立 ELF として link し、stage3 が `legacy_platform_ops` と export table を渡して初期化する。
-- thunk/IVT/DPT 設置は `legacy_thunk.*` に移動済み。stage3 はまだ `install_bios_shadow` callback を渡している。
-- INT19 boot sector 選択は `legacy_boot.*` に移動済み。ただし FreeDOS へ落ちる protected-mode-to-real-mode jump は `bios16.asm` の `bios_boot_freedos_pm32` symbol を同一 ELF 参照している。
-- INT13 HDD path は `legacy_platform_ops` 経由になった。legacy app 単体 blob 化では、この callback の実装を app 側 storage scan または shared service table 経由 block device service に差し替える。
-- INT15 E820 は `legacy_platform_ops` 経由になった。legacy app 単体 blob 化では、この callback の実装を boot context/service 由来の E820 provider に差し替える。
+- `app/legacy/bios16.asm` から呼ぶ `bios_rm_service` は `app/legacy/legacy_service.c` 側に移動済み。legacy app は独立 ELF として link し、serial/storage/RTC/E820 provider も app 側で持つ。
+- thunk/IVT/DPT 設置は `legacy_thunk.*` に移動済み。legacy app runtime は shadow install callback だけ stage3 から受け取る。
+- stage3 は Linux/VBIOS/legacy fallback 用に `bios16.o` と `legacy_thunk.o` をまだ直接 link する。完全に切るには `bios16.asm` を低位 real-mode thunk library と legacy INT service thunk に分割する。
+- INT19 boot sector 選択は `legacy_boot.*` に移動済み。ただし FreeDOS へ落ちる protected-mode-to-real-mode jump は `bios16.asm` の `bios_boot_freedos_pm32` symbol を参照している。
+- INT13 HDD path は legacy app 側の `lib/storage` scan を直接使う。stage3 から HDD state は渡さない。
+- INT15 E820 は legacy app 側の `bios_memory.*` を直接使う。stage3 から E820 callback は渡さない。
 - RTC read/write は `bios_rtc.*`、INT 1Ah 本体は `legacy_time.*`、PIT/tick counter は `legacy_timer.*` へ分離済み。
 - shadow PAM/MTRR/GDT setup と VBIOS shadow/init は `bios_shadow.*` へ分離済み。`stage3/stage3.c` は stage2 の shadow-ready flag と payload/blob service を渡すだけ。
 
@@ -675,7 +676,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - ACPI table 構築は stage2 へ移動済み。P2B98-XV stage2 は DSDT blob を展開して RSDT/FADT/FACS/RSDP を作る。QEMU stage2 は fw_cfg の ACPI tables を取得/patch して RSDP を作る。stage3 は board 非依存の ACPI PM event clear / SCI enable だけを持つ。
 - stage2 は ACPI table の実配置範囲を boot context の `acpi_table_base/acpi_table_size` に記録する。これを使えば、後続で top reserved 1MiB のうち ACPI table 以外を E820 usable に戻せる。
 - legacy BIOS service の dispatcher / thunk / timer / runtime glue は `app/legacy/` へ移動済み。legacy genrom profile は `legacy_app` を ROM payload に入れ、stage3 が `0x000F0000` へロードして entry を呼ぶ。
-- legacy service は serial/storage/RTC/E820 などの stage3 直参照を `legacy_platform_ops` callback table 経由へ寄せた。`legacy_app_exports` で boot sector 選択 / boot drive 書き込み / PM stack 設定も app 側関数を呼ぶ。stage3 直リンクから legacy service 本体は外し、Linux profile が使う low thunk/VBE 呼び出し用に `bios16.o`, `legacy_thunk.o`, BDA/keyboard/video 初期化の最小 set だけを残している。
+- legacy service は serial/storage/RTC/E820 provider を app 側に直接 link する。`legacy_app_exports` で boot sector 選択 / boot drive 書き込み / PM stack 設定も app 側関数を呼ぶ。stage3 直リンクから legacy service 本体は外し、Linux profile が使う low thunk/VBE 呼び出し用に `bios16.o`, `legacy_thunk.o` だけを残している。
 - floppy test image probe/state は legacy runtime 側へ移動済み。stage3 は floppy の有無を保持せず、legacy app が自分で BDA/INT13 用 state を作る。
 - Linux kernel/initrd loader と Linux boot params/VBE setup は `app/linux_loader/` へ移動済み。serial/storage/E820 は `linux_loader_config` callback 経由になり、stage3 は NVRAM 設定と ACPI/RTC/VBIOS/storage/memory callback を渡す glue だけ持つ。
 - 通常 boot path では `linux_loader` payload がある profile だけ Linux boot を試す。payload が無い legacy profile では direct fallback せず legacy boot へ進む。
@@ -718,6 +719,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - stage/app/lib/shared/platform の C/asm object と generated dependency / stack-usage file は、それぞれの source directory 配下へ出す。root `src/` 直下に残る旧 artifact は互換 target や過去 build 由来の生成物だけに寄せる。
 - `blob.h` は `src/include/` へ移動済み。root 直下の `bios_pci.h` forwarding header も削除し、PCI header は `lib/pci/` の実体を include path から解決する。
 - `shared_service/service_table.inc` は `shared_service/service_table.h` から生成する。QEMU stage1 asm はこれを include し、shared table size の C/asm 二重定義を避ける。
+- asm object / boot sector / board smoke test は `nasm -MD` で dependency file を生成する。`post_code.inc` と `shared_service/service_table.inc` は初回生成用の order-only prerequisite にしている。
 
 ## 決定事項
 
