@@ -11,6 +11,5 @@ unsigned int legacy_install_bios_thunks(
     legacy_thunk_void_fn init_pit);
 void legacy_install_boot_drive(unsigned char boot_drive);
 void legacy_install_pm_stack_top(unsigned int stack_top);
-unsigned char* legacy_vbe_mode_info_buffer(void);
 
 #endif

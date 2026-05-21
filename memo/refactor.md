@@ -182,7 +182,7 @@ stage2 が使う DSDT などの board 固有 ACPI 入力はここでは別扱い
 移行中の状態:
 
 - legacy profile は `legacy_app` を payload として link する。必要な test media だけ ROM free area へ後差しする。
-- `app/legacy/bios16.asm` と legacy service の一部は `app/legacy/` へ移動済み。現状は `legacy_floppy`, BDA 初期化, INT 10h/11h/12h/13h/15h/16h/17h/1Ah/60h が legacy 側 module になっている。
+- real-mode thunk asm は共通 `lib/rm_thunk/bios16.asm` に置く。legacy service の C 側は `app/legacy/` へ移動済みで、現状は `legacy_floppy`, BDA 初期化, INT 10h/11h/12h/13h/15h/16h/17h/1Ah/60h が legacy 側 module になっている。
 - `bios_rm_service` dispatcher と thunk/IVT/DPT 設置は `app/legacy/` へ移動済み。legacy genrom profile では `legacy_app` payload を `0x000F0000` にロードして entry を呼ぶ。stage3 に残す legacy 直リンクは Linux 起動前の IVT/thunk 設置に必要な最小 thunk 部分だけに縮小済み。
 - E820/memory map は `bios_memory.*`、RTC は `bios_rtc.*` へ分離済み。legacy app は必要な provider を app 側へ link して直接呼ぶ。
 - selftest profile は `test_elf` payload を ROM に入れる。これは app slot へ直接入る app payload ではなく、stage3 の test runner が ELF として読み込む payload。
@@ -553,9 +553,9 @@ legacy app 切り出し方針:
 
 移行中の残依存:
 
-- `app/legacy/bios16.asm` から呼ぶ `bios_rm_service` は `app/legacy/legacy_service.c` 側に移動済み。legacy app は独立 ELF として link し、serial/storage/RTC/E820 provider も app 側で持つ。
+- `lib/rm_thunk/bios16.asm` から呼ぶ `bios_rm_service` は、legacy app では `app/legacy/legacy_service.c`、stage3 では `stage3/bios_legacy.c` がそれぞれ定義する。legacy app は独立 ELF として link し、serial/storage/RTC/E820 provider も app 側で持つ。
 - thunk/IVT/DPT 設置は `legacy_thunk.*` に移動済み。legacy app runtime は shadow install callback だけ stage3 から受け取る。
-- stage3 は Linux/VBIOS/legacy fallback 用に `bios16.o` をまだ直接 link する。stage3 側の direct thunk install は `bios_direct_thunk.*` に分離済み。`bios16.asm` の legacy INT stubs は `.thunk16_legacy` section へ分け、stage3 linker は direct/VBE/boot に必要な `.thunk16` だけを入れ、`.thunk16_legacy` は discard する。
+- stage3 は Linux/VBIOS/legacy fallback 用に共通 `lib/rm_thunk/bios16.o` をまだ直接 link する。stage3 側の direct thunk install は `bios_direct_thunk.*` に分離済み。`bios16.asm` の legacy INT stubs は `.thunk16_legacy` section へ分け、stage3 linker は direct/VBE/boot に必要な `.thunk16` だけを入れ、`.thunk16_legacy` は discard する。
 - INT19 boot sector 選択は `legacy_boot.*` に移動済み。ただし FreeDOS へ落ちる protected-mode-to-real-mode jump は `bios16.asm` の `bios_boot_freedos_pm32` symbol を参照している。
 - INT13 HDD path は legacy app 側の `lib/storage` scan を直接使う。stage3 から HDD state は渡さない。
 - INT15 E820 は legacy app 側の `bios_memory.*` を直接使う。stage3 から E820 callback は渡さない。
@@ -676,7 +676,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - ACPI table 構築は stage2 へ移動済み。P2B98-XV stage2 は DSDT blob を展開して RSDT/FADT/FACS/RSDP を作る。QEMU stage2 は fw_cfg の ACPI tables を取得/patch して RSDP を作る。stage3 は board 非依存の ACPI PM event clear / SCI enable だけを持つ。
 - stage2 は ACPI table の実配置範囲を boot context の `acpi_table_base/acpi_table_size` に記録する。これを使えば、後続で top reserved 1MiB のうち ACPI table 以外を E820 usable に戻せる。
 - legacy BIOS service の dispatcher / thunk / timer / runtime glue は `app/legacy/` へ移動済み。legacy genrom profile は `legacy_app` を ROM payload に入れ、stage3 が `0x000F0000` へロードして entry を呼ぶ。
-- legacy service は serial/storage/RTC/E820 provider を app 側に直接 link する。`legacy_app_exports` で boot sector 選択 / boot drive 書き込み / PM stack 設定も app 側関数を呼ぶ。stage3 直リンクから legacy service 本体と `legacy_thunk.o` は外し、Linux profile が使う low thunk/VBE 呼び出し用に `bios16.o` だけを残している。
+- legacy service は serial/storage/RTC/E820 provider を app 側に直接 link する。`legacy_app_exports` で boot sector 選択 / boot drive 書き込み / PM stack 設定も app 側関数を呼ぶ。stage3 直リンクから legacy service 本体と `legacy_thunk.o` は外し、Linux profile が使う low thunk/VBE 呼び出し用に共通 `lib/rm_thunk/bios16.o` だけを残している。
 - stage3 側へ移した direct thunk installer は legacy app から削除済み。legacy app の `legacy_thunk.*` は full BIOS INT thunk installation だけを持つ。
 - floppy test image probe/state は legacy runtime 側へ移動済み。stage3 は floppy の有無を保持せず、legacy app が自分で BDA/INT13 用 state を作る。
 - Linux kernel/initrd loader と Linux boot params/VBE setup は `app/linux_loader/` へ移動済み。serial/storage/E820 は `linux_loader_config` callback 経由になり、stage3 は NVRAM 設定と ACPI/RTC/VBIOS/storage/memory callback を渡す glue だけ持つ。
@@ -707,7 +707,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - gen_rom 用に stage directory 配下の ELF alias を作る target を追加済み。stage1 ELF は payload symbol なしでも link できるようにし、`gen_rom.py` は stage1 ELF の alloc section だけを ROM 末尾へ overlay して payload directory を壊さない。
 - `make -C src test` は自作 BIOS の通常 boot path を genrom ROM で確認する。legacy boot/USB MBR/floppy は `qemu_legacy_genrom.bin`、Linux probe は `qemu_linux_genrom.bin` を使う。
 - stage3、P2B98-XV/QEMU stage2、P2B98-XV/QEMU stage1-only ELF の link rule と object list は各 stage directory の `Makefile` へ切り出し済み。現状は top-level `src/Makefile` から include する非再帰 make。通常 ROM target は genrom 版をコピーし、旧 linker-symbol ROM の `start.elf` / `qemu_start.elf` 生成 rule は削除済み。
-- legacy と linux_loader の object list / compile rule は各 app directory の `Makefile` へ切り出し済み。`app/legacy/legacy_app.elf` と `app/linux_loader/linux_loader_app.elf` は独立 app ELF として作れる。genrom profile ではそれぞれ ROM payload としてロードできる。stage3 は full `linux_loader.o` を直リンクせず、selftest 用の最小 ELF loader/boot_params builder と、Linux/VBE/boot jump 用の `bios16.o` だけを直接持つ。
+- legacy と linux_loader の object list / compile rule は各 app directory の `Makefile` へ切り出し済み。`app/legacy/legacy_app.elf` と `app/linux_loader/linux_loader_app.elf` は独立 app ELF として作れる。genrom profile ではそれぞれ ROM payload としてロードできる。stage3 は full `linux_loader.o` を直リンクせず、selftest 用の最小 ELF loader/boot_params builder と、Linux/VBE/boot jump 用の共通 `lib/rm_thunk/bios16.o` だけを直接持つ。
 - `app/linux_loader/linux_loader_app.elf` の単体 build target は追加済み。Linux profile の genrom では ROM blob list に入り、stage3 は payload があれば `0x000F0000` へロードして app entry を呼ぶ。payload がない profile では Linux boot を試さない。
 - `app/legacy/legacy_app.elf` の単体 build target は追加済み。legacy genrom profile の ROM blob list に入り、stage3 は payload があれば `0x000F0000` へロードして app entry を呼ぶ。boot sector 選択などの後続操作は `legacy_app_exports` 経由で app 側関数を呼ぶ。payload がない profile では Linux 用 direct thunk だけを設置する。
 - legacy app は serial/storage/RTC/E820 provider を app 側に直接 link し、`legacy_platform_ops` を自前で構成する。stage3 からの platform callback table と `hdd_present` は `legacy_runtime_config` から削除済み。

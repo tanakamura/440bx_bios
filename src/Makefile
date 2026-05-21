@@ -24,7 +24,8 @@ SELFTEST_ELF := app/selftest/s3test/s3test.elf
 GENROM_STAGE_ELFS := $(P2B_STAGE1_ELF) $(P2B_STAGE2_ELF) \
 	$(QEMU_STAGE1_ELF) $(QEMU_STAGE2_ELF) $(STAGE3_DIR_ELF)
 BUILD_ARTIFACT_DIRS := app/legacy app/linux_loader app/selftest/s3test \
-	lib/acpi lib/pci lib/serial lib/storage lib/x86 shared_service stage3 \
+	lib/acpi lib/pci lib/rm_thunk lib/serial lib/storage lib/x86 \
+	shared_service stage3 \
 	platform/p2b98_xv/stage1 platform/p2b98_xv/stage2 \
 	platform/qemu/stage1 platform/qemu/stage2
 
@@ -34,6 +35,7 @@ post_code.h post_code.inc ../specs/POST_CODE.md: post_code.def $(BUILD_SCRIPTS)/
 shared_service/service_table.inc: shared_service/service_table.h $(BUILD_SCRIPTS)/gen_shared_service_asm.py
 	python3 $(BUILD_SCRIPTS)/gen_shared_service_asm.py
 
+include lib/rm_thunk/Makefile
 include app/legacy/Makefile
 include app/linux_loader/Makefile
 include app/selftest/s3test/Makefile
@@ -60,7 +62,7 @@ CORE_C_OBJS := $(P2B_STAGE1_C_OBJS) $(P2B_STAGE2_C_OBJS) \
 	$(SERIAL_OBJS) $(PCI_OBJS) $(STORAGE_OBJS) \
 	$(STAGE3_C_OBJS) $(LINUX_LOADER_C_OBJS) $(LEGACY_C_OBJS)
 C_DEP_OBJS := $(CORE_C_OBJS) $(SELFTEST_C_OBJS)
-ASM_DEP_TARGETS := app/legacy/bios16.o platform/p2b98_xv/stage1/start.o \
+ASM_DEP_TARGETS := $(RM_THUNK_BIOS16_OBJ) platform/p2b98_xv/stage1/start.o \
 	platform/qemu/stage1/qemu_start.o int13probe.bin usbmbr.bin \
 	linuxprobe.o linuxprobe_overlap.o romtest
 DEPS := $(C_DEP_OBJS:.o=.d) $(addsuffix .d,$(ASM_DEP_TARGETS))

@@ -19,7 +19,6 @@ extern unsigned char bios16_iret[];
 extern unsigned char bios16_thunk_end[];
 extern unsigned int bios16_pm_stack_top;
 extern unsigned char bios16_boot_drive[];
-extern unsigned char bios16_vbe_mode_info[];
 
 static void serialize_instruction_stream(void) {
     __asm__ volatile("jmp 1f\n1:" : : : "memory");
@@ -163,10 +162,4 @@ void legacy_install_pm_stack_top(unsigned int stack_top) {
                               (unsigned int)((unsigned char*)
                                                  &bios16_pm_stack_top -
                                              bios16_thunk_start)) = stack_top;
-}
-
-unsigned char* legacy_vbe_mode_info_buffer(void) {
-    return (unsigned char*)(LEGACY_THUNK_RUNTIME_BASE +
-                            (unsigned int)(bios16_vbe_mode_info -
-                                           bios16_thunk_start));
 }
