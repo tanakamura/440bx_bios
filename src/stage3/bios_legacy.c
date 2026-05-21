@@ -1,13 +1,10 @@
 #include "bios_legacy.h"
 
 #include "blob.h"
-#include "bios_memory.h"
-#include "bios_rtc.h"
 #include "bios_serial.h"
 #include "bios_stage_context.h"
 #include "bios_storage.h"
 #include "app/legacy/legacy_boot.h"
-#include "app/legacy/legacy_platform.h"
 #include "app/legacy/legacy_rm.h"
 #include "app/legacy/legacy_runtime.h"
 #include "app/legacy/legacy_thunk.h"
@@ -22,65 +19,6 @@ typedef void (*legacy_app_entry_fn)(const struct legacy_runtime_config* config);
 
 static struct legacy_app_exports bios_legacy_exports;
 
-static void legacy_hdd_get_geometry_cb(struct legacy_hdd_geometry* geometry) {
-    struct bios_hdd_geometry bios_geometry;
-
-    bios_hdd_get_geometry(&bios_geometry);
-    geometry->total_sectors = bios_geometry.total_sectors;
-    geometry->cylinders = bios_geometry.cylinders;
-    geometry->heads = bios_geometry.heads;
-    geometry->sectors_per_track = bios_geometry.sectors_per_track;
-}
-
-static unsigned int
-legacy_memory_extended_usable_end_cb(unsigned int total_bytes) {
-    return bios_memory_extended_usable_end(total_bytes);
-}
-
-static unsigned int legacy_memory_e820_entry_count_cb(unsigned int total_bytes) {
-    return bios_memory_e820_entry_count(total_bytes);
-}
-
-static int legacy_memory_e820_get_entry_cb(unsigned int total_bytes,
-                                           unsigned int index,
-                                           struct legacy_e820_entry* entry) {
-    struct e820_entry bios_entry;
-
-    if (bios_memory_e820_get_entry(total_bytes, index, &bios_entry) != 0) {
-        return -1;
-    }
-    entry->base_low = bios_entry.base_low;
-    entry->base_high = bios_entry.base_high;
-    entry->length_low = bios_entry.length_low;
-    entry->length_high = bios_entry.length_high;
-    entry->type = bios_entry.type;
-    return 0;
-}
-
-static void bios_legacy_fill_platform_ops(struct legacy_platform_ops* ops) {
-    *ops = (struct legacy_platform_ops){0};
-
-    ops->serial_write_char = serial_write_char;
-    ops->serial_write_string = serial_write_string;
-    ops->serial_write_hex8 = serial_write_hex8;
-    ops->serial_write_hex16 = serial_write_hex16;
-    ops->serial_write_hex32 = serial_write_hex32;
-    ops->serial_write_u32 = serial_write_u32;
-    ops->hdd_is_present = bios_hdd_is_present;
-    ops->hdd_current_kind = bios_hdd_current_kind;
-    ops->hdd_select_kind = bios_hdd_select_kind;
-    ops->hdd_get_geometry = legacy_hdd_get_geometry_cb;
-    ops->hdd_read_sectors = bios_hdd_read_sectors;
-    ops->hdd_load_mbr_boot_sector = bios_hdd_load_mbr_boot_sector;
-    ops->rtc_read_time_bcd = bios_rtc_read_time_bcd;
-    ops->rtc_read_date_bcd = bios_rtc_read_date_bcd;
-    ops->rtc_set_time_bcd = bios_rtc_set_time_bcd;
-    ops->rtc_set_date_bcd = bios_rtc_set_date_bcd;
-    ops->memory_extended_usable_end = legacy_memory_extended_usable_end_cb;
-    ops->memory_e820_entry_count = legacy_memory_e820_entry_count_cb;
-    ops->memory_e820_get_entry = legacy_memory_e820_get_entry_cb;
-}
-
 void bios_legacy_install_runtime(
     const struct bios_stage_context* stage, unsigned char boot_priority,
     bios_legacy_record_boot_success_fn record_boot_success,
@@ -88,7 +26,7 @@ void bios_legacy_install_runtime(
     struct legacy_runtime_config config;
     blob_load_fn load;
 
-    bios_legacy_fill_platform_ops(&config.platform_ops);
+    config.platform_ops = (struct legacy_platform_ops){0};
     config.total_bytes = stage->total_bytes;
     config.hdd_present = bios_hdd_is_present();
     config.base_mem_kb = bios_dos_base_mem_kb;
