@@ -2,7 +2,7 @@ CC := gcc
 LD := ld
 OBJCOPY := objcopy
 LIBGCC := $(shell $(CC) -m32 -print-libgcc-file-name)
-CPPFLAGS := -I. -Istage3 -Ilib/acpi -Ilib/x86 -Ilib/pci -Ilib/serial -Ilib/storage
+CPPFLAGS := -I. -Iinclude -Istage3 -Ilib/acpi -Ilib/x86 -Ilib/pci -Ilib/serial -Ilib/storage
 DEPFLAGS := -MMD -MP
 CFLAGS := -O2 -m32 -march=pentium2 -ffreestanding -fno-pic -fno-pie -fno-stack-protector -ffunction-sections -fdata-sections -fstack-usage -Wstack-usage=256 -nostdlib -nostartfiles -nodefaultlibs -Wall -Wextra $(DEPFLAGS)
 NASMFLAGS := -I.
