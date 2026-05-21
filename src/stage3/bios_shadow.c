@@ -1,20 +1,11 @@
 #include "bios_shadow.h"
 
 #include "bios_io.h"
+#include "bios_mtrr.h"
 #include "bios_pci.h"
 #include "bios_serial.h"
 #include "shared_service/service_table.h"
 
-#define IA32_MTRR_FIX4K_C0000 0x268u
-#define IA32_MTRR_FIX4K_C8000 0x269u
-#define IA32_MTRR_FIX4K_D0000 0x26au
-#define IA32_MTRR_FIX4K_D8000 0x26bu
-#define IA32_MTRR_FIX4K_E0000 0x26cu
-#define IA32_MTRR_FIX4K_E8000 0x26du
-#define IA32_MTRR_FIX4K_F0000 0x26eu
-#define IA32_MTRR_FIX4K_F8000 0x26fu
-#define IA32_MTRR_DEF_TYPE 0x2ffu
-#define MTRR_DEF_TYPE_E 0x00000800u
 #define BIOS_RUNTIME_GDT_LINEAR 0x000ff800u
 #define VGA_BIOS_LINEAR SHARED_ROM_LOW_BASE
 #define VGA_BIOS_CAPACITY (BIOS_LOAD_LINEAR - VGA_BIOS_LINEAR)

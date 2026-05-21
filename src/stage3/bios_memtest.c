@@ -2,6 +2,7 @@
 
 #include "bios_io.h"
 #include "bios_memory.h"
+#include "bios_mtrr.h"
 #include "bios_serial.h"
 #include "post_code.h"
 #include "shared_service/service_table.h"
@@ -9,13 +10,6 @@
 #define BIOS_MTRR_SAVE_MAX 8u
 #define BIOS_MEMTEST_START 0x00100000u
 #define BIOS_MEMTEST_MARK_STEP 0x00100000u
-#define IA32_MTRRCAP 0x0feu
-#define IA32_MTRR_PHYSBASE0 0x200u
-#define IA32_MTRR_PHYSMASK0 0x201u
-#define IA32_MTRR_DEF_TYPE 0x2ffu
-#define MTRR_DEF_TYPE_TYPE_MASK 0x000000ffu
-#define MTRR_DEF_TYPE_E 0x00000800u
-#define MTRR_PHYSMASK_VALID 0x00000800u
 
 struct bios_mtrr_saved_state {
     unsigned char count;

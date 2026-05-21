@@ -1,4 +1,5 @@
 #include "blob.h"
+#include "bios_mtrr.h"
 #include "shared_service/service_table.h"
 
 #define BLOBSVC __attribute__((section(".blobsvc"), noinline, used))
@@ -549,13 +550,6 @@ BLOBSVC_ENTRY int blob_load_service(unsigned int payload_id, void* fallback_dst,
     shared_heap_free_service(total_bytes, stage);
     return rc;
 }
-
-#define IA32_MTRR_FIX4K_E0000 0x26cu
-#define IA32_MTRR_FIX4K_E8000 0x26du
-#define IA32_MTRR_FIX4K_F0000 0x26eu
-#define IA32_MTRR_FIX4K_F8000 0x26fu
-#define IA32_MTRR_DEF_TYPE 0x2ffu
-#define MTRR_DEF_TYPE_E 0x00000800u
 
 static BLOBSVC_INLINE unsigned int blob_pci_addr(unsigned char bus,
                                                  unsigned char dev,

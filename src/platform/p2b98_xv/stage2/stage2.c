@@ -1,5 +1,6 @@
 #include "acpi_tables.h"
 #include "blob.h"
+#include "bios_mtrr.h"
 #include "l2_service.h"
 #include "shared_service/service_table.h"
 
@@ -135,17 +136,6 @@ static unsigned long long rdmsr64(unsigned int msr) {
 static void wrmsr64(unsigned int msr, unsigned int lo, unsigned int hi) {
     __asm__ volatile("wrmsr" : : "c"(msr), "a"(lo), "d"(hi));
 }
-
-#define IA32_MTRR_FIX4K_C0000 0x268u
-#define IA32_MTRR_FIX4K_C8000 0x269u
-#define IA32_MTRR_FIX4K_D0000 0x26au
-#define IA32_MTRR_FIX4K_D8000 0x26bu
-#define IA32_MTRR_FIX4K_E0000 0x26cu
-#define IA32_MTRR_FIX4K_E8000 0x26du
-#define IA32_MTRR_FIX4K_F0000 0x26eu
-#define IA32_MTRR_FIX4K_F8000 0x26fu
-#define IA32_MTRR_DEF_TYPE 0x2ffu
-#define MTRR_DEF_TYPE_E 0x00000800u
 
 static void enable_shadow_ram_and_wb(void) {
     unsigned long long def_type = rdmsr64(IA32_MTRR_DEF_TYPE);
