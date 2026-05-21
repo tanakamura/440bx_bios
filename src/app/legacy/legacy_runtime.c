@@ -5,6 +5,7 @@
 #include "bios_serial.h"
 #include "bios_storage.h"
 #include "app/legacy/legacy_floppy.h"
+#include "app/legacy/legacy_platform.h"
 #include "app/legacy/legacy_timer.h"
 
 static void legacy_local_hdd_get_geometry(

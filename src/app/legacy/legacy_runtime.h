@@ -2,7 +2,6 @@
 #define LEGACY_RUNTIME_H
 
 #include "app/legacy/legacy_boot.h"
-#include "app/legacy/legacy_platform.h"
 #include "app/legacy/legacy_service.h"
 #include "app/legacy/legacy_thunk.h"
 
@@ -21,9 +20,7 @@ struct legacy_app_exports {
 };
 
 struct legacy_runtime_config {
-    struct legacy_platform_ops platform_ops;
     unsigned int total_bytes;
-    int hdd_present;
     unsigned short base_mem_kb;
     unsigned short ebda_segment;
     unsigned char boot_priority;

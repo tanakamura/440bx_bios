@@ -3,7 +3,6 @@
 #include "blob.h"
 #include "bios_serial.h"
 #include "bios_stage_context.h"
-#include "bios_storage.h"
 #include "app/legacy/legacy_boot.h"
 #include "app/legacy/legacy_rm.h"
 #include "app/legacy/legacy_runtime.h"
@@ -26,9 +25,7 @@ void bios_legacy_install_runtime(
     struct legacy_runtime_config config;
     blob_load_fn load;
 
-    config.platform_ops = (struct legacy_platform_ops){0};
     config.total_bytes = stage->total_bytes;
-    config.hdd_present = bios_hdd_is_present();
     config.base_mem_kb = bios_dos_base_mem_kb;
     config.ebda_segment = bios_ebda_segment;
     config.boot_priority = boot_priority;
