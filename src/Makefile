@@ -139,7 +139,7 @@ bios.elf: $(STAGE3_DIR_ELF)
 
 genrom: $(GENROM_BINS)
 
-romtest: romtest.asm
+romtest: tests/board/romtest.asm
 	nasm -f bin $< -o $@
 
 test: stdtest.img usbmbr.img linuxprobe.img linuxprobe_raw.img qemu_legacy_test_bios.bin qemu_legacy_genrom.bin qemu_linux_genrom.bin
