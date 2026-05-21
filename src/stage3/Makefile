@@ -8,7 +8,9 @@ STAGE3_LIB_OBJS := $(X86_OBJS) $(SERIAL_OBJS) $(PCI_OBJS) $(STORAGE_OBJS)
 STAGE3_OBJS := $(STAGE3_CORE_OBJS) $(STAGE3_LIB_OBJS)
 STAGE3_C_OBJS := $(filter-out bios16.o,$(STAGE3_CORE_OBJS))
 
-STAGE3_APP_OBJS := $(LINUX_LOADER_OBJS) $(LEGACY_OBJS)
+STAGE3_LEGACY_THUNK_OBJS := bios16.o legacy_bda.o legacy_keyboard.o \
+	legacy_platform.o legacy_thunk.o legacy_video.o
+STAGE3_APP_OBJS := $(LINUX_LOADER_OBJS) $(STAGE3_LEGACY_THUNK_OBJS)
 
 stage3.elf: $(STAGE3_OBJS) $(STAGE3_APP_OBJS) stage3/stage3.ld
 	$(LD) -m elf_i386 -T stage3/stage3.ld -Map stage3.map -o $@ $(STAGE3_OBJS) $(STAGE3_APP_OBJS)

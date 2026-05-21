@@ -8,6 +8,7 @@
 #include "bios_storage.h"
 #include "app/legacy/legacy_boot.h"
 #include "app/legacy/legacy_platform.h"
+#include "app/legacy/legacy_rm.h"
 #include "app/legacy/legacy_runtime.h"
 #include "app/legacy/legacy_thunk.h"
 
@@ -119,7 +120,9 @@ void bios_legacy_install_runtime(
         serial_write_string("\r\n");
     }
 
-    legacy_runtime_init(&config);
+    serial_write_string("Legacy app missing; direct thunk only\r\n");
+    legacy_install_bios_thunks(0, config.hdd_present, config.base_mem_kb,
+                               config.ebda_segment, install_shadow, 0);
 }
 
 static int legacy_exports_ready(void) {
@@ -136,7 +139,10 @@ unsigned char bios_legacy_prepare_boot_sector(
         return bios_legacy_exports.prepare_boot_sector(boot_priority,
                                                        record_boot_success);
     }
-    return legacy_prepare_boot_sector(boot_priority, record_boot_success);
+    serial_write_string("Legacy app missing for boot\r\n");
+    for (;;) {
+        __asm__ volatile("hlt");
+    }
 }
 
 void bios_legacy_install_boot_drive(unsigned char boot_drive) {
@@ -154,4 +160,11 @@ void bios_legacy_install_pm_stack_top(unsigned int pm_stack_top) {
         return;
     }
     legacy_install_pm_stack_top(pm_stack_top);
+}
+
+void bios_rm_service(unsigned int vector, struct rm_int13_frame* f) {
+    (void)vector;
+    if (f != 0) {
+        f->flags |= 0x0001u;
+    }
 }
