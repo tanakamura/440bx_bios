@@ -1,17 +1,13 @@
 #include "bios_legacy.h"
 
-#include "blob.h"
+#include "bios_app_loader.h"
 #include "bios_direct_thunk.h"
 #include "bios_serial.h"
-#include "bios_stage_context.h"
 #include "legacy_app_abi.h"
 #include "legacy_rm.h"
 
 static const unsigned short bios_ebda_segment = 0x0000u;
 static const unsigned short bios_dos_base_mem_kb = 640u;
-
-#define BIOS_LEGACY_APP_LOAD_FALLBACK 0x000f0000u
-#define BIOS_LEGACY_APP_LOAD_CAPACITY 0x00010000u
 
 typedef void (*legacy_app_entry_fn)(const struct legacy_runtime_config* config);
 
@@ -22,7 +18,6 @@ void bios_legacy_install_runtime(
     bios_legacy_record_boot_success_fn record_boot_success,
     bios_legacy_void_fn boot_pm32, bios_legacy_void_fn install_shadow) {
     struct legacy_runtime_config config;
-    blob_load_fn load;
 
     config.total_bytes = stage->total_bytes;
     config.base_mem_kb = bios_dos_base_mem_kb;
@@ -34,24 +29,13 @@ void bios_legacy_install_runtime(
     config.exports = &bios_legacy_exports;
     bios_legacy_exports = (struct legacy_app_exports){0};
 
-    load = bios_stage_context_blob_load(stage);
-    if (stage->legacy_app_blob_linear != 0u && load != 0) {
-        struct blob_status status;
-        unsigned int load_addr = BIOS_LEGACY_APP_LOAD_FALLBACK;
-        int rc = load(SHARED_PAYLOAD_ID_LEGACY_APP,
-                      (void*)BIOS_LEGACY_APP_LOAD_FALLBACK,
-                      BIOS_LEGACY_APP_LOAD_CAPACITY, &load_addr, &status,
-                      stage->total_bytes);
-        if (rc == 0) {
-            serial_write_string("Legacy app @ ");
-            serial_write_hex32(load_addr);
-            serial_write_string("\r\n");
+    if (stage->legacy_app_blob_linear != 0u) {
+        unsigned int load_addr = bios_app_load(
+            stage, SHARED_PAYLOAD_ID_LEGACY_APP, "Legacy");
+        if (load_addr != 0u) {
             ((legacy_app_entry_fn)load_addr)(&config);
             return;
         }
-        serial_write_string("Legacy app load failed rc=");
-        serial_write_hex32((unsigned int)rc);
-        serial_write_string("\r\n");
     }
 
     serial_write_string("Legacy app missing; direct thunk only\r\n");

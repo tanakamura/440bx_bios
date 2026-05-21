@@ -2,6 +2,7 @@
 
 #include "blob.h"
 #include "bios_acpi_runtime.h"
+#include "bios_app_loader.h"
 #include "bios_direct_thunk.h"
 #include "bios_memory.h"
 #include "bios_nvram.h"
@@ -10,9 +11,6 @@
 #include "bios_storage.h"
 
 static struct bios_linux_config active_config;
-
-#define BIOS_LINUX_APP_LOAD_FALLBACK 0x000f0000u
-#define BIOS_LINUX_APP_LOAD_CAPACITY 0x00010000u
 
 typedef int (*linux_loader_app_entry_fn)(
     const struct linux_loader_config* loader);
@@ -195,30 +193,18 @@ void bios_linux_fill_loader_config(struct linux_loader_config* loader,
 
 int bios_linux_try_boot(const struct bios_linux_config* config) {
     struct linux_loader_config loader = {0};
-    blob_load_fn load;
 
     bios_linux_fill_loader_config(&loader, config);
     if (config->stage->linux_loader_blob_linear == 0u) {
         return 0;
     }
 
-    load = bios_stage_context_blob_load(config->stage);
-    if (load != 0) {
-        struct blob_status status;
-        unsigned int load_addr = BIOS_LINUX_APP_LOAD_FALLBACK;
-        int rc = load(SHARED_PAYLOAD_ID_LINUX_LOADER_APP,
-                      (void*)BIOS_LINUX_APP_LOAD_FALLBACK,
-                      BIOS_LINUX_APP_LOAD_CAPACITY, &load_addr, &status,
-                      config->stage->total_bytes);
-        if (rc == 0) {
-            serial_write_string("Linux app @ ");
-            serial_write_hex32(load_addr);
-            serial_write_string("\r\n");
+    {
+        unsigned int load_addr = bios_app_load(
+            config->stage, SHARED_PAYLOAD_ID_LINUX_LOADER_APP, "Linux");
+        if (load_addr != 0u) {
             return ((linux_loader_app_entry_fn)load_addr)(&loader);
         }
-        serial_write_string("Linux app load failed rc=");
-        serial_write_hex32((unsigned int)rc);
-        serial_write_string("\r\n");
     }
     return 0;
 }

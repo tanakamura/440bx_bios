@@ -508,6 +508,7 @@ app ABI:
 - stage3 は `load_addr` へ app を展開して起動する。
 - stage3 との overlap を避けるため、原則として app は `0x00200000` 未満に置く。
 - `legacy` と `linux_loader` は `0x000F0000` でよい。
+- stage3 から app slot へ payload を読む共通処理は `stage3/bios_app_loader.*` に置く。slot の C 定数は `include/blob.h` の `APP_SLOT_LOAD_LINEAR/APP_SLOT_LOAD_CAPACITY` を使う。
 
 最初は stage3 と同じ ROM image に含めてもよいが、リンク単位と配置は分ける。将来的には app ごとに blob 化して、必要なものだけ展開する。
 

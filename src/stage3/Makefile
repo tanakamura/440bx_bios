@@ -1,7 +1,8 @@
 # Included from ../Makefile; paths are relative to src/.
 
 STAGE3_CORE_OBJS := stage3/entry.o stage3/stage3.o \
-	stage3/bios_acpi_runtime.o stage3/bios_benchmark.o \
+	stage3/bios_acpi_runtime.o stage3/bios_app_loader.o \
+	stage3/bios_benchmark.o \
 	stage3/bios_direct_thunk.o \
 	stage3/bios_legacy.o stage3/bios_linux.o stage3/bios_maintenance.o \
 	stage3/bios_memtest.o stage3/bios_selftest.o stage3/bios_settings.o \
