@@ -48,6 +48,7 @@ SECTIONS
 
     /DISCARD/ :
     {
+        *(.thunk16_legacy)
         *(.comment)
         *(.eh_frame)
         *(.note*)

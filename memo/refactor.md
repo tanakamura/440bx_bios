@@ -555,7 +555,7 @@ legacy app 切り出し方針:
 
 - `app/legacy/bios16.asm` から呼ぶ `bios_rm_service` は `app/legacy/legacy_service.c` 側に移動済み。legacy app は独立 ELF として link し、serial/storage/RTC/E820 provider も app 側で持つ。
 - thunk/IVT/DPT 設置は `legacy_thunk.*` に移動済み。legacy app runtime は shadow install callback だけ stage3 から受け取る。
-- stage3 は Linux/VBIOS/legacy fallback 用に `bios16.o` をまだ直接 link する。stage3 側の direct thunk install は `bios_direct_thunk.*` に分離済み。完全に切るには `bios16.asm` を低位 real-mode thunk library と legacy INT service thunk に分割する。
+- stage3 は Linux/VBIOS/legacy fallback 用に `bios16.o` をまだ直接 link する。stage3 側の direct thunk install は `bios_direct_thunk.*` に分離済み。`bios16.asm` の legacy INT stubs は `.thunk16_legacy` section へ分け、stage3 linker は direct/VBE/boot に必要な `.thunk16` だけを入れ、`.thunk16_legacy` は discard する。
 - INT19 boot sector 選択は `legacy_boot.*` に移動済み。ただし FreeDOS へ落ちる protected-mode-to-real-mode jump は `bios16.asm` の `bios_boot_freedos_pm32` symbol を参照している。
 - INT13 HDD path は legacy app 側の `lib/storage` scan を直接使う。stage3 から HDD state は渡さない。
 - INT15 E820 は legacy app 側の `bios_memory.*` を直接使う。stage3 から E820 callback は渡さない。

@@ -3,7 +3,7 @@
 extern unsigned char bios16_thunk_start[];
 extern unsigned char bios16_default[];
 extern unsigned char bios16_iret[];
-extern unsigned char bios16_thunk_end[];
+extern unsigned char bios16_direct_thunk_end[];
 extern unsigned int bios16_pm_stack_top;
 extern unsigned char bios16_boot_drive[];
 extern unsigned char bios16_vbe_mode_info[];
@@ -51,7 +51,7 @@ static void copy_thunk_code(bios_direct_thunk_void_fn install_shadow) {
     volatile unsigned char* thunk =
         (volatile unsigned char*)BIOS_DIRECT_THUNK_RUNTIME_BASE;
     unsigned int thunk_size =
-        (unsigned int)(bios16_thunk_end - bios16_thunk_start);
+        (unsigned int)(bios16_direct_thunk_end - bios16_thunk_start);
     unsigned int thunk_off;
 
     if (install_shadow != 0) {

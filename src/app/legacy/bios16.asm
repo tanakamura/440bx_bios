@@ -47,6 +47,7 @@ global bios16_int1a
 global bios16_int60
 global bios16_default
 global bios16_iret
+global bios16_direct_thunk_end
 global bios16_thunk_end
 global bios16_vbe_mode_info
 global bios16_pm_stack_top
@@ -358,78 +359,12 @@ rm_vbe_set_mode_entry:
     mov [cs:VBE_STATUS_OFF], ax
     jmp rm_enter_pm_vbe_return
 
-bios16_int08:
-    push ax
-    push ds
-    xor ax, ax
-    mov ds, ax
-    inc word [0x046c]
-    jnz .no_tick_carry
-    inc word [0x046e]
-.no_tick_carry:
-    cmp word [0x046e], 0x0018
-    jb .not_midnight
-    ja .midnight
-    cmp word [0x046c], 0x00b0
-    jb .not_midnight
-.midnight:
-    mov word [0x046c], 0
-    mov word [0x046e], 0
-    mov byte [0x0470], 1
-.not_midnight:
-    mov al, 0x20
-    out 0x20, al
-    pop ds
-    pop ax
-    int 0x1c
-    iret
-
 bios16_iret:
     iret
 
-bios16_int10:
-    mov word [cs:SERVICE_VECTOR_OFF], 0x0010
-    jmp short bios16_common
-
-bios16_int11:
-    mov word [cs:SERVICE_VECTOR_OFF], 0x0011
-    jmp short bios16_common
-
-bios16_int12:
-    mov word [cs:SERVICE_VECTOR_OFF], 0x0012
-    jmp short bios16_common
-
-bios16_int13:
-    mov word [cs:SERVICE_VECTOR_OFF], 0x0013
-    jmp short bios16_common
-
-bios16_int15:
-    mov word [cs:SERVICE_VECTOR_OFF], 0x0015
-    jmp short bios16_common
-
-bios16_int16:
-    mov word [cs:SERVICE_VECTOR_OFF], 0x0016
-    jmp short bios16_common
-
-bios16_int17:
-    mov word [cs:SERVICE_VECTOR_OFF], 0x0017
-    jmp short bios16_common
-
-bios16_int19:
-    mov word [cs:SERVICE_VECTOR_OFF], 0x0019
-    jmp short bios16_common
-
-bios16_int1a:
-    mov word [cs:SERVICE_VECTOR_OFF], 0x001a
-    jmp short bios16_common
-
-bios16_int60:
-    mov word [cs:SERVICE_VECTOR_OFF], 0x0060
-    jmp short bios16_common
-
 bios16_default:
     mov word [cs:SERVICE_VECTOR_OFF], 0x00ff
-    jmp short bios16_common
+    jmp bios16_common
 
 bios16_common:
     cli
@@ -499,5 +434,76 @@ rm_service_return:
     mov eax, [cs:RM_EAX_OFF]
     mov ax, [cs:RM_FRAME_OFF + 0]
     iret
+
+bios16_direct_thunk_end:
+
+section .thunk16_legacy progbits alloc exec align=16
+bits 16
+
+bios16_int08:
+    push ax
+    push ds
+    xor ax, ax
+    mov ds, ax
+    inc word [0x046c]
+    jnz .no_tick_carry
+    inc word [0x046e]
+.no_tick_carry:
+    cmp word [0x046e], 0x0018
+    jb .not_midnight
+    ja .midnight
+    cmp word [0x046c], 0x00b0
+    jb .not_midnight
+.midnight:
+    mov word [0x046c], 0
+    mov word [0x046e], 0
+    mov byte [0x0470], 1
+.not_midnight:
+    mov al, 0x20
+    out 0x20, al
+    pop ds
+    pop ax
+    int 0x1c
+    iret
+
+bios16_int10:
+    mov word [cs:SERVICE_VECTOR_OFF], 0x0010
+    jmp bios16_common
+
+bios16_int11:
+    mov word [cs:SERVICE_VECTOR_OFF], 0x0011
+    jmp bios16_common
+
+bios16_int12:
+    mov word [cs:SERVICE_VECTOR_OFF], 0x0012
+    jmp bios16_common
+
+bios16_int13:
+    mov word [cs:SERVICE_VECTOR_OFF], 0x0013
+    jmp bios16_common
+
+bios16_int15:
+    mov word [cs:SERVICE_VECTOR_OFF], 0x0015
+    jmp bios16_common
+
+bios16_int16:
+    mov word [cs:SERVICE_VECTOR_OFF], 0x0016
+    jmp bios16_common
+
+bios16_int17:
+    mov word [cs:SERVICE_VECTOR_OFF], 0x0017
+    jmp bios16_common
+
+bios16_int19:
+    mov word [cs:SERVICE_VECTOR_OFF], 0x0019
+    jmp bios16_common
+
+bios16_int1a:
+    mov word [cs:SERVICE_VECTOR_OFF], 0x001a
+    jmp bios16_common
+
+bios16_int60:
+    mov word [cs:SERVICE_VECTOR_OFF], 0x0060
+    jmp bios16_common
 
 bios16_thunk_end:
