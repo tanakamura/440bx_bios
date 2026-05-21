@@ -16,7 +16,7 @@ qemu_legacy_test_bios.bin: qemu_legacy_bios.bin test_floppy_blob.bin $(BUILD_SCR
 	cp qemu_legacy_bios.bin $@
 	python3 $(BUILD_SCRIPTS)/patch_rom_free.py $@ test_floppy_blob.bin
 
-qemu_start.o: platform/qemu/stage1/qemu_start.asm
+qemu_start.o: platform/qemu/stage1/qemu_start.asm shared_service/service_table.inc
 	nasm $(NASMFLAGS) -f elf32 $< -o $@
 
 qemu_stage1.o: platform/qemu/stage1/qemu_stage1.c

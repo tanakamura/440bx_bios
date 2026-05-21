@@ -704,6 +704,7 @@ payload blob の場所は boot context ではなく、shared service table の `
 - `legacy_app.elf` / `legacy_app.bin` の単体 build target は追加済み。legacy genrom profile の ROM blob list に入り、stage3 は payload があれば `0x000F0000` へロードして app entry を呼ぶ。boot sector 選択などの後続操作は `legacy_app_exports` 経由で app 側関数を呼ぶ。payload がない profile では Linux 用 direct thunk だけを設置する。
 - selftest/uACPI の object list / compile rule / test ELF blob rule は `app/selftest/s3test/Makefile` へ切り出し済み。生成物名は互換維持のため `src/s3test.elf` / `src/test_elf_blob.bin` のまま。旧 linker-symbol ROM 用の `test_elf_blob.o` は削除済み。
 - stage3 固有 `.c`、platform stage 固有 source、lib/shared helper の compile rule は各 directory の `Makefile` へ切り出し済み。top-level の `CORE_C_OBJS` は module 変数の合成になっている。旧 `start` / `qemu_bios.bin` ROM build rule は platform stage1 `Makefile` へ、genrom board/profile rule は platform board `Makefile` へ移動済み。
+- `shared_service/service_table.inc` は `shared_service/service_table.h` から生成する。QEMU stage1 asm はこれを include し、shared table size の C/asm 二重定義を避ける。
 
 ## 決定事項
 

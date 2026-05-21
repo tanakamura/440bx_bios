@@ -22,6 +22,9 @@ GENROM_STAGE_ELFS := $(P2B_STAGE1_ELF) $(P2B_STAGE2_ELF) \
 post_code.h post_code.inc ../specs/POST_CODE.md: post_code.def $(BUILD_SCRIPTS)/gen_post_codes.py
 	python3 $(BUILD_SCRIPTS)/gen_post_codes.py
 
+shared_service/service_table.inc: shared_service/service_table.h $(BUILD_SCRIPTS)/gen_shared_service_asm.py
+	python3 $(BUILD_SCRIPTS)/gen_shared_service_asm.py
+
 include app/legacy/Makefile
 include app/linux_loader/Makefile
 include app/selftest/s3test/Makefile
@@ -138,6 +141,6 @@ test: stdtest.img usbmbr.img linuxprobe.img linuxprobe_raw.img qemu_legacy_test_
 -include $(DEPS)
 
 clean:
-	rm -f start start_legacy start_legacy_test start.elf start_legacy.elf linuxprobe.elf *.map *.o *.d *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc $(GENROM_STAGE_ELFS) platform/p2b98_xv/stage1/*.map platform/qemu/stage1/*.map
+	rm -f start start_legacy start_legacy_test start.elf start_legacy.elf linuxprobe.elf *.map *.o *.d *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc shared_service/service_table.inc $(GENROM_STAGE_ELFS) platform/p2b98_xv/stage1/*.map platform/qemu/stage1/*.map
 
 install-all: install-xrecv-exe install-mem-dmp-exe install-flashutil-exe
