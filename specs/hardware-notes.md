@@ -54,21 +54,24 @@
 
 ## Planned stage split
 
-- The current plan is to split the ROM into:
-  - a `16 KiB` bootblock in the reset-visible top window
-  - a larger BIOS payload stored in the rest of the ROM
+- The ROM is generated from a board/profile blob list. Stage1 is placed at the
+  reset-visible end of the 256 KiB ROM; other payloads are recorded in the ROM
+  payload directory.
 - Current stage split:
-  - bootblock lives in the top `16KiB` ROM window at `0xFC000-0xFFFFF`
-  - `BIOS.elf` is linked separately and copied/decompressed to shadow DRAM at `0xe0000-0xfffff`
-  - `BIOS.elf` keeps the protected-mode C service code in `0xe0000-0xeffff`
-  - `BIOS.elf` keeps the real-mode thunk/runtime tables in `0xf0000-`
-  - `BIOS.elf` places its 32-bit C entry at `0x000e0000`
+  - stage1 performs CAR/DRAM init, installs the shared service table at the top
+    of DRAM, and loads stage2 at `0x00080000`.
+  - stage2 performs board-dependent chipset setup, including PAM/MTRR and ACPI
+    table preparation, then loads stage3 at `0x00200000`.
+  - stage3 is the common high-DRAM runtime. It loads apps through the shared
+    blob service.
+  - `app/legacy` and `app/linux_loader` are separate app payloads. Their load
+    address is `0x000f0000`; stage3 itself is not placed in the shadow area.
 - The runtime no longer reserves `0x80000` or `0x9fc00` for BIOS private state; conventional-memory size reported to DOS can be `640 KiB`.
 
 ## Current BIOS memory map policy
 
 - Conventional memory `0x00000-0x9fbff` is reported usable.
-- `0x9fc00-0xfffff` is reserved for EBDA-compatible holes, VGA/option ROM area, BIOS protected-mode runtime at `0xe0000-0xeffff`, and the BIOS real-mode thunk at `0xf0000-`.
+- `0x9fc00-0xfffff` is reserved for EBDA-compatible holes, VGA/option ROM area, and the low app/thunk window at `0xf0000-`.
 - `0x00100000` through `detected_dram_end - 1MiB` is reported usable by `INT 15h E820h`, `AH=88h`, and `E801h`.
 - The top `1MiB` of detected DRAM is reserved for BIOS protected-mode stack and IDE/USB scratch buffers used by BIOS services after boot.
 - RAM floppy staging has been removed; boot media should be supplied by IDE/USB storage.
