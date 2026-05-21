@@ -3,38 +3,19 @@ from __future__ import annotations
 
 from pathlib import Path
 import argparse
+import re
 import struct
 import sys
 
 import gen_blob
 
 
-ROM_SIZE = 256 * 1024
-ROM_LOW_BASE = 0x000C0000
-ROM_HIGH_BASE = 0x100000000 - ROM_SIZE
+U32 = 0x100000000
 DIRECTORY_BYTES = 0x2000
 PAYLOAD_ALIGN = 16
 
-ROM_MAGIC = 0x304D5242  # 'BRM0'
-ROM_VERSION = 1
 ROM_HEADER_SIZE = 36
 ROM_ENTRY_SIZE = 32
-
-PAYLOAD_IDS = {
-    "stage2": 1,
-    "stage3": 2,
-    "legacy": 3,
-    "linux_loader": 4,
-    "vgabios": 5,
-    "dsdt": 6,
-    "test_elf": 7,
-    "selftest": 8,
-    "test_floppy": 9,
-}
-
-PAYLOAD_TYPE_BLZ4 = 1
-PAYLOAD_TYPE_APP = 2
-PAYLOAD_TYPE_RAW = 3
 
 SHF_ALLOC = 0x2
 SHT_PROGBITS = 1
@@ -43,6 +24,83 @@ STAGE1_EXCLUDED_SECTIONS = {
     ".rom_anchor",
     ".rom_free_descriptor",
 }
+
+SHARED_CONSTANT_NAMES = {
+    "SHARED_ROM_DIRECTORY_MAGIC",
+    "SHARED_ROM_DIRECTORY_VERSION",
+    "SHARED_ROM_SIZE",
+    "SHARED_ROM_LOW_BASE",
+    "SHARED_ROM_HIGH_BASE",
+    "SHARED_PAYLOAD_ID_STAGE2",
+    "SHARED_PAYLOAD_ID_STAGE3",
+    "SHARED_PAYLOAD_ID_LEGACY_APP",
+    "SHARED_PAYLOAD_ID_LINUX_LOADER_APP",
+    "SHARED_PAYLOAD_ID_VGABIOS",
+    "SHARED_PAYLOAD_ID_DSDT",
+    "SHARED_PAYLOAD_ID_TEST_ELF",
+    "SHARED_PAYLOAD_ID_SELFTEST_APP",
+    "SHARED_PAYLOAD_ID_TEST_FLOPPY",
+    "SHARED_PAYLOAD_TYPE_BLZ4",
+    "SHARED_PAYLOAD_TYPE_APP",
+    "SHARED_PAYLOAD_TYPE_RAW",
+}
+
+
+def parse_c_int_expr(expr: str) -> int:
+    expr = expr.split("/*", 1)[0].strip()
+    expr = re.sub(
+        r"(0x[0-9a-fA-F]+|[0-9]+)[uUlL]*",
+        lambda match: match.group(1),
+        expr,
+    )
+    if not re.fullmatch(r"[0-9a-fA-FxX()+*/%<>&|~^ \t+-]+", expr):
+        raise ValueError(f"unsupported integer expression: {expr}")
+    return int(eval(expr, {"__builtins__": {}}, {}))
+
+
+def load_shared_constants(path: Path) -> dict[str, int]:
+    pattern = re.compile(r"^#define\s+([A-Z0-9_]+)\s+(.+?)\s*$")
+    constants: dict[str, int] = {}
+    for raw_line in path.read_text().splitlines():
+        match = pattern.match(raw_line.strip())
+        if not match:
+            continue
+        name, value = match.groups()
+        if name in SHARED_CONSTANT_NAMES:
+            constants[name] = parse_c_int_expr(value)
+    missing = sorted(SHARED_CONSTANT_NAMES - set(constants))
+    if missing:
+        raise ValueError(f"missing shared constants: {', '.join(missing)}")
+    return constants
+
+
+SRC_DIR = Path(__file__).resolve().parents[2] / "src"
+SHARED = load_shared_constants(SRC_DIR / "shared_service" / "service_table.h")
+
+ROM_SIZE = SHARED["SHARED_ROM_SIZE"]
+ROM_LOW_BASE = SHARED["SHARED_ROM_LOW_BASE"]
+ROM_HIGH_BASE = SHARED["SHARED_ROM_HIGH_BASE"]
+if ROM_HIGH_BASE != U32 - ROM_SIZE:
+    raise ValueError("shared ROM high base does not match ROM size")
+
+ROM_MAGIC = SHARED["SHARED_ROM_DIRECTORY_MAGIC"]
+ROM_VERSION = SHARED["SHARED_ROM_DIRECTORY_VERSION"]
+
+PAYLOAD_IDS = {
+    "stage2": SHARED["SHARED_PAYLOAD_ID_STAGE2"],
+    "stage3": SHARED["SHARED_PAYLOAD_ID_STAGE3"],
+    "legacy": SHARED["SHARED_PAYLOAD_ID_LEGACY_APP"],
+    "linux_loader": SHARED["SHARED_PAYLOAD_ID_LINUX_LOADER_APP"],
+    "vgabios": SHARED["SHARED_PAYLOAD_ID_VGABIOS"],
+    "dsdt": SHARED["SHARED_PAYLOAD_ID_DSDT"],
+    "test_elf": SHARED["SHARED_PAYLOAD_ID_TEST_ELF"],
+    "selftest": SHARED["SHARED_PAYLOAD_ID_SELFTEST_APP"],
+    "test_floppy": SHARED["SHARED_PAYLOAD_ID_TEST_FLOPPY"],
+}
+
+PAYLOAD_TYPE_BLZ4 = SHARED["SHARED_PAYLOAD_TYPE_BLZ4"]
+PAYLOAD_TYPE_APP = SHARED["SHARED_PAYLOAD_TYPE_APP"]
+PAYLOAD_TYPE_RAW = SHARED["SHARED_PAYLOAD_TYPE_RAW"]
 
 
 def align_up(value: int, align: int) -> int:
