@@ -1,5 +1,6 @@
 #include "app/legacy/legacy_time.h"
 
+#include "legacy_lowmem.h"
 #include "app/legacy/legacy_platform.h"
 
 #define BDA_TICK_COUNT 0x046cu
@@ -12,7 +13,7 @@ static void rm_clear_cf(struct rm_int13_frame* f) { f->flags &= 0xfffeu; }
 static void legacy_set_tick_counter(unsigned int* tick_counter,
                                     unsigned int ticks) {
     *tick_counter = ticks;
-    *(volatile unsigned int*)BDA_TICK_COUNT = ticks;
+    *legacy_lowmem_u32(BDA_TICK_COUNT) = ticks;
 }
 
 void legacy_int1a_service(struct rm_int13_frame* f,
@@ -21,15 +22,14 @@ void legacy_int1a_service(struct rm_int13_frame* f,
         case 0x00u:
             f->cx = (unsigned short)(*tick_counter >> 16);
             f->dx = (unsigned short)*tick_counter;
-            f->ax = (unsigned short)(*(volatile unsigned char*)
-                                         BDA_MIDNIGHT_FLAG);
-            *(volatile unsigned char*)BDA_MIDNIGHT_FLAG = 0u;
+            f->ax = (unsigned short)*legacy_lowmem_u8(BDA_MIDNIGHT_FLAG);
+            *legacy_lowmem_u8(BDA_MIDNIGHT_FLAG) = 0u;
             rm_clear_cf(f);
             return;
         case 0x01u:
             legacy_set_tick_counter(tick_counter,
                                     ((unsigned int)f->cx << 16) | f->dx);
-            *(volatile unsigned char*)BDA_MIDNIGHT_FLAG = 0u;
+            *legacy_lowmem_u8(BDA_MIDNIGHT_FLAG) = 0u;
             rm_clear_cf(f);
             return;
         case 0x02u: {

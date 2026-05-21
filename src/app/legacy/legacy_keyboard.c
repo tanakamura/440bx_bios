@@ -1,5 +1,6 @@
 #include "app/legacy/legacy_io.h"
 #include "legacy_keyboard.h"
+#include "legacy_lowmem.h"
 
 #define BDA_KBD_FLAGS1 0x0417u
 #define BDA_KBD_FLAGS2 0x0418u
@@ -91,22 +92,22 @@ static unsigned short translate_serial_key(unsigned char ch) {
 }
 
 void legacy_keyboard_init(void) {
-    *(volatile unsigned char*)BDA_KBD_FLAGS1 = 0x00u;
-    *(volatile unsigned char*)BDA_KBD_FLAGS2 = 0x00u;
-    *(volatile unsigned short*)BDA_KBD_HEAD = 0x001eu;
-    *(volatile unsigned short*)BDA_KBD_TAIL = 0x001eu;
-    *(volatile unsigned short*)BDA_KBD_BUF_START = 0x001eu;
-    *(volatile unsigned short*)BDA_KBD_BUF_END = 0x003eu;
+    *legacy_lowmem_u8(BDA_KBD_FLAGS1) = 0x00u;
+    *legacy_lowmem_u8(BDA_KBD_FLAGS2) = 0x00u;
+    *legacy_lowmem_u16(BDA_KBD_HEAD) = 0x001eu;
+    *legacy_lowmem_u16(BDA_KBD_TAIL) = 0x001eu;
+    *legacy_lowmem_u16(BDA_KBD_BUF_START) = 0x001eu;
+    *legacy_lowmem_u16(BDA_KBD_BUF_END) = 0x003eu;
 }
 
 static int kbd_buf_nonempty(void) {
-    return *(volatile unsigned short*)BDA_KBD_HEAD !=
-           *(volatile unsigned short*)BDA_KBD_TAIL;
+    return *legacy_lowmem_u16(BDA_KBD_HEAD) !=
+           *legacy_lowmem_u16(BDA_KBD_TAIL);
 }
 
 static int kbd_enqueue(unsigned short ax) {
-    unsigned short head = *(volatile unsigned short*)BDA_KBD_HEAD;
-    unsigned short tail = *(volatile unsigned short*)BDA_KBD_TAIL;
+    unsigned short head = *legacy_lowmem_u16(BDA_KBD_HEAD);
+    unsigned short tail = *legacy_lowmem_u16(BDA_KBD_TAIL);
     unsigned short next = (unsigned short)(tail + 2u);
     if (next >= BDA_KBD_BUF_LIMIT) {
         next = 0x001eu;
@@ -114,20 +115,20 @@ static int kbd_enqueue(unsigned short ax) {
     if (next == head) {
         return 0;
     }
-    *(volatile unsigned short*)(BDA_KBD_BUF_BASE + tail - 0x001eu) = ax;
-    *(volatile unsigned short*)BDA_KBD_TAIL = next;
+    *legacy_lowmem_u16(BDA_KBD_BUF_BASE + tail - 0x001eu) = ax;
+    *legacy_lowmem_u16(BDA_KBD_TAIL) = next;
     return 1;
 }
 
 static unsigned short kbd_dequeue(void) {
-    unsigned short head = *(volatile unsigned short*)BDA_KBD_HEAD;
+    unsigned short head = *legacy_lowmem_u16(BDA_KBD_HEAD);
     unsigned short value =
-        *(volatile unsigned short*)(BDA_KBD_BUF_BASE + head - 0x001eu);
+        *legacy_lowmem_u16(BDA_KBD_BUF_BASE + head - 0x001eu);
     head = (unsigned short)(head + 2u);
     if (head >= BDA_KBD_BUF_LIMIT) {
         head = 0x001eu;
     }
-    *(volatile unsigned short*)BDA_KBD_HEAD = head;
+    *legacy_lowmem_u16(BDA_KBD_HEAD) = head;
     return value;
 }
 
@@ -149,24 +150,21 @@ void legacy_int16_service(struct rm_int13_frame* f) {
                 rm_set_zf(f);
             } else {
                 rm_clear_zf(f);
-                f->ax = *(
-                    volatile unsigned short*)(BDA_KBD_BUF_BASE +
-                                              (*(volatile unsigned short*)
-                                                   BDA_KBD_HEAD -
-                                               0x001eu));
+                f->ax = *legacy_lowmem_u16(
+                    BDA_KBD_BUF_BASE +
+                    (*legacy_lowmem_u16(BDA_KBD_HEAD) - 0x001eu));
             }
             rm_clear_cf(f);
             return;
         case 0x02u:
             f->ax = (unsigned short)((f->ax & 0xff00u) |
-                                     *(volatile unsigned char*)BDA_KBD_FLAGS1);
+                                     *legacy_lowmem_u8(BDA_KBD_FLAGS1));
             rm_clear_cf(f);
             return;
         case 0x12u:
             f->ax =
-                (unsigned short)((*(volatile unsigned char*)BDA_KBD_FLAGS2
-                                  << 8) |
-                                 *(volatile unsigned char*)BDA_KBD_FLAGS1);
+                (unsigned short)((*legacy_lowmem_u8(BDA_KBD_FLAGS2) << 8) |
+                                 *legacy_lowmem_u8(BDA_KBD_FLAGS1));
             rm_clear_cf(f);
             return;
         case 0x00u:

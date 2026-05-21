@@ -1,4 +1,5 @@
 #include "legacy_video.h"
+#include "legacy_lowmem.h"
 #include "legacy_platform.h"
 
 #define BDA_VIDEO_MODE 0x0449u
@@ -17,27 +18,27 @@
 #define BDA_VIDEO_SWITCHES 0x0488u
 #define BDA_VIDEO_DCC_INDEX 0x048au
 
-static unsigned short* cursor_slot(unsigned char page) {
-    return (unsigned short*)(BDA_CURSOR_POS +
+static volatile unsigned short* cursor_slot(unsigned char page) {
+    return legacy_lowmem_u16(BDA_CURSOR_POS +
                              ((unsigned short)(page & 7u) * 2u));
 }
 
 void legacy_video_init(void) {
     unsigned int i;
-    *(volatile unsigned char*)BDA_VIDEO_MODE = 0x03u;
-    *(volatile unsigned short*)BDA_VIDEO_COLS = 80u;
-    *(volatile unsigned short*)BDA_VIDEO_PAGE_SIZE = 0x1000u;
-    *(volatile unsigned short*)BDA_VIDEO_PAGE_OFFSET = 0x0000u;
-    *(volatile unsigned short*)BDA_CURSOR_SHAPE = 0x0607u;
-    *(volatile unsigned char*)BDA_ACTIVE_PAGE = 0x00u;
-    *(volatile unsigned short*)BDA_VIDEO_CRTC_PORT = 0x03d4u;
-    *(volatile unsigned char*)BDA_VIDEO_MODE_CONTROL = 0x09u;
-    *(volatile unsigned char*)BDA_VIDEO_PALETTE = 0x00u;
-    *(volatile unsigned char*)BDA_VIDEO_ROWS_MINUS1 = 24u;
-    *(volatile unsigned char*)BDA_VIDEO_CHAR_HEIGHT = 16u;
-    *(volatile unsigned char*)BDA_VIDEO_CTL = 0x00u;
-    *(volatile unsigned char*)BDA_VIDEO_SWITCHES = 0x00u;
-    *(volatile unsigned char*)BDA_VIDEO_DCC_INDEX = 0x08u;
+    *legacy_lowmem_u8(BDA_VIDEO_MODE) = 0x03u;
+    *legacy_lowmem_u16(BDA_VIDEO_COLS) = 80u;
+    *legacy_lowmem_u16(BDA_VIDEO_PAGE_SIZE) = 0x1000u;
+    *legacy_lowmem_u16(BDA_VIDEO_PAGE_OFFSET) = 0x0000u;
+    *legacy_lowmem_u16(BDA_CURSOR_SHAPE) = 0x0607u;
+    *legacy_lowmem_u8(BDA_ACTIVE_PAGE) = 0x00u;
+    *legacy_lowmem_u16(BDA_VIDEO_CRTC_PORT) = 0x03d4u;
+    *legacy_lowmem_u8(BDA_VIDEO_MODE_CONTROL) = 0x09u;
+    *legacy_lowmem_u8(BDA_VIDEO_PALETTE) = 0x00u;
+    *legacy_lowmem_u8(BDA_VIDEO_ROWS_MINUS1) = 24u;
+    *legacy_lowmem_u8(BDA_VIDEO_CHAR_HEIGHT) = 16u;
+    *legacy_lowmem_u8(BDA_VIDEO_CTL) = 0x00u;
+    *legacy_lowmem_u8(BDA_VIDEO_SWITCHES) = 0x00u;
+    *legacy_lowmem_u8(BDA_VIDEO_DCC_INDEX) = 0x08u;
     for (i = 0; i < 8u; ++i) {
         *cursor_slot((unsigned char)i) = 0x0000u;
     }
@@ -53,7 +54,7 @@ static void set_cursor(unsigned char page, unsigned char row,
 }
 
 static void tty_advance(unsigned char ch) {
-    unsigned char page = *(volatile unsigned char*)BDA_ACTIVE_PAGE;
+    unsigned char page = *legacy_lowmem_u8(BDA_ACTIVE_PAGE);
     unsigned short cur = get_cursor(page);
     unsigned char row = (unsigned char)(cur >> 8);
     unsigned char col = (unsigned char)cur;
@@ -95,7 +96,7 @@ void legacy_int10_service(struct rm_int13_frame* f) {
     }
     if (ah == 0x03u) {
         f->dx = get_cursor((unsigned char)(f->bx >> 8));
-        f->cx = *(volatile unsigned short*)BDA_CURSOR_SHAPE;
+        f->cx = *legacy_lowmem_u16(BDA_CURSOR_SHAPE);
         return;
     }
     if (ah == 0x0fu) {

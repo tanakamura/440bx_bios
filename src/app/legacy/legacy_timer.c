@@ -1,6 +1,7 @@
 #include "app/legacy/legacy_timer.h"
 
 #include "app/legacy/legacy_io.h"
+#include "legacy_lowmem.h"
 
 #define IA32_APIC_BASE 0x0000001bu
 #define APIC_BASE_ENABLE 0x00000800u
@@ -35,7 +36,7 @@ static unsigned short pit_read_counter0(void) {
 
 static void set_tick_counter(unsigned int ticks) {
     tick_counter = ticks;
-    *(volatile unsigned int*)BDA_TICK_COUNT = ticks;
+    *legacy_lowmem_u32(BDA_TICK_COUNT) = ticks;
 }
 
 static void io_wait(void) { outb(0x0080u, 0x00u); }
@@ -55,7 +56,7 @@ static void init_pit(void) {
     tick_initialized = 0;
     tick_subcount = 0;
     set_tick_counter(0u);
-    *(volatile unsigned char*)BDA_MIDNIGHT_FLAG = 0u;
+    *legacy_lowmem_u8(BDA_MIDNIGHT_FLAG) = 0u;
     timer_irq_enabled = 0u;
 }
 
@@ -97,7 +98,7 @@ void legacy_timer_init(void) {
 void legacy_timer_update(void) {
     unsigned short raw;
     if (timer_irq_enabled) {
-        tick_counter = *(volatile unsigned int*)BDA_TICK_COUNT;
+        tick_counter = *legacy_lowmem_u32(BDA_TICK_COUNT);
         return;
     }
 
@@ -105,7 +106,7 @@ void legacy_timer_update(void) {
     if (!tick_initialized) {
         tick_initialized = 1;
         tick_last_raw = raw;
-        *(volatile unsigned int*)BDA_TICK_COUNT = tick_counter;
+        *legacy_lowmem_u32(BDA_TICK_COUNT) = tick_counter;
         return;
     }
 
@@ -117,10 +118,10 @@ void legacy_timer_update(void) {
         ++tick_counter;
         if (tick_counter >= 0x001800b0u) {
             tick_counter = 0;
-            *(volatile unsigned char*)BDA_MIDNIGHT_FLAG = 1u;
+            *legacy_lowmem_u8(BDA_MIDNIGHT_FLAG) = 1u;
         }
     }
-    *(volatile unsigned int*)BDA_TICK_COUNT = tick_counter;
+    *legacy_lowmem_u32(BDA_TICK_COUNT) = tick_counter;
 }
 
 unsigned int* legacy_timer_tick_counter(void) { return &tick_counter; }
