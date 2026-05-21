@@ -25,6 +25,15 @@ linuxprobe.elf: linuxprobe.o tests/boot/linuxprobe.ld
 linuxprobe.img linuxprobe_raw.img: linuxprobe.elf $(BUILD_SCRIPTS)/gen_linuxprobe_img.py
 	python3 $(BUILD_SCRIPTS)/gen_linuxprobe_img.py
 
+linuxprobe_overlap.o: tests/boot/linuxprobe_overlap.asm tests/boot/linuxprobe.asm
+	nasm -f elf32 $< -o $@
+
+linuxprobe_overlap.elf: linuxprobe_overlap.o tests/boot/linuxprobe_overlap.ld
+	$(LD) -m elf_i386 -T tests/boot/linuxprobe_overlap.ld -o $@ linuxprobe_overlap.o
+
+linuxprobe_overlap.img linuxprobe_overlap_raw.img: linuxprobe_overlap.elf $(BUILD_SCRIPTS)/gen_linuxprobe_img.py
+	python3 $(BUILD_SCRIPTS)/gen_linuxprobe_img.py linuxprobe_overlap.elf linuxprobe_overlap.img linuxprobe_overlap_raw.img
+
 flashtest.img: flashutil.exe $(BUILD_SCRIPTS)/gen_flashtest_img.py
 	python3 $(BUILD_SCRIPTS)/gen_flashtest_img.py
 
@@ -40,5 +49,5 @@ test_floppy_blob.bin: testfd.img $(BUILD_SCRIPTS)/gen_fdos_sparse.py
 romtest: tests/board/romtest.asm
 	nasm -f bin $< -o $@
 
-test: stdtest.img usbmbr.img linuxprobe.img linuxprobe_raw.img qemu_legacy_test_bios.bin qemu_legacy_genrom.bin qemu_linux_genrom.bin
+test: stdtest.img usbmbr.img linuxprobe.img linuxprobe_raw.img linuxprobe_overlap.img qemu_legacy_test_bios.bin qemu_legacy_genrom.bin qemu_linux_genrom.bin
 	python3 $(TEST_SCRIPTS)/run_qemu_tests.py

@@ -9,6 +9,7 @@
 #define LINUX_ELF_PHDR_MAX 0x4000u
 #define LINUX_E820_TABLE_OFF 0x02d0u
 #define LINUX_E820_MAX 128u
+#define LINUX_DEFER_SEG_MAX 8u
 #define ELF32_PT_LOAD 1u
 #define VBE_MODE_1024_768_16 0x0117u
 #define VBE_MODE_LFB 0x4000u
@@ -44,8 +45,24 @@ struct linux_vbe_lfb {
     unsigned short attrs;
 };
 
+struct linux_deferred_segment {
+    unsigned int temp;
+    unsigned int dest;
+    unsigned int filesz;
+    unsigned int memsz;
+};
+
 static struct linux_vbe_lfb linux_vbe;
+static struct linux_deferred_segment linux_deferred[LINUX_DEFER_SEG_MAX];
 static const struct linux_loader_config* linux_active_config;
+
+static unsigned int linux_align_up(unsigned int value, unsigned int align) {
+    return (value + align - 1u) & ~(align - 1u);
+}
+
+static unsigned int linux_align_down(unsigned int value, unsigned int align) {
+    return value & ~(align - 1u);
+}
 
 static void linux_loader_set_active_config(
     const struct linux_loader_config* config) {
@@ -182,6 +199,42 @@ static void linux_memcpy(void* dst, const void* src, unsigned int len) {
     const unsigned char* s = (const unsigned char*)src;
     while (len-- != 0u) {
         *d++ = *s++;
+    }
+}
+
+static int linux_range_overlaps(unsigned int a_base, unsigned int a_size,
+                                unsigned int b_base, unsigned int b_size) {
+    unsigned int a_end;
+    unsigned int b_end;
+
+    if (a_size == 0u || b_size == 0u) {
+        return 0;
+    }
+    a_end = a_base + a_size;
+    b_end = b_base + b_size;
+    if (a_end < a_base || b_end < b_base) {
+        return 1;
+    }
+    return a_base < b_end && b_base < a_end;
+}
+
+static int linux_should_defer_load(const struct linux_loader_config* config,
+                                   unsigned int paddr, unsigned int memsz) {
+    return linux_range_overlaps(paddr, memsz, config->runtime_protect_base,
+                                config->runtime_protect_size);
+}
+
+static void linux_apply_deferred_segments(
+    const struct linux_deferred_segment* deferred, unsigned int count) {
+    unsigned int i;
+
+    for (i = 0u; i < count; ++i) {
+        const struct linux_deferred_segment* seg = deferred + i;
+        linux_memcpy((void*)seg->dest, (const void*)seg->temp, seg->filesz);
+        if (seg->memsz > seg->filesz) {
+            linux_memset((void*)(seg->dest + seg->filesz), 0u,
+                         seg->memsz - seg->filesz);
+        }
     }
 }
 
@@ -800,6 +853,10 @@ static int try_boot_linux_current(const struct linux_loader_config* config) {
     unsigned int initrd_size = 0u;
     unsigned int i;
     unsigned int usable_end = linux_usable_end(config);
+    unsigned int defer_count = 0u;
+    unsigned int defer_total = 0u;
+    unsigned int defer_base = 0u;
+    unsigned int defer_cursor = 0u;
     unsigned char whole_disk = 0u;
 
     if (linux_select_kernel_source(config, &kernel_part, &whole_disk) != 0) {
@@ -869,26 +926,16 @@ static int try_boot_linux_current(const struct linux_loader_config* config) {
             return 0;
         }
         linux_put32(ph + 12u, paddr);
-
-        serial_write_string("Linux LOAD ");
-        serial_write_hex32(paddr);
-        serial_write_string(" filesz=");
-        serial_write_hex32(filesz);
-        serial_write_string(" memsz=");
-        serial_write_hex32(memsz);
-        serial_write_string(" off=");
-        serial_write_hex32(off);
-        serial_write_string("\r\n");
-
-        if (linux_read_partition_bytes(&kernel_part, off, paddr, filesz) != 0) {
-            serial_write_string("Linux LOAD read failed\r\n");
-            return 0;
-        }
-        if (memsz > filesz) {
-            linux_memset((void*)(paddr + filesz), 0u, memsz - filesz);
-        }
         if (paddr + memsz > load_high) {
             load_high = paddr + memsz;
+        }
+        if (linux_should_defer_load(config, paddr, memsz)) {
+            if (defer_count >= LINUX_DEFER_SEG_MAX) {
+                serial_write_string("Linux too many deferred LOADs\r\n");
+                return 0;
+            }
+            defer_total = linux_align_up(defer_total, 16u) + filesz;
+            ++defer_count;
         }
     }
 
@@ -911,6 +958,76 @@ static int try_boot_linux_current(const struct linux_loader_config* config) {
         serial_write_string("Linux initrd: none\r\n");
     }
 
+    if (defer_total != 0u) {
+        unsigned int defer_limit = initrd_base != 0u ? initrd_base : usable_end;
+
+        if (defer_total > defer_limit || defer_limit - defer_total < load_high) {
+            serial_write_string("Linux defer buffer no room\r\n");
+            return 0;
+        }
+        defer_base = linux_align_down(defer_limit - defer_total, 0x1000u);
+        if (defer_base < load_high) {
+            serial_write_string("Linux defer buffer overlaps kernel\r\n");
+            return 0;
+        }
+        serial_write_string("Linux deferred LOAD buffer @ ");
+        serial_write_hex32(defer_base);
+        serial_write_string(" size=");
+        serial_write_hex32(defer_total);
+        serial_write_string("\r\n");
+    }
+
+    defer_count = 0u;
+    defer_cursor = defer_base;
+    for (i = 0; i < phnum; ++i) {
+        unsigned char* ph = phdrs + i * phentsize;
+        unsigned int type = linux_le32(ph + 0u);
+        unsigned int off = linux_le32(ph + 4u);
+        unsigned int paddr = linux_le32(ph + 12u);
+        unsigned int filesz = linux_le32(ph + 16u);
+        unsigned int memsz = linux_le32(ph + 20u);
+        unsigned int dest = paddr;
+        int deferred_load;
+
+        if (type != ELF32_PT_LOAD) {
+            continue;
+        }
+
+        deferred_load = linux_should_defer_load(config, paddr, memsz);
+        if (deferred_load) {
+            dest = linux_align_up(defer_cursor, 16u);
+            defer_cursor = dest + filesz;
+        }
+
+        serial_write_string("Linux LOAD ");
+        serial_write_hex32(paddr);
+        serial_write_string(" filesz=");
+        serial_write_hex32(filesz);
+        serial_write_string(" memsz=");
+        serial_write_hex32(memsz);
+        serial_write_string(" off=");
+        serial_write_hex32(off);
+        if (deferred_load) {
+            serial_write_string(" defer=");
+            serial_write_hex32(dest);
+        }
+        serial_write_string("\r\n");
+
+        if (linux_read_partition_bytes(&kernel_part, off, dest, filesz) != 0) {
+            serial_write_string("Linux LOAD read failed\r\n");
+            return 0;
+        }
+        if (deferred_load) {
+            linux_deferred[defer_count].temp = dest;
+            linux_deferred[defer_count].dest = paddr;
+            linux_deferred[defer_count].filesz = filesz;
+            linux_deferred[defer_count].memsz = memsz;
+            ++defer_count;
+        } else if (memsz > filesz) {
+            linux_memset((void*)(paddr + filesz), 0u, memsz - filesz);
+        }
+    }
+
     linux_loader_prepare_boot_params(config, entry_phys, initrd_base,
                                      initrd_size);
     if (config->record_boot_success != 0) {
@@ -924,6 +1041,7 @@ static int try_boot_linux_current(const struct linux_loader_config* config) {
     serial_write_string(" params=");
     serial_write_hex32(LINUX_LOADER_BOOT_PARAMS);
     serial_write_string("\r\n");
+    linux_apply_deferred_segments(linux_deferred, defer_count);
     linux_jump(entry_phys);
     return 1;
 }

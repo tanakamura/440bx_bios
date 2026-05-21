@@ -89,6 +89,8 @@ void bios_linux_fill_loader_config(struct linux_loader_config* loader,
     loader->memory_extended_usable_end = bios_memory_extended_usable_end;
     loader->memory_e820_entry_count = bios_memory_e820_entry_count;
     loader->memory_e820_get_entry = linux_memory_e820_get_entry_cb;
+    loader->runtime_protect_base = BIOS_LOAD_LINEAR;
+    loader->runtime_protect_size = BIOS_LOAD_CAPACITY;
     loader->release_boot_services = release_linux_boot_services;
 }
 

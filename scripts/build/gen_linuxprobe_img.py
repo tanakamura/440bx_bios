@@ -23,10 +23,16 @@ def put_part(mbr: bytearray, index: int, boot: int, ptype: int,
 
 
 def main() -> None:
-    elf = (ROOT / "linuxprobe.elf").read_bytes()
+    import sys
+
+    elf_name = sys.argv[1] if len(sys.argv) > 1 else "linuxprobe.elf"
+    img_name = sys.argv[2] if len(sys.argv) > 2 else "linuxprobe.img"
+    raw_img_name = sys.argv[3] if len(sys.argv) > 3 else "linuxprobe_raw.img"
+
+    elf = (ROOT / elf_name).read_bytes()
     part1_sectors = (len(elf) + SECTOR - 1) // SECTOR
     if PART1_START + part1_sectors > PART2_START:
-        raise SystemExit("linuxprobe.elf is too large")
+        raise SystemExit(f"{elf_name} is too large")
 
     image = bytearray(DISK_SECTORS * SECTOR)
     put_part(image, 0, 0x80, 0x83, PART1_START, part1_sectors)
@@ -36,11 +42,11 @@ def main() -> None:
     initrd = b"INITRDTEST\n"
     off = PART2_START * SECTOR
     image[off:off + len(initrd)] = initrd
-    (ROOT / "linuxprobe.img").write_bytes(image)
+    (ROOT / img_name).write_bytes(image)
 
     raw_image = bytearray(DISK_SECTORS * SECTOR)
     raw_image[:len(elf)] = elf
-    (ROOT / "linuxprobe_raw.img").write_bytes(raw_image)
+    (ROOT / raw_img_name).write_bytes(raw_image)
 
 
 if __name__ == "__main__":

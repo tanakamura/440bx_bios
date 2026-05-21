@@ -67,9 +67,11 @@ def main() -> int:
         ide_img = tmp / "ide.img"
         linuxprobe_img = tmp / "linuxprobe.img"
         linuxprobe_raw_img = tmp / "linuxprobe_raw.img"
+        linuxprobe_overlap_img = tmp / "linuxprobe_overlap.img"
         shutil.copyfile(ROOT / "usbmbr.img", ide_img)
         shutil.copyfile(ROOT / "linuxprobe.img", linuxprobe_img)
         shutil.copyfile(ROOT / "linuxprobe_raw.img", linuxprobe_raw_img)
+        shutil.copyfile(ROOT / "linuxprobe_overlap.img", linuxprobe_overlap_img)
         ideboot_ok = run_case(
             "custombios-idembr",
             [
@@ -138,6 +140,28 @@ def main() -> int:
                 "LINUXPROBE",
             ],
         )
+        linuxprobe_overlap_ok = run_case(
+            "custombios-linuxprobe-overlap",
+            [
+                "qemu-system-i386",
+                "-m", "32m",
+                "-bios", str(ROOT / "qemu_linux_genrom.bin"),
+                "-M", "pc",
+                "-serial", "stdio",
+                "-monitor", "none",
+                "-nographic",
+                "-no-reboot",
+                "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
+                "-drive", f"if=ide,format=raw,file={linuxprobe_overlap_img}",
+            ],
+            [
+                "Linux app @ 000f0000",
+                "Linux part1 start=",
+                "defer=",
+                "Boot Linux entry=00100000",
+                "LINUXPROBE",
+            ],
+        )
         usbmbr_ok = run_case(
             "custombios-usbmbr",
             [
@@ -185,7 +209,7 @@ def main() -> int:
             ],
         )
     return 0 if (std_ok and ideboot_ok and linuxprobe_ok and
-                 linuxprobe_raw_ok and usbmbr_ok and
+                 linuxprobe_raw_ok and linuxprobe_overlap_ok and usbmbr_ok and
                  legacy_floppy_ok) else 1
 
 
