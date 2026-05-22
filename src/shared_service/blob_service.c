@@ -325,11 +325,14 @@ static BLOBSVC int blob_lz4_read_len(const unsigned char* src,
     return 0;
 }
 
-static BLOBSVC int blob_lz4_decode(const unsigned char* src,
-                                   unsigned int src_len, unsigned char* dst,
-                                   unsigned int dst_len) {
+static BLOBSVC int blob_lz4_decode_chunk(const unsigned char* src,
+                                         unsigned int src_len,
+                                         unsigned char* dst,
+                                         unsigned int dst_off,
+                                         unsigned int dst_len) {
     unsigned int ip = 0;
-    unsigned int op = 0;
+    unsigned int op = dst_off;
+    unsigned int end = dst_off + dst_len;
 
     while (ip < src_len) {
         unsigned int token = src[ip++];
@@ -343,7 +346,7 @@ static BLOBSVC int blob_lz4_decode(const unsigned char* src,
         if (rc != 0) {
             return rc;
         }
-        if (lit_len > src_len - ip || lit_len > dst_len - op) {
+        if (lit_len > src_len - ip || lit_len > end - op) {
             return BLOB_ERR_LZ4;
         }
         for (i = 0; i < lit_len; ++i) {
@@ -367,7 +370,7 @@ static BLOBSVC int blob_lz4_decode(const unsigned char* src,
             return rc;
         }
         match_len += 4u;
-        if (match_len > dst_len - op) {
+        if (match_len > end - op) {
             return BLOB_ERR_LZ4;
         }
         for (i = 0; i < match_len; ++i) {
@@ -376,7 +379,7 @@ static BLOBSVC int blob_lz4_decode(const unsigned char* src,
         }
     }
 
-    if (ip != src_len || op != dst_len) {
+    if (ip != src_len || op != end) {
         return BLOB_ERR_LZ4;
     }
     return 0;
@@ -405,9 +408,9 @@ BLOBSVC_ENTRY int blob_expand_service(const void* blob_ptr, void* stage_ptr,
                         0);
         return BLOB_ERR_VERSION;
     }
-    if ((hdr->flags & BLOB_FLAG_LZ4_BLOCKS) == 0u ||
+    if ((hdr->flags & BLOB_FLAG_LZ4_STREAM) == 0u ||
         (hdr->flags & ~BLOB_FLAG_KNOWN) != 0u) {
-        blob_status_set(status, BLOB_ERR_FLAGS, 0, BLOB_FLAG_LZ4_BLOCKS,
+        blob_status_set(status, BLOB_ERR_FLAGS, 0, BLOB_FLAG_LZ4_STREAM,
                         hdr->flags, 0);
         return BLOB_ERR_FLAGS;
     }
@@ -429,7 +432,6 @@ BLOBSVC_ENTRY int blob_expand_service(const void* blob_ptr, void* stage_ptr,
     for (i = 0; i < hdr->block_count; ++i) {
         const struct blob_block* block = blocks + i;
         const unsigned char* src;
-        unsigned char* out;
         unsigned int retry;
         unsigned int got = 0;
 
@@ -446,7 +448,6 @@ BLOBSVC_ENTRY int blob_expand_service(const void* blob_ptr, void* stage_ptr,
         }
 
         src = data + block->compressed_off;
-        out = dst + block->uncompressed_off;
         blob_check_maintenance_key(total_bytes);
         for (retry = 0; retry < 64u; ++retry) {
             unsigned int j;
@@ -474,8 +475,9 @@ BLOBSVC_ENTRY int blob_expand_service(const void* blob_ptr, void* stage_ptr,
         serial_write_char('o');
 
         {
-            int rc = blob_lz4_decode(stage, block->compressed_size, out,
-                                     block->uncompressed_size);
+            int rc = blob_lz4_decode_chunk(stage, block->compressed_size, dst,
+                                           block->uncompressed_off,
+                                           block->uncompressed_size);
             if (rc != 0) {
                 blob_status_set(status, BLOB_ERR_LZ4, i, 0, (unsigned int)rc,
                                 block->uncompressed_off);

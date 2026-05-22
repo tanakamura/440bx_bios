@@ -15,7 +15,7 @@ SRC_DIR = REPO_ROOT / "src"
 BLOB_DEFINE_NAMES = {
     "BLOB_MAGIC",
     "BLOB_VERSION",
-    "BLOB_FLAG_LZ4_BLOCKS",
+    "BLOB_FLAG_LZ4_STREAM",
     "BLOB_FLAG_HAS_LOAD_ADDR",
     "BLOB_BLOCK_SIZE",
     "BLOB_HEADER_SIZE",
@@ -47,7 +47,7 @@ def parse_numeric_defines(path: Path) -> dict[str, int]:
 BLOB_DEFINES = parse_numeric_defines(SRC_DIR / "include" / "blob.h")
 MAGIC = BLOB_DEFINES["BLOB_MAGIC"]
 VERSION = BLOB_DEFINES["BLOB_VERSION"]
-FLAG_LZ4_BLOCKS = BLOB_DEFINES["BLOB_FLAG_LZ4_BLOCKS"]
+FLAG_LZ4_STREAM = BLOB_DEFINES["BLOB_FLAG_LZ4_STREAM"]
 FLAG_HAS_LOAD_ADDR = BLOB_DEFINES["BLOB_FLAG_HAS_LOAD_ADDR"]
 BLOCK_SIZE = BLOB_DEFINES["BLOB_BLOCK_SIZE"]
 HEADER_SIZE = BLOB_DEFINES["BLOB_HEADER_SIZE"]
@@ -155,37 +155,45 @@ def lz4_emit_sequence(out: bytearray, literals: bytes, offset: int | None,
     out[token_pos] |= ml_token
 
 
-def lz4_compress_block(data: bytes) -> bytes:
-    n = len(data)
+def lz4_compress_chunk(data: bytes, prefix: bytes) -> bytes:
+    window = prefix[-MAX_OFFSET:] + data
+    start = len(window) - len(data)
+    n = len(window)
     out = bytearray()
     table: dict[int, int] = {}
-    anchor = 0
-    i = 0
+    anchor = start
+    i = start
+
+    for seed in range(max(0, start - MAX_OFFSET), start):
+        if seed + MINMATCH <= n:
+            table[struct.unpack_from("<I", window, seed)[0]] = seed
 
     while i + MINMATCH <= n:
-        key = struct.unpack_from("<I", data, i)[0]
+        key = struct.unpack_from("<I", window, i)[0]
         ref = table.get(key)
         table[key] = i
 
-        if ref is not None and i - ref <= MAX_OFFSET and data[ref:ref + 4] == data[i:i + 4]:
+        if (ref is not None and i - ref <= MAX_OFFSET and
+                window[ref:ref + 4] == window[i:i + 4]):
             match_len = MINMATCH
             max_len = n - i
-            while match_len < max_len and data[ref + match_len] == data[i + match_len]:
+            while (match_len < max_len and
+                   window[ref + match_len] == window[i + match_len]):
                 match_len += 1
 
-            lz4_emit_sequence(out, data[anchor:i], i - ref, match_len)
+            lz4_emit_sequence(out, window[anchor:i], i - ref, match_len)
 
             end = i + match_len
             j = i + 1
             while j + MINMATCH <= n and j < end:
-                table[struct.unpack_from("<I", data, j)[0]] = j
+                table[struct.unpack_from("<I", window, j)[0]] = j
                 j += 1
             i = end
             anchor = i
         else:
             i += 1
 
-    lz4_emit_sequence(out, data[anchor:], None, 0)
+    lz4_emit_sequence(out, window[anchor:], None, 0)
     return bytes(out)
 
 
@@ -203,15 +211,18 @@ def lz4_read_len(src: bytes, ip: int, base: int) -> tuple[int, int]:
             return length, ip
 
 
-def lz4_decompress_block(src: bytes, output_size: int) -> bytes:
-    out = bytearray()
+def lz4_decompress_chunk(src: bytes, out: bytearray, output_size: int) -> None:
+    start = len(out)
     ip = 0
+    target = start + output_size
     while ip < len(src):
         token = src[ip]
         ip += 1
         lit_len, ip = lz4_read_len(src, ip, token >> 4)
         if ip + lit_len > len(src):
             raise ValueError("literal overrun")
+        if len(out) + lit_len > target:
+            raise ValueError("literal output overrun")
         out.extend(src[ip:ip + lit_len])
         ip += lit_len
         if ip == len(src):
@@ -224,11 +235,14 @@ def lz4_decompress_block(src: bytes, output_size: int) -> bytes:
             raise ValueError("bad offset")
         match_len, ip = lz4_read_len(src, ip, token & 0x0F)
         match_len += MINMATCH
+        if len(out) + match_len > target:
+            raise ValueError("match output overrun")
         for _ in range(match_len):
             out.append(out[-offset])
-    if len(out) != output_size:
-        raise ValueError(f"output size {len(out)} != {output_size}")
-    return bytes(out)
+    if ip != len(src):
+        raise ValueError("input not fully consumed")
+    if len(out) != target:
+        raise ValueError(f"output size {len(out) - start} != {output_size}")
 
 
 def crc32(data: bytes) -> int:
@@ -241,17 +255,19 @@ def make_blob(payload: bytes, load_addr: int | None = None) -> tuple[bytes, int,
     block_count = (len(payload) + BLOCK_SIZE - 1) // BLOCK_SIZE
     block_table_off = HEADER_SIZE
     data_off = block_table_off + BLOCK_DESC_SIZE * block_count
-    flags = FLAG_LZ4_BLOCKS
+    flags = FLAG_LZ4_STREAM
+    decoded = bytearray()
     if load_addr is not None:
         flags |= FLAG_HAS_LOAD_ADDR
 
     for block_index in range(block_count):
         uncompressed_off = block_index * BLOCK_SIZE
         chunk = payload[uncompressed_off:uncompressed_off + BLOCK_SIZE]
-        compressed = lz4_compress_block(chunk)
-        decoded = lz4_decompress_block(compressed, len(chunk))
-        if decoded != chunk:
-            raise ValueError("internal lz4 block roundtrip failed")
+        compressed = lz4_compress_chunk(chunk, payload[:uncompressed_off])
+        before = len(decoded)
+        lz4_decompress_chunk(compressed, decoded, len(chunk))
+        if bytes(decoded[before:before + len(chunk)]) != chunk:
+            raise ValueError("internal lz4 stream roundtrip failed")
         compressed_off = len(compressed_payload)
         compressed_payload += compressed
         blocks.append(

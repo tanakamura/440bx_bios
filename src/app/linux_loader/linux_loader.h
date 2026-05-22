@@ -9,7 +9,8 @@ int linux_loader_load_elf_image(const struct app_boot_context* config,
                                 unsigned int image_size,
                                 unsigned int* entry_phys);
 void linux_loader_prepare_boot_params(
-    const struct app_boot_context* config, unsigned int entry_phys,
+    const struct app_boot_context* config, const unsigned char* setup_src,
+    unsigned int setup_size, unsigned int entry_phys,
     unsigned int initrd_base, unsigned int initrd_size);
 
 #endif

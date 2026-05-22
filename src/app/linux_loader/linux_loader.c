@@ -19,6 +19,8 @@
 #define LINUX_E820_TABLE_OFF 0x02d0u
 #define LINUX_E820_MAX 128u
 #define LINUX_DEFER_SEG_MAX 8u
+#define LINUX_BOOT_PARAMS_SIZE 4096u
+#define LINUX_BZIMAGE_LOAD_ADDR 0x00100000u
 #define ELF32_PT_LOAD 1u
 #define VBE_MODE_1024_768_16 0x0117u
 #define VBE_MODE_LFB 0x4000u
@@ -524,6 +526,20 @@ static int linux_sector_is_elf32_i386(const unsigned char* sector) {
            linux_le16(sector + 0x12u) == 3u;
 }
 
+static int linux_sector_is_bzimage(const unsigned char* sector) {
+    return linux_le16(sector + 0x01feu) == 0xaa55u &&
+           linux_le32(sector + 0x0202u) == 0x53726448u &&
+           linux_le16(sector + 0x0206u) >= 0x0200u;
+}
+
+static unsigned int linux_bzimage_setup_bytes(const unsigned char* setup) {
+    unsigned int setup_sects = setup[0x01f1u];
+    if (setup_sects == 0u) {
+        setup_sects = 4u;
+    }
+    return (setup_sects + 1u) << 9;
+}
+
 static int linux_use_whole_disk(struct linux_partition* part) {
     struct linux_loader_hdd_geometry geometry;
 
@@ -579,10 +595,10 @@ static int linux_select_kernel_source(const struct app_boot_context* config,
 
     *whole_disk = 0u;
     if (!linux_hdd_is_present() ||
-        linux_hdd_read_sectors(0u, 1u, LINUX_SECTOR_BUF) != 0) {
+        linux_hdd_read_sectors(0u, 2u, LINUX_SECTOR_BUF) != 0) {
         return -1;
     }
-    if (linux_sector_is_elf32_i386(sector0)) {
+    if (linux_sector_is_elf32_i386(sector0) || linux_sector_is_bzimage(sector0)) {
         if (linux_use_whole_disk(part) != 0) {
             return -1;
         }
@@ -760,6 +776,8 @@ static void linux_write_cmdline(const struct app_boot_context* config) {
 }
 
 static void linux_setup_boot_params(const struct app_boot_context* config,
+                                    const unsigned char* setup_src,
+                                    unsigned int setup_size,
                                     unsigned int entry_phys,
                                     unsigned int initrd_base,
                                     unsigned int initrd_size) {
@@ -779,7 +797,13 @@ static void linux_setup_boot_params(const struct app_boot_context* config,
         }
     }
 
-    linux_memset(bp, 0u, 4096u);
+    linux_memset(bp, 0u, LINUX_BOOT_PARAMS_SIZE);
+    if (setup_src != 0) {
+        if (setup_size > LINUX_BOOT_PARAMS_SIZE) {
+            setup_size = LINUX_BOOT_PARAMS_SIZE;
+        }
+        linux_memcpy(bp, setup_src, setup_size);
+    }
     linux_write_cmdline(config);
 
     if (CFG_RSDP(config) != 0u) {
@@ -800,7 +824,9 @@ static void linux_setup_boot_params(const struct app_boot_context* config,
 
     linux_put16(bp + 0x01feu, 0xaa55u);
     linux_put32(bp + 0x0202u, 0x53726448u);
-    linux_put16(bp + 0x0206u, 0x020fu);
+    if (linux_le16(bp + 0x0206u) < 0x0200u) {
+        linux_put16(bp + 0x0206u, 0x020fu);
+    }
     bp[0x0210u] = 0xffu;
     bp[0x0211u] = 0x80u;
     linux_put16(bp + 0x0224u, 0xe000u);
@@ -815,6 +841,8 @@ static void linux_setup_boot_params(const struct app_boot_context* config,
 }
 
 void linux_loader_prepare_boot_params(const struct app_boot_context* config,
+                                      const unsigned char* setup_src,
+                                      unsigned int setup_size,
                                       unsigned int entry_phys,
                                       unsigned int initrd_base,
                                       unsigned int initrd_size) {
@@ -823,7 +851,8 @@ void linux_loader_prepare_boot_params(const struct app_boot_context* config,
     bios_acpi_install_for_linux(CFG_RSDP(config), CFG_PM1_EVT(config),
                                 CFG_PM1_CNT(config), CFG_GPE0(config),
                                 CFG_GPE0_LEN(config), CFG_ACPI_FLAGS(config));
-    linux_setup_boot_params(config, entry_phys, initrd_base, initrd_size);
+    linux_setup_boot_params(config, setup_src, setup_size, entry_phys,
+                            initrd_base, initrd_size);
     if ((CFG_FLAGS0(config) & BIOS_NVRAM_FLAGS0_VESA_1024_768) != 0u) {
         if (linux_set_vbe_1024x768(config) == 0) {
             linux_apply_vbe_screen_info();
@@ -957,6 +986,94 @@ int linux_loader_load_elf_image(const struct app_boot_context* config,
     return 0;
 }
 
+static int try_boot_bzimage_current(const struct app_boot_context* config,
+                                    const struct linux_partition* kernel_part) {
+    unsigned char* setup = (unsigned char*)LINUX_SECTOR_BUF;
+    struct linux_partition initrd_part;
+    unsigned int setup_size;
+    unsigned int kernel_off;
+    unsigned int kernel_size;
+    unsigned int load_high = LINUX_BZIMAGE_LOAD_ADDR;
+    unsigned int initrd_base = 0u;
+    unsigned int initrd_size = 0u;
+    unsigned int usable_end = linux_usable_end(config);
+
+    if (linux_read_partition_bytes(kernel_part, 0u, LINUX_SECTOR_BUF, 1024u) != 0 ||
+        !linux_sector_is_bzimage(setup)) {
+        return 0;
+    }
+
+    setup_size = linux_bzimage_setup_bytes(setup);
+    if (setup_size > (kernel_part->sectors << 9)) {
+        serial_write_string("bzImage bad setup size\r\n");
+        return 0;
+    }
+    if (setup_size > LINUX_BOOT_PARAMS_SIZE) {
+        setup_size = LINUX_BOOT_PARAMS_SIZE;
+    }
+    if (linux_read_partition_bytes(kernel_part, 0u, LINUX_SECTOR_BUF,
+                                   setup_size) != 0) {
+        serial_write_string("bzImage setup read failed\r\n");
+        return 0;
+    }
+
+    kernel_off = linux_bzimage_setup_bytes(setup);
+    kernel_size = (kernel_part->sectors << 9) - kernel_off;
+    if (kernel_size == 0u || kernel_size > usable_end - LINUX_BZIMAGE_LOAD_ADDR) {
+        serial_write_string("bzImage kernel too large\r\n");
+        return 0;
+    }
+
+    serial_write_string("Linux bzImage setup=");
+    serial_write_hex32(kernel_off);
+    serial_write_string(" kernel=");
+    serial_write_hex32(kernel_size);
+    serial_write_string("\r\n");
+
+    serial_write_string("Linux LOAD ");
+    serial_write_hex32(LINUX_BZIMAGE_LOAD_ADDR);
+    serial_write_string(" filesz=");
+    serial_write_hex32(kernel_size);
+    serial_write_string(" memsz=");
+    serial_write_hex32(kernel_size);
+    serial_write_string(" off=");
+    serial_write_hex32(kernel_off);
+    serial_write_string("\r\n");
+
+    if (linux_read_partition_bytes(kernel_part, kernel_off,
+                                   LINUX_BZIMAGE_LOAD_ADDR, kernel_size) != 0) {
+        serial_write_string("bzImage load failed\r\n");
+        return 0;
+    }
+    load_high = LINUX_BZIMAGE_LOAD_ADDR + kernel_size;
+
+    if (CFG_VMLINUX_PART(config) != 1u &&
+        linux_read_partition(1u, &initrd_part) == 0 &&
+        linux_load_initrd(config, &initrd_part, load_high, &initrd_base,
+                          &initrd_size) == 0) {
+        serial_write_string("Linux initrd @ ");
+        serial_write_hex32(initrd_base);
+        serial_write_string(" size=");
+        serial_write_hex32(initrd_size);
+        serial_write_string("\r\n");
+    } else {
+        serial_write_string("Linux initrd: none\r\n");
+    }
+
+    linux_loader_prepare_boot_params(config, setup, setup_size,
+                                     LINUX_BZIMAGE_LOAD_ADDR, initrd_base,
+                                     initrd_size);
+    linux_record_boot_success(config);
+    linux_release_boot_services(config);
+    serial_write_string("Boot Linux entry=");
+    serial_write_hex32(LINUX_BZIMAGE_LOAD_ADDR);
+    serial_write_string(" params=");
+    serial_write_hex32(LINUX_LOADER_BOOT_PARAMS);
+    serial_write_string("\r\n");
+    linux_jump(LINUX_BZIMAGE_LOAD_ADDR);
+    return 1;
+}
+
 static int try_boot_linux_current(const struct app_boot_context* config) {
     struct linux_partition kernel_part;
     struct linux_partition initrd_part;
@@ -998,12 +1115,15 @@ static int try_boot_linux_current(const struct app_boot_context* config) {
     }
     serial_write_string("\r\n");
 
-    if (linux_read_partition_bytes(&kernel_part, 0u, LINUX_SECTOR_BUF, 512u) !=
+    if (linux_read_partition_bytes(&kernel_part, 0u, LINUX_SECTOR_BUF, 1024u) !=
         0) {
         return 0;
     }
     if (!linux_sector_is_elf32_i386(ehdr)) {
-        serial_write_string("Linux kernel is not ELF32 i386\r\n");
+        if (linux_sector_is_bzimage(ehdr)) {
+            return try_boot_bzimage_current(config, &kernel_part);
+        }
+        serial_write_string("Linux kernel is not ELF32 i386/bzImage\r\n");
         return 0;
     }
 
@@ -1149,7 +1269,7 @@ static int try_boot_linux_current(const struct app_boot_context* config) {
         }
     }
 
-    linux_loader_prepare_boot_params(config, entry_phys, initrd_base,
+    linux_loader_prepare_boot_params(config, 0, 0, entry_phys, initrd_base,
                                      initrd_size);
     linux_record_boot_success(config);
     linux_release_boot_services(config);
