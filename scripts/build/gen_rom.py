@@ -290,9 +290,31 @@ def write_directory_checksum(rom: bytearray, entry_count: int) -> None:
     struct.pack_into("<I", rom, checksum_off, (-total) & 0xFFFFFFFF)
 
 
-def build_rom(entries: list[tuple[str, Path]]) -> bytes:
+def format_summary(summary_entries: list[dict[str, object]],
+                   free_first: int, free_end: int) -> str:
+    lines = [
+        "# ROM summary",
+        "kind,source,rom_offset,rom_size,load_addr",
+    ]
+    for entry in summary_entries:
+        load_addr = entry["load_addr"]
+        load_addr_str = "-" if load_addr is None else f"0x{load_addr:08x}"
+        lines.append(
+            f"{entry['kind']},{entry['source']},"
+            f"0x{entry['rom_offset']:05x},0x{entry['rom_size']:05x},"
+            f"{load_addr_str}"
+        )
+    lines.append(
+        f"free,ROM_FREE,0x{free_first - ROM_HIGH_BASE:05x},"
+        f"0x{free_end - free_first:05x},-"
+    )
+    return "\n".join(lines) + "\n"
+
+
+def build_rom(entries: list[tuple[str, Path]]) -> tuple[bytes, str]:
     rom = bytearray([0xFF] * ROM_SIZE)
     payload_entries = []
+    summary_entries: list[dict[str, object]] = []
     payload_cursor = DIRECTORY_BYTES
     stage1_start = ROM_SIZE - 8
 
@@ -307,6 +329,13 @@ def build_rom(entries: list[tuple[str, Path]]) -> bytes:
                     raise ValueError("stage1 does not fit at the end of ROM")
                 rom[off:off + len(data)] = data
                 stage1_start = min(stage1_start, off)
+                summary_entries.append({
+                    "kind": "stage1",
+                    "source": str(path),
+                    "rom_offset": off,
+                    "rom_size": len(data),
+                    "load_addr": None,
+                })
             continue
 
         data, load_addr = read_payload(path, extract_elf=(kind != "test_elf"))
@@ -325,6 +354,13 @@ def build_rom(entries: list[tuple[str, Path]]) -> bytes:
         payload_cursor = payload_off + len(payload)
         if payload_cursor > stage1_start:
             raise ValueError("payloads overlap stage1")
+        summary_entries.append({
+            "kind": kind,
+            "source": str(path),
+            "rom_offset": payload_off,
+            "rom_size": len(payload),
+            "load_addr": load_addr,
+        })
         payload_entries.append(
             (
                 payload_id,
@@ -367,7 +403,8 @@ def build_rom(entries: list[tuple[str, Path]]) -> bytes:
     if free_first > free_end:
         free_first = free_end
     struct.pack_into("<II", rom, ROM_SIZE - 8, free_first, free_end)
-    return bytes(rom)
+    summary = format_summary(summary_entries, free_first, free_end)
+    return bytes(rom), summary
 
 
 def main() -> int:
@@ -378,12 +415,13 @@ def main() -> int:
 
     try:
         entries = parse_blob_list(args.blob_list)
-        rom = build_rom(entries)
+        rom, summary = build_rom(entries)
     except ValueError as exc:
         print(f"gen_rom.py: {exc}", file=sys.stderr)
         return 1
 
     args.dst.write_bytes(rom)
+    args.dst.with_suffix(args.dst.suffix + ".summary").write_text(summary)
     print(f"wrote {args.dst} size={len(rom)}")
     return 0
 

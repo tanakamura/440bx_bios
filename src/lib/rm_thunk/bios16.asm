@@ -307,6 +307,7 @@ rm_vgabios_entry:
     xor dx, dx
     xor si, si
     xor di, di
+    sti
     db 0x9a
     dw 0x0003
     dw 0xc000
