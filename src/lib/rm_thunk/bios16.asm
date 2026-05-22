@@ -25,6 +25,7 @@
 %define VGABIOS_BDF_OFF (bios16_vgabios_bdf - bios16_thunk_start)
 %define BOOT_DRIVE_OFF (bios16_boot_drive - bios16_thunk_start)
 %define PM_RETURN_ESP_OFF (bios16_pm_return_esp - bios16_thunk_start)
+%define REALMODE_IDTR_OFF (realmode_idtr - bios16_thunk_start)
 
 bits 32
 
@@ -45,8 +46,12 @@ global bios16_int16
 global bios16_int17
 global bios16_int19
 global bios16_int1a
+global bios16_int42
 global bios16_int60
+global bios16_int6d
 global bios16_default
+global bios16_unknown_stubs_start
+global bios16_unknown_stubs_end
 global bios16_iret
 global bios16_direct_thunk_end
 global bios16_thunk_end
@@ -183,6 +188,10 @@ bios16_vbe_mode_info:
 bios16_vgabios_bdf:
     dw 0
 
+realmode_idtr:
+    dw 0x03ff
+    dd 0x00000000
+
 pm16_boot_entry:
     mov ax, DATA16_SEL
     mov ds, ax
@@ -266,6 +275,7 @@ rm_enter_pm_vbe_return:
 rm_boot_entry:
     cli
     cld
+    lidt [cs:REALMODE_IDTR_OFF]
     mov al, 0xfe
     out 0x21, al
     mov al, 0xff
@@ -285,12 +295,14 @@ rm_boot_entry:
     xor eax, eax
     mov ax, sp
     mov esp, eax
-    sti
+    push word 0x0202
+    popf
     jmp 0x0000:0x7c00
 
 rm_vgabios_entry:
     cli
     cld
+    lidt [cs:REALMODE_IDTR_OFF]
     mov al, 0xff
     out 0x21, al
     mov al, 0xff
@@ -300,23 +312,31 @@ rm_vgabios_entry:
     mov es, ax
     mov ss, ax
     mov sp, 0x8000
-    xor bp, bp
+    xor ebp, ebp
+    xor eax, eax
+    xor ebx, ebx
+    xor ecx, ecx
+    xor edx, edx
+    xor esi, esi
+    xor edi, edi
     mov ax, [cs:VGABIOS_BDF_OFF]
-    xor bx, bx
-    xor cx, cx
-    xor dx, dx
-    xor si, si
-    xor di, di
-    sti
-    db 0x9a
-    dw 0x0003
-    dw 0xc000
+    mov bx, 0xffff
+    mov dx, 0xffff
+    mov sp, 0x8ff0
+    push word 0x0202
+    popf
+    mov bx, sp
+    mov word [bx], (rm_vgabios_return - bios16_thunk_start)
+    mov word [bx + 2], THUNK_SEG
+    jmp 0xc000:0x0003
+rm_vgabios_return:
     cli
     jmp rm_enter_pm_vgabios_return
 
 rm_vbe_mode_info_entry:
     cli
     cld
+    lidt [cs:REALMODE_IDTR_OFF]
     mov al, 0xfe
     out 0x21, al
     mov al, 0xff
@@ -335,7 +355,8 @@ rm_vbe_mode_info_entry:
     mov di, VBE_MODE_INFO_OFF
     mov ax, 0x4f01
     mov cx, [cs:VBE_MODE_OFF]
-    sti
+    push word 0x0202
+    popf
     int 0x10
     cli
     mov [cs:VBE_STATUS_OFF], ax
@@ -344,6 +365,7 @@ rm_vbe_mode_info_entry:
 rm_vbe_set_mode_entry:
     cli
     cld
+    lidt [cs:REALMODE_IDTR_OFF]
     mov al, 0xfe
     out 0x21, al
     mov al, 0xff
@@ -360,7 +382,8 @@ rm_vbe_set_mode_entry:
     xor di, di
     mov ax, 0x4f02
     mov bx, [cs:VBE_MODE_OFF]
-    sti
+    push word 0x0202
+    popf
     int 0x10
     cli
     mov [cs:VBE_STATUS_OFF], ax
@@ -370,8 +393,17 @@ bios16_iret:
     iret
 
 bios16_default:
-    mov word [cs:SERVICE_VECTOR_OFF], 0x00ff
-    jmp bios16_common
+    jmp near bios16_int_stub_255
+
+bios16_unknown_stubs_start:
+%assign stub_vector 0
+%rep 256
+bios16_int_stub_%+stub_vector:
+    mov word [cs:SERVICE_VECTOR_OFF], stub_vector
+    jmp near bios16_common
+%assign stub_vector stub_vector + 1
+%endrep
+bios16_unknown_stubs_end:
 
 bios16_common:
     cli
@@ -509,8 +541,14 @@ bios16_int1a:
     mov word [cs:SERVICE_VECTOR_OFF], 0x001a
     jmp bios16_common
 
+bios16_int42:
+    iret
+
 bios16_int60:
     mov word [cs:SERVICE_VECTOR_OFF], 0x0060
     jmp bios16_common
+
+bios16_int6d:
+    iret
 
 bios16_thunk_end:

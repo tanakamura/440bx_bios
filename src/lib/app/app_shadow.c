@@ -175,11 +175,11 @@ static void install_runtime_gdt(void) {
 }
 
 void app_shadow_install(unsigned int total_bytes) {
-    struct shared_service_table* shared = shared_service_from_total(total_bytes);
+    struct shared_service_table* shared =
+        shared_service_from_total(total_bytes);
     struct shared_boot_context* boot = shared_boot_context(shared);
     unsigned char already_ready =
-        (boot != 0 &&
-         (boot->flags & SHARED_BOOT_FLAG_SHADOW_READY) != 0u);
+        (boot != 0 && (boot->flags & SHARED_BOOT_FLAG_SHADOW_READY) != 0u);
 
     if (already_ready != 0u) {
         install_runtime_gdt();
@@ -195,7 +195,8 @@ void app_shadow_install(unsigned int total_bytes) {
 }
 
 void app_shadow_install_vgabios(unsigned int total_bytes) {
-    struct shared_service_table* shared = shared_service_from_total(total_bytes);
+    struct shared_service_table* shared =
+        shared_service_from_total(total_bytes);
     blob_load_fn load = 0;
     struct blob_status status;
     unsigned int load_addr = VGA_BIOS_LINEAR;

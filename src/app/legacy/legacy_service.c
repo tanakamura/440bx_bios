@@ -12,6 +12,7 @@
 #include "app/legacy/legacy_timer.h"
 #include "app/legacy/legacy_time.h"
 #include "app/legacy/legacy_video.h"
+#include "vm86.h"
 
 extern void bios_boot_freedos_pm32(void);
 
@@ -25,11 +26,15 @@ void legacy_service_init(const struct legacy_service_context* context) {
 
 void bios_rm_service(unsigned int vector, struct rm_int13_frame* f) {
     legacy_timer_update();
-    if (0 && vector != 0x16 && vector != 0x10) {
+    if (vm86_in_bios_int_hook() != 0 &&
+        (vector & 0xffu) == 0x1au &&
+        (unsigned char)(f->ax >> 8) == 0xb1u) {
         legacy_serial_write_string("bios_rm_service=");
         legacy_serial_write_hex8(vector & 0xffu);
         legacy_serial_write_string(", ah=");
         legacy_serial_write_hex8(f->ax >> 8);
+        legacy_serial_write_string(", al=");
+        legacy_serial_write_hex8(f->ax);
         legacy_serial_write_string("\r\n");
     }
     switch (vector & 0xffu) {
@@ -68,6 +73,9 @@ void bios_rm_service(unsigned int vector, struct rm_int13_frame* f) {
             legacy_int60_service(f);
             return;
         default:
+            legacy_serial_write_string("UNKNOWN INT ");
+            legacy_serial_write_hex8(vector & 0xffu);
+            legacy_serial_write_string("\r\n");
             f->ax = (unsigned short)((0x86u << 8) | (f->ax & 0x00ffu));
             rm_set_cf(f);
             return;

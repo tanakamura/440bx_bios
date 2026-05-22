@@ -3,6 +3,7 @@
 #include "bios_pci.h"
 #include "legacy_lowmem.h"
 #include "app/legacy/legacy_platform.h"
+#include "vm86.h"
 
 #define BDA_TICK_COUNT 0x046cu
 #define BDA_MIDNIGHT_FLAG 0x0470u
@@ -28,6 +29,22 @@ static int legacy_int1a_pci_bios(struct rm_int13_frame* f) {
     unsigned int index;
     unsigned char last_bus = 1u;
 
+    if (vm86_in_bios_int_hook() != 0) {
+        legacy_serial_write_string("PCI BIOS sub=");
+        legacy_serial_write_hex8(sub);
+        legacy_serial_write_string(" bx=");
+        legacy_serial_write_hex16(f->bx);
+        legacy_serial_write_string(" cx=");
+        legacy_serial_write_hex16(f->cx);
+        legacy_serial_write_string(" dx=");
+        legacy_serial_write_hex16(f->dx);
+        legacy_serial_write_string(" di=");
+        legacy_serial_write_hex16(f->di);
+        legacy_serial_write_string(" ecx=");
+        legacy_serial_write_hex32(f->ecx32);
+        legacy_serial_write_string("\r\n");
+    }
+
     if (sub == 0x01u) {
         f->ax = 0x0001u;
         f->bx = 0x0210u;
@@ -35,6 +52,9 @@ static int legacy_int1a_pci_bios(struct rm_int13_frame* f) {
         f->edx32 = 0x20494350u;
         f->dx = 0x4350u;
         rm_clear_cf(f);
+        if (vm86_in_bios_int_hook() != 0) {
+            legacy_serial_write_string("PCI BIOS -> install ok\r\n");
+        }
         return 0;
     }
 
@@ -73,12 +93,20 @@ static int legacy_int1a_pci_bios(struct rm_int13_frame* f) {
                     f->bx = (unsigned short)(((unsigned short)b << 8) |
                                              (unsigned short)((d << 3) | n));
                     rm_clear_cf(f);
+                    if (vm86_in_bios_int_hook() != 0) {
+                        legacy_serial_write_string("PCI BIOS -> find ok bx=");
+                        legacy_serial_write_hex16(f->bx);
+                        legacy_serial_write_string("\r\n");
+                    }
                     return 0;
                 }
             }
         }
         f->ax = (unsigned short)(0x8600u | sub);
         rm_set_cf(f);
+        if (vm86_in_bios_int_hook() != 0) {
+            legacy_serial_write_string("PCI BIOS -> find miss\r\n");
+        }
         return 0;
     }
 
@@ -108,11 +136,23 @@ static int legacy_int1a_pci_bios(struct rm_int13_frame* f) {
         }
         f->ax = (unsigned short)(f->ax & 0x00ffu);
         rm_clear_cf(f);
+        if (vm86_in_bios_int_hook() != 0) {
+            legacy_serial_write_string("PCI BIOS -> rw ok ax=");
+            legacy_serial_write_hex16(f->ax);
+            legacy_serial_write_string(" cx=");
+            legacy_serial_write_hex16(f->cx);
+            legacy_serial_write_string(" ecx=");
+            legacy_serial_write_hex32(f->ecx32);
+            legacy_serial_write_string("\r\n");
+        }
         return 0;
     }
 
     f->ax = (unsigned short)(0x8100u | sub);
     rm_set_cf(f);
+    if (vm86_in_bios_int_hook() != 0) {
+        legacy_serial_write_string("PCI BIOS -> unsupported\r\n");
+    }
     return 0;
 }
 

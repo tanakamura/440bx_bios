@@ -3,12 +3,11 @@
 #include "app/legacy/legacy_floppy.h"
 #include "app/legacy/legacy_platform.h"
 #include "app/legacy/legacy_thunk.h"
+#include "app/legacy/legacy_vgabios_vm86.h"
 #include "app_shadow.h"
 #include "bios_nvram.h"
 
 #define BOOT_SECTOR_LINEAR 0x00007c00u
-
-extern void bios_call_vgabios_init_pm32(unsigned int bdf);
 
 static struct app_platform_info legacy_boot_platform;
 
@@ -53,7 +52,7 @@ unsigned char legacy_prepare_boot_sector(void) {
 
     app_shadow_install(legacy_boot_platform.total_bytes);
     app_shadow_install_vgabios(legacy_boot_platform.total_bytes);
-    app_shadow_init_vgabios(bios_call_vgabios_init_pm32);
+    app_shadow_init_vgabios(legacy_vgabios_init);
 
     if (prepare_boot_sector_test_floppy(&boot_drive) == 0) {
         return boot_drive;

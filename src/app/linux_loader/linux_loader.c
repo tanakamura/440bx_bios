@@ -79,9 +79,10 @@ static const struct app_boot_context* linux_active_config;
 #define CFG_VMLINUX_PART(c) ((c)->platform.nvram.vmlinux_partition)
 #define CFG_CMDLINE(c) ((c)->platform.nvram.linux_cmdline_suffix)
 
-extern void bios_call_vgabios_init_pm32(unsigned int bdf);
 extern void bios_call_vbe_mode_info_pm32(unsigned int mode);
 extern void bios_call_vbe_set_mode_pm32(unsigned int mode);
+extern void legacy_vgabios_init(unsigned int bdf);
+extern void linux_vgabios_runtime_init(const struct app_boot_context* config);
 extern unsigned char bios16_thunk_start[];
 extern unsigned char bios16_vbe_status[];
 extern unsigned char bios16_vbe_mode_info[];
@@ -1164,9 +1165,10 @@ static int try_boot_linux_current(const struct app_boot_context* config) {
 
 int linux_loader_try_boot(const struct app_boot_context* config) {
     linux_loader_set_active_config(config);
+    linux_vgabios_runtime_init(config);
     app_shadow_install(CFG_TOTAL_BYTES(config));
     app_shadow_install_vgabios(CFG_TOTAL_BYTES(config));
-    app_shadow_init_vgabios(bios_call_vgabios_init_pm32);
+        app_shadow_init_vgabios(legacy_vgabios_init);
     storage_set_scratch_base(bios_memory_top_reserved_base(CFG_TOTAL_BYTES(config)));
     storage_scan(CFG_TOTAL_BYTES(config));
     if (CFG_BOOT_PRIORITY(config) == LINUX_LOADER_BOOT_PRIORITY_IDE) {

@@ -13,8 +13,11 @@ extern unsigned char bios16_int16[];
 extern unsigned char bios16_int17[];
 extern unsigned char bios16_int19[];
 extern unsigned char bios16_int1a[];
+extern unsigned char bios16_int42[];
 extern unsigned char bios16_int60[];
-extern unsigned char bios16_default[];
+extern unsigned char bios16_int6d[];
+extern unsigned char bios16_unknown_stubs_start[];
+extern unsigned char bios16_unknown_stubs_end[];
 extern unsigned char bios16_iret[];
 extern unsigned char bios16_thunk_end[];
 extern unsigned int bios16_pm_stack_top;
@@ -86,16 +89,20 @@ unsigned int legacy_install_bios_thunks(
     unsigned int dpt_linear;
     volatile unsigned char* dpt;
     unsigned int i;
-    unsigned int default_linear =
+    unsigned int unknown_stubs_linear =
         LEGACY_THUNK_RUNTIME_BASE +
-        (unsigned int)(bios16_default - bios16_thunk_start);
+        (unsigned int)(bios16_unknown_stubs_start - bios16_thunk_start);
+    unsigned int unknown_stub_size =
+        (unsigned int)(bios16_unknown_stubs_end - bios16_unknown_stubs_start) /
+        256u;
 
     thunk_size = copy_thunk_code(install_shadow);
     dpt_linear = LEGACY_THUNK_RUNTIME_BASE + ((thunk_size + 15u) & ~15u);
     dpt = (volatile unsigned char*)dpt_linear;
 
     for (i = 0; i < 256u; ++i) {
-        install_ivt_vector((unsigned char)i, default_linear);
+        install_ivt_vector((unsigned char)i,
+                           unknown_stubs_linear + i * unknown_stub_size);
     }
 
     install_thunk_vector(0x10,
@@ -128,9 +135,15 @@ unsigned int legacy_install_bios_thunks(
     install_thunk_vector(0x1a,
                          LEGACY_THUNK_RUNTIME_BASE +
                              (unsigned int)(bios16_int1a - bios16_thunk_start));
+    install_thunk_vector(0x42,
+                         LEGACY_THUNK_RUNTIME_BASE +
+                             (unsigned int)(bios16_int42 - bios16_thunk_start));
     install_thunk_vector(0x60,
                          LEGACY_THUNK_RUNTIME_BASE +
                              (unsigned int)(bios16_int60 - bios16_thunk_start));
+    install_thunk_vector(0x6d,
+                         LEGACY_THUNK_RUNTIME_BASE +
+                             (unsigned int)(bios16_int6d - bios16_thunk_start));
     install_thunk_vector(0x1c,
                          LEGACY_THUNK_RUNTIME_BASE +
                              (unsigned int)(bios16_iret - bios16_thunk_start));

@@ -781,7 +781,8 @@ static void pci_assign_bus(unsigned char bus, struct pci_allocator* alloc) {
 
                 bridge_control = pci_read16(bus, dev, fn, 0x3eu);
                 if (bridge->req.has_vga) {
-                    bridge_control = (unsigned short)(bridge_control | 0x0008u);
+                    bridge_control =
+                        (unsigned short)(bridge_control | 0x000cu);
                 }
                 pci_write16(bus, dev, fn, 0x3eu, bridge_control);
 
@@ -799,6 +800,8 @@ static void pci_assign_bus(unsigned char bus, struct pci_allocator* alloc) {
                 serial_write_hex32(pref_base);
                 serial_write_string("+");
                 serial_write_hex32(bridge->req.pref);
+                serial_write_string(" ctl=");
+                serial_write_hex16(bridge_control);
                 serial_write_string("\r\n");
 
                 child_alloc.io = io_base;
