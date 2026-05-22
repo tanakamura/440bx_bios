@@ -2,7 +2,6 @@
 
 #include "app_context_builder.h"
 #include "app_boot.h"
-#include "bios_benchmark.h"
 #include "bios_io.h"
 #include "bios_memory.h"
 #include "bios_memtest.h"
@@ -113,7 +112,6 @@ void bios_stage3_run(unsigned int total_bytes) {
         }
     }
     boot_legacy();
-    bios_bandwidth_benchmarks(total_bytes);
     for (;;) {
         __asm__ volatile("hlt");
     }

@@ -36,6 +36,7 @@ SELFTEST_ELF := app/selftest/s3test/selftest_app.elf
 GENROM_STAGE_ELFS := $(P2B_STAGE1_ELF) $(P2B_STAGE15_ELF) $(P2B_STAGE2_ELF) \
 	$(QEMU_STAGE1_ELF) $(QEMU_STAGE2_ELF) $(STAGE3_DIR_ELF)
 BUILD_ARTIFACT_DIRS := app/legacy app/linux_loader app/selftest/s3test \
+	app/selftest/benchmark \
 	lib/acpi lib/app lib/pci lib/rm_thunk lib/serial lib/storage lib/vm86 lib/x86 \
 	shared_service stage3 \
 	platform/p2b98_xv/stage1 platform/p2b98_xv/stage15 \
@@ -56,6 +57,7 @@ include lib/vm86/Makefile
 include app/legacy/Makefile
 include app/linux_loader/Makefile
 include app/selftest/s3test/Makefile
+include app/selftest/benchmark/Makefile
 include tests/Makefile
 include lib/acpi/Makefile
 include lib/app/Makefile
@@ -81,7 +83,7 @@ CORE_C_OBJS := $(P2B_STAGE1_C_OBJS) $(P2B_STAGE15_C_OBJS) \
 	$(ACPI_OBJS) $(APP_COMMON_OBJS) $(SHARED_SERVICE_OBJS) $(VM86_OBJS) $(X86_OBJS) \
 	$(SERIAL_OBJS) $(PCI_OBJS) $(STORAGE_OBJS) \
 	$(STAGE3_C_OBJS) $(LINUX_LOADER_C_OBJS) $(LEGACY_C_OBJS)
-C_DEP_OBJS := $(CORE_C_OBJS) $(SELFTEST_C_OBJS)
+C_DEP_OBJS := $(CORE_C_OBJS) $(SELFTEST_C_OBJS) $(BENCHMARK_C_OBJS)
 ASM_DEP_TARGETS := $(RM_THUNK_BIOS16_OBJ) platform/p2b98_xv/stage1/start.o \
 	platform/p2b98_xv/stage1/stage15_blob.o \
 	platform/p2b98_xv/stage15/stage15_entry.o \
@@ -102,4 +104,4 @@ genrom: $(GENROM_BINS)
 -include $(DEPS)
 
 clean:
-	rm -f start start_legacy start_legacy_test start.elf start_legacy.elf linuxprobe.elf *.map *.o *.d *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc include/blob.inc include/blob.ld shared_service/service_table.inc shared_service/service_table.ld $(SHARED_SERVICE_RELOC_CHECK) $(GENROM_STAGE_ELFS) $(LEGACY_APP_ELF) $(LINUX_LOADER_APP_ELF) $(SELFTEST_ELF) $(P2B98_XV_BLOB_DEPFILES) $(QEMU_BLOB_DEPFILES) $(addsuffix /*.o,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.d,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.su,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.map,$(BUILD_ARTIFACT_DIRS)) app/legacy/*.bin app/linux_loader/*.bin app/selftest/s3test/*.bin app/selftest/s3test/*.elf platform/p2b98_xv/stage15/stage15.bin platform/p2b98_xv/stage1/stage15_crc.inc
+	rm -f start start_legacy start_legacy_test start_selftest start_benchmark start.elf start_legacy.elf linuxprobe.elf *.map *.o *.d *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc include/blob.inc include/blob.ld shared_service/service_table.inc shared_service/service_table.ld $(SHARED_SERVICE_RELOC_CHECK) $(GENROM_STAGE_ELFS) $(LEGACY_APP_ELF) $(LINUX_LOADER_APP_ELF) $(SELFTEST_ELF) $(P2B98_XV_BLOB_DEPFILES) $(QEMU_BLOB_DEPFILES) $(addsuffix /*.o,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.d,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.su,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.map,$(BUILD_ARTIFACT_DIRS)) app/legacy/*.bin app/linux_loader/*.bin app/selftest/s3test/*.bin app/selftest/s3test/*.elf app/selftest/benchmark/*.bin app/selftest/benchmark/*.elf platform/p2b98_xv/stage15/stage15.bin platform/p2b98_xv/stage1/stage15_crc.inc

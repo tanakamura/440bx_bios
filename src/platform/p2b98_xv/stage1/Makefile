@@ -21,6 +21,10 @@ start_selftest: p2b98_xv_selftest_genrom.bin app/selftest/s3test/s3test_exec_blo
 	cp p2b98_xv_selftest_genrom.bin $@
 	python3 $(BUILD_SCRIPTS)/patch_rom_free.py $@ app/selftest/s3test/s3test_exec_blob.bin
 
+start_benchmark: p2b98_xv_selftest_genrom.bin app/selftest/benchmark/benchmark_exec_blob.bin $(BUILD_SCRIPTS)/patch_rom_free.py
+	cp p2b98_xv_selftest_genrom.bin $@
+	python3 $(BUILD_SCRIPTS)/patch_rom_free.py $@ app/selftest/benchmark/benchmark_exec_blob.bin
+
 platform/p2b98_xv/stage1/start.o: platform/p2b98_xv/stage1/start.asm | post_code.inc
 	$(COMPILE_ASM_ELF32)
 

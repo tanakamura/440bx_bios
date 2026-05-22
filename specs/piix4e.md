@@ -111,6 +111,11 @@ base + 6 : SMBHSTDAT1 8bit
   - secondary command/control: `0x170` / `0x376`
 - The scan path issues ATA `IDENTIFY DEVICE` (`0xec`) and, when that succeeds as ATA, reads LBA0 with READ SECTORS (`0x20`) using LBA28.
 - Bus-master IDE BAR4 is assigned/enabled during PCI resource assignment.
+- On at least one P2B98-XV board, PCI BAR4 size probing for the PIIX4E IDE
+  function at `00:07.1` did not report a resource window during generic PCI
+  BAR enumeration, and config `0x20` remained `0x0000` at boot. In that case,
+  the BIOS must allocate a 16-byte I/O window itself, write BAR4 with
+  `base | 1`, then use that non-zero `BMIBA` for bus-master IDE.
 - If IDENTIFY word 88 reports Ultra DMA support, the BIOS selects the best PIIX4-supported UDMA mode 0-2, programs the drive with `SET FEATURES / SET TRANSFER MODE` using transfer mode `0x40 | mode`, enables that drive in `UDMACTL`, programs `UDMATIM`, and uses PIIX4 bus-master IDE READ DMA with a PRD table for kernel payload reads. If UDMA setup is not available, it falls back to the best reported multiword DMA mode. If READ DMA fails, it disables DMA for that boot and falls back to multi-sector PIO.
 - IDE DMA reads use up to 256 sectors per ATA `READ DMA` command. If the drive reports 48-bit LBA support, the BIOS uses `READ DMA EXT` and groups reads up to 2048 sectors per command, currently limited by the PRD table size. Do not put `wbinvd` around every IDE DMA command: 440BX/Pentium II PCI bus-master DMA is cache coherent, and per-64KiB/128KiB `wbinvd` dominates Linux kernel load time. The Linux jump path uses a cheap serializing `cpuid`, not `wbinvd`.
 - PIIX4 IDE timing registers:

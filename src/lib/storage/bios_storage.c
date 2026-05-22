@@ -1361,6 +1361,22 @@ unsigned char bios_hdd_select_kind(unsigned char kind) {
     return 1u;
 }
 
+void bios_hdd_get_dma_caps(unsigned char* dma_enabled,
+                           unsigned char* lba48_dma_enabled) {
+    if (dma_enabled != 0) {
+        *dma_enabled = bios_hdd_dma_enabled;
+    }
+    if (lba48_dma_enabled != 0) {
+        *lba48_dma_enabled = bios_hdd_lba48_dma_enabled;
+    }
+}
+
+void bios_hdd_set_dma_caps(unsigned char dma_enabled,
+                           unsigned char lba48_dma_enabled) {
+    bios_hdd_dma_enabled = dma_enabled;
+    bios_hdd_lba48_dma_enabled = lba48_dma_enabled;
+}
+
 void bios_hdd_get_geometry(struct bios_hdd_geometry* geometry) {
     geometry->total_sectors = bios_hdd_total_sectors;
     geometry->cylinders = bios_hdd_cylinders;

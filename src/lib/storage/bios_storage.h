@@ -17,6 +17,10 @@ void storage_set_scratch_base(unsigned int base);
 unsigned char bios_hdd_is_present(void);
 unsigned char bios_hdd_current_kind(void);
 unsigned char bios_hdd_select_kind(unsigned char kind);
+void bios_hdd_get_dma_caps(unsigned char* dma_enabled,
+                           unsigned char* lba48_dma_enabled);
+void bios_hdd_set_dma_caps(unsigned char dma_enabled,
+                           unsigned char lba48_dma_enabled);
 void bios_hdd_get_geometry(struct bios_hdd_geometry* geometry);
 int bios_hdd_read_sectors(unsigned int lba, unsigned int count,
                           unsigned int dest);

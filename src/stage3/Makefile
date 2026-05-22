@@ -1,7 +1,6 @@
 # Included from ../Makefile; paths are relative to src/.
 
 STAGE3_CORE_OBJS := stage3/entry.o stage3/stage3.o \
-	stage3/bios_benchmark.o \
 	stage3/bios_maintenance.o stage3/bios_memtest.o stage3/bios_settings.o \
 	stage3/bios_stage_context.o stage3/app_context_builder.o
 STAGE3_LIB_OBJS := $(X86_OBJS) $(SERIAL_OBJS) $(PCI_OBJS) $(STORAGE_OBJS) \
