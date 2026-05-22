@@ -1,8 +1,6 @@
 #ifndef LEGACY_THUNK_H
 #define LEGACY_THUNK_H
 
-#include "legacy_app_abi.h"
-
 #define LEGACY_THUNK_RUNTIME_BASE 0x000fe000u
 
 typedef void (*legacy_thunk_void_fn)(void);

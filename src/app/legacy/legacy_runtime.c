@@ -73,38 +73,28 @@ static void legacy_runtime_fill_local_platform_ops(
     ops->memory_e820_get_entry = legacy_local_memory_e820_get_entry;
 }
 
-void legacy_runtime_fill_exports(struct legacy_app_exports* exports) {
-    if (exports == 0) {
-        return;
-    }
-    exports->magic = LEGACY_APP_EXPORTS_MAGIC;
-    exports->version = LEGACY_APP_EXPORTS_VERSION;
-    exports->size = sizeof(*exports);
-    exports->prepare_boot_sector = legacy_prepare_boot_sector;
-    exports->install_boot_drive = legacy_install_boot_drive;
-}
-
-void legacy_runtime_init(const struct legacy_runtime_config* config) {
+void legacy_runtime_init(const struct app_boot_context* ctx) {
     struct legacy_service_context context;
     struct legacy_platform_ops local_ops;
     unsigned int floppy_dpt_linear;
+    static const unsigned short base_mem_kb = 640u;
+    static const unsigned short ebda_segment = 0x0000u;
 
     legacy_runtime_fill_local_platform_ops(&local_ops);
     legacy_platform_init(&local_ops);
-    legacy_boot_init(&config->platform);
+    legacy_boot_init(&ctx->platform);
     storage_set_scratch_base(bios_memory_top_reserved_base(
-        config->platform.total_bytes));
-    storage_scan(config->platform.total_bytes);
+        ctx->platform.total_bytes));
+    storage_scan(ctx->platform.total_bytes);
     legacy_floppy_probe();
     floppy_dpt_linear = legacy_install_bios_thunks(
-        legacy_floppy_present(), bios_hdd_is_present(), config->base_mem_kb,
-        config->ebda_segment, 0, 0);
-    legacy_install_pm_stack_top(app_pm_stack_top(config->platform.total_bytes));
+        legacy_floppy_present(), bios_hdd_is_present(), base_mem_kb,
+        ebda_segment, 0, 0);
+    legacy_install_pm_stack_top(app_pm_stack_top(ctx->platform.total_bytes));
 
-    context.platform = config->platform;
+    context.platform = ctx->platform;
     context.floppy_dpt_linear = floppy_dpt_linear;
-    context.base_mem_kb = config->base_mem_kb;
+    context.base_mem_kb = base_mem_kb;
     legacy_service_init(&context);
     legacy_timer_init();
-    legacy_runtime_fill_exports(config->exports);
 }

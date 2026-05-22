@@ -1,7 +1,6 @@
 #include "stage3.h"
 
-#include "app/legacy/legacy_direct_thunk.h"
-#include "app/legacy/legacy_stage3.h"
+#include "app_boot.h"
 #include "app/linux_loader/linux_loader_stage3.h"
 #include "app/selftest/s3test/selftest_stage3.h"
 #include "bios_benchmark.h"
@@ -14,19 +13,8 @@
 #include "bios_storage.h"
 #include "post_code.h"
 
-extern void bios_boot_freedos_pm32(void);
-
 static struct bios_stage_context bios_stage;
 static struct bios_settings bios_settings;
-static unsigned char bios_boot_drive = 0x80u;
-
-static void install_legacy_runtime(void) {
-    legacy_stage3_install_runtime(&bios_stage, &bios_settings);
-}
-
-static void prepare_boot_sector(void) {
-    bios_boot_drive = legacy_stage3_prepare_boot_sector();
-}
 
 static unsigned int bios_top_reserved_base(void) {
     return bios_memory_top_reserved_base(bios_stage.total_bytes);
@@ -38,6 +26,30 @@ static void run_test_elf_payload(void) {
 
 static int try_boot_linux(void) {
     return linux_loader_stage3_try_boot(&bios_stage, &bios_settings);
+}
+
+static void boot_legacy(void) {
+    struct app_boot_context* ctx;
+    int rc;
+
+    if (bios_stage.legacy_app_blob_linear == 0u) {
+        serial_write_string("Legacy app missing\r\n");
+        for (;;) {
+            __asm__ volatile("hlt");
+        }
+    }
+    ctx = app_boot_context_alloc(&bios_stage);
+    if (ctx == 0) {
+        serial_write_string("Legacy ctx alloc failed\r\n");
+        for (;;) {
+            __asm__ volatile("hlt");
+        }
+    }
+    app_boot_context_fill(ctx, APP_BOOT_ID_LEGACY, &bios_stage, &bios_settings);
+    rc = app_boot_run(&bios_stage, SHARED_PAYLOAD_ID_LEGACY_APP, "Legacy", ctx);
+    serial_write_string("Legacy returned rc=");
+    serial_write_hex32((unsigned int)rc);
+    serial_write_string("\r\n");
 }
 
 void bios_stage3_run(unsigned int total_bytes) {
@@ -76,21 +88,12 @@ void bios_stage3_run(unsigned int total_bytes) {
     if (bios_stage.linux_loader_blob_linear != 0u) {
         storage_scan(total_bytes);
     }
-    install_legacy_runtime();
-    serial_write_string("IVT thunks installed @ ");
-    serial_write_hex32(LEGACY_DIRECT_THUNK_RUNTIME_BASE);
-    serial_write_string("\r\n");
     if (try_boot_linux()) {
         for (;;) {
             __asm__ volatile("hlt");
         }
     }
-    prepare_boot_sector();
-    serial_write_string("Booting drive=");
-    serial_write_hex8(bios_boot_drive);
-    serial_write_string("...\r\n");
-    bios_boot_freedos_pm32();
-    serial_write_string("FreeDOS returned\r\n");
+    boot_legacy();
     bios_bandwidth_benchmarks(total_bytes);
     for (;;) {
         __asm__ volatile("hlt");

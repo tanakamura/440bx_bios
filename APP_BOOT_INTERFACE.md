@@ -13,23 +13,23 @@
 
 ## 現状の問題
 
-今は次の不揃いがある。
+今は次の不揃いがあったが、整理を進めている。
 
 - `legacy`
-  - `legacy_runtime_config + exports` という双方向 ABI
-  - stage3 側 helper も `legacy_stage3.*` という app 固有 glue を持つ
+  - 以前は `legacy_runtime_config + exports` という双方向 ABI だった
+  - いまは `app_entry(ctx)` へ移行済みで、stage3 main からは独立した
 - `linux_loader`
   - `linux_loader_config` を受ける一方向 ABI
   - app 本体は self-contained だが、起動 glue は別
 - `selftest`
   - `selftest_runtime_info` を受ける別 ABI
-  - 中で `legacy_stage3_*` を呼んでおり、独立性が弱い
+  - 以前は中で `legacy_stage3_*` を呼んでいた
 
 つまり今は、
 
 - 共通情報の運び方はかなり揃ってきた
 - しかし entry ABI と lifecycle が app ごとに揃っていない
-- 特に `legacy` だけ callback/export 型で特殊
+- 主に `legacy` の旧 callback/export 名残をどう消すかが論点だった
 
 ## 原則
 
@@ -253,8 +253,7 @@ int legacy_app_entry(const struct app_boot_context* ctx);
 4. 必要なら NVRAM lib 経由で boot success を記録する
 5. `bios_boot_freedos_pm32()` 相当へ遷移
 
-今の `legacy_app_exports` は最終的には消す。
-理由は、これが `legacy` だけを双方向 ABI にしているため。
+`legacy_app_exports` は削除済み。
 
 ### linux_loader
 
@@ -334,15 +333,14 @@ app に `stage3` ポインタを渡してはならない。
 
 優先順はこれ。
 
-1. `legacy_app_exports` を廃止し、`legacy` を共通 entry ABI に載せる
-2. `linux_loader_config` / `selftest_runtime_info` を
+1. `linux_loader_config` / `selftest_runtime_info` を
    `app_boot_context` へ統合する
-3. `lib/app/` に `app_boot_abi.h` と `app_boot_run()` を作る
-4. `stage3` は
+2. `lib/app/` に `app_boot_abi.h` と `app_boot_run()` を作る
+3. `stage3` は
    - context 構築
    - app 実行順制御
    だけにする
-5. app 実行に必要な `ctx` / work 領域を
+4. app 実行に必要な `ctx` / work 領域を
    `shared service` heap 上へ置く
 
 ## いまの設計に対する判断

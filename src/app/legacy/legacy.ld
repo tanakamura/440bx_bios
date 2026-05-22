@@ -1,5 +1,5 @@
 OUTPUT_FORMAT("elf32-i386")
-ENTRY(legacy_app_entry)
+ENTRY(app_entry)
 INCLUDE include/blob.ld
 
 PHDRS {

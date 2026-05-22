@@ -1,9 +1,8 @@
 #ifndef LEGACY_RUNTIME_H
 #define LEGACY_RUNTIME_H
 
-#include "legacy_app_abi.h"
+#include "app_boot_abi.h"
 
-void legacy_runtime_init(const struct legacy_runtime_config* config);
-void legacy_runtime_fill_exports(struct legacy_app_exports* exports);
+void legacy_runtime_init(const struct app_boot_context* ctx);
 
 #endif
