@@ -92,8 +92,8 @@ static void dump_pm(unsigned int pm1_evt, unsigned int pm1_cnt) {
     serial_write_string("\r\n");
 }
 
-unsigned int s3test_entry(const struct selftest_runtime_info* info) {
-    unsigned int boot_params = info->boot_params;
+unsigned int s3test_entry(const struct app_boot_context* info) {
+    unsigned int boot_params = info->boot_params_linear;
     unsigned int rsdp = info->platform.acpi_rsdp_linear;
     unsigned int pm1_evt = info->platform.acpi_pm1_evt;
     unsigned int pm1_cnt = info->platform.acpi_pm1_cnt;
@@ -144,4 +144,8 @@ unsigned int s3test_entry(const struct selftest_runtime_info* info) {
     }
     serial_write_string(ok != 0u ? "S3TEST OK\r\n" : "S3TEST NG\r\n");
     return ok != 0u ? 0x53334f4bu : 0x53334e47u;
+}
+
+int app_entry(const struct app_boot_context* ctx) {
+    return (int)s3test_entry(ctx);
 }

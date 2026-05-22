@@ -1,5 +1,5 @@
 OUTPUT_FORMAT(elf32-i386)
-ENTRY(s3test_entry)
+ENTRY(app_entry)
 
 SECTIONS
 {

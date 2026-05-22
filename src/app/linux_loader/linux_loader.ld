@@ -1,5 +1,5 @@
 OUTPUT_FORMAT("elf32-i386")
-ENTRY(linux_loader_app_entry)
+ENTRY(app_entry)
 INCLUDE include/blob.ld
 
 PHDRS {

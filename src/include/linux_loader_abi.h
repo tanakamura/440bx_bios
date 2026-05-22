@@ -1,7 +1,7 @@
 #ifndef LINUX_LOADER_ABI_H
 #define LINUX_LOADER_ABI_H
 
-#include "app_platform_abi.h"
+#include "app_boot_abi.h"
 
 #define LINUX_LOADER_BOOT_PARAMS 0x00090000u
 #define LINUX_LOADER_RSDP_LINEAR 0x0009fc00u
@@ -30,11 +30,5 @@ struct linux_loader_e820_entry {
     unsigned int length_high;
     unsigned int type;
 } __attribute__((packed));
-
-struct linux_loader_config {
-    struct app_platform_info platform;
-    unsigned int runtime_protect_base;
-    unsigned int runtime_protect_size;
-};
 
 #endif

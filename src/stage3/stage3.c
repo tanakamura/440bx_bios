@@ -46,8 +46,7 @@ static void install_pm_stack_top(void) {
 }
 
 static void run_test_elf_payload(void) {
-    selftest_stage3_run_elf_payload(&bios_stage, &bios_settings,
-                                    bios_call_vgabios_init_pm32);
+    selftest_stage3_run_elf_payload(&bios_stage, &bios_settings);
 }
 
 static int try_boot_linux(void) {

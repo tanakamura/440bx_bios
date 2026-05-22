@@ -1,8 +1,8 @@
 #include "app/selftest/s3test/selftest_stage3.h"
 
+#include "app_boot.h"
 #include "app/legacy/legacy_stage3.h"
 #include "app_loader.h"
-#include "app_platform.h"
 #include "app_runtime.h"
 #include "bios_acpi_runtime.h"
 #include "bios_memory.h"
@@ -249,12 +249,8 @@ static void selftest_prepare_boot_params(unsigned int total_bytes,
 
 void selftest_stage3_run_elf_payload(
     const struct bios_stage_context* stage,
-    const struct bios_settings* settings,
-    void (*init_vgabios_pm32)(unsigned int bdf)) {
-    typedef unsigned int (*test_elf_entry_fn)(
-        const struct selftest_runtime_info* info);
-    struct selftest_runtime_info* info =
-        (struct selftest_runtime_info*)SELFTEST_BOOT_PARAMS;
+    const struct bios_settings* settings) {
+    struct app_boot_context* info = app_boot_context_alloc(stage);
     blob_load_fn load = bios_stage_context_blob_load(stage);
     struct blob_status status;
     unsigned char* image = (unsigned char*)SELFTEST_ELF_IMAGE_LINEAR;
@@ -263,7 +259,7 @@ void selftest_stage3_run_elf_payload(
     unsigned int rc;
     int expand_rc;
 
-    if (stage->test_elf_payload_linear == 0u) {
+    if (stage->test_elf_payload_linear == 0u || info == 0) {
         serial_write_string("No test ELF payload\r\n");
         return;
     }
@@ -291,17 +287,18 @@ void selftest_stage3_run_elf_payload(
     }
 
     storage_scan(stage->total_bytes);
-    app_install_video_services(stage, init_vgabios_pm32);
     legacy_stage3_install_runtime(stage, settings);
     legacy_stage3_install_boot_drive(0x80u);
     legacy_stage3_install_pm_stack_top(app_pm_stack_top(stage));
     selftest_prepare_platform(stage);
     selftest_prepare_boot_params(stage->total_bytes, entry_phys);
-    app_platform_fill(&info->platform, stage, settings);
+    app_boot_context_fill(info, APP_BOOT_ID_SELFTEST, stage, settings);
     if (info->platform.acpi_rsdp_linear == 0u) {
         info->platform.acpi_rsdp_linear = SELFTEST_RSDP_LINEAR;
     }
-    info->boot_params = SELFTEST_BOOT_PARAMS;
+    info->boot_params_linear = SELFTEST_BOOT_PARAMS;
+    info->work_linear = SELFTEST_ELF_IMAGE_LINEAR;
+    info->work_size = SELFTEST_ELF_IMAGE_CAPACITY;
 
     serial_write_string("Call test ELF entry=");
     serial_write_hex32(entry_phys);
@@ -309,7 +306,7 @@ void selftest_stage3_run_elf_payload(
     serial_write_hex32((unsigned int)info);
     serial_write_string("\r\n");
     cpu_serialize();
-    rc = ((test_elf_entry_fn)entry_phys)(info);
+    rc = ((app_entry_fn)entry_phys)(info);
     cpu_serialize();
     serial_write_string("Test ELF returned ");
     serial_write_hex32(rc);

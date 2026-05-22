@@ -62,7 +62,7 @@ struct linux_deferred_segment {
 
 static struct linux_vbe_lfb linux_vbe;
 static struct linux_deferred_segment linux_deferred[LINUX_DEFER_SEG_MAX];
-static const struct linux_loader_config* linux_active_config;
+static const struct app_boot_context* linux_active_config;
 
 #define CFG_TOTAL_BYTES(c) ((c)->platform.total_bytes)
 #define CFG_RSDP(c) ((c)->platform.acpi_rsdp_linear)
@@ -93,7 +93,7 @@ static unsigned int linux_align_down(unsigned int value, unsigned int align) {
 }
 
 static void linux_loader_set_active_config(
-    const struct linux_loader_config* config) {
+    const struct app_boot_context* config) {
     linux_active_config = config;
 }
 
@@ -131,7 +131,7 @@ static unsigned int linux_memory_extended_usable_end(unsigned int total_bytes) {
     return bios_memory_extended_usable_end(total_bytes);
 }
 
-static int linux_acpi_reserved_range(const struct linux_loader_config* config,
+static int linux_acpi_reserved_range(const struct app_boot_context* config,
                                      unsigned int* base, unsigned int* end) {
     unsigned int range_base;
     unsigned int range_end;
@@ -296,10 +296,10 @@ static int linux_range_overlaps(unsigned int a_base, unsigned int a_size,
     return a_base < b_end && b_base < a_end;
 }
 
-static int linux_should_defer_load(const struct linux_loader_config* config,
+static int linux_should_defer_load(const struct app_boot_context* config,
                                    unsigned int paddr, unsigned int memsz) {
-    return linux_range_overlaps(paddr, memsz, config->runtime_protect_base,
-                                config->runtime_protect_size);
+    return linux_range_overlaps(paddr, memsz, config->runtime_base,
+                                config->runtime_size);
 }
 
 static void linux_apply_deferred_segments(
@@ -316,7 +316,7 @@ static void linux_apply_deferred_segments(
     }
 }
 
-static unsigned int linux_usable_end(const struct linux_loader_config* config) {
+static unsigned int linux_usable_end(const struct app_boot_context* config) {
     return linux_memory_extended_usable_end(CFG_TOTAL_BYTES(config));
 }
 
@@ -341,7 +341,7 @@ static void linux_put32(unsigned char* p, unsigned int value) {
     p[3] = (unsigned char)(value >> 24);
 }
 
-static unsigned char* vbe_mode_info(const struct linux_loader_config* config) {
+static unsigned char* vbe_mode_info(const struct app_boot_context* config) {
     (void)config;
     return (unsigned char*)(0x000fe000u +
                             (unsigned int)(bios16_vbe_mode_info -
@@ -354,14 +354,14 @@ static volatile unsigned short* vbe_status_ptr(void) {
                                                      bios16_thunk_start));
 }
 
-static unsigned short vbe_info16(const struct linux_loader_config* config,
+static unsigned short vbe_info16(const struct app_boot_context* config,
                                  unsigned int off) {
     unsigned char* info = vbe_mode_info(config);
     return (unsigned short)((unsigned short)info[off] |
                             ((unsigned short)info[off + 1u] << 8));
 }
 
-static unsigned int vbe_info32(const struct linux_loader_config* config,
+static unsigned int vbe_info32(const struct app_boot_context* config,
                                unsigned int off) {
     unsigned char* info = vbe_mode_info(config);
     return (unsigned int)info[off] | ((unsigned int)info[off + 1u] << 8) |
@@ -369,7 +369,7 @@ static unsigned int vbe_info32(const struct linux_loader_config* config,
            ((unsigned int)info[off + 3u] << 24);
 }
 
-static int vbe_query_mode(const struct linux_loader_config* config,
+static int vbe_query_mode(const struct app_boot_context* config,
                           unsigned short mode) {
     unsigned char* info = vbe_mode_info(config);
     unsigned int i;
@@ -396,7 +396,7 @@ static int vbe_query_mode(const struct linux_loader_config* config,
     return 0;
 }
 
-static int vbe_set_mode(const struct linux_loader_config* config,
+static int vbe_set_mode(const struct app_boot_context* config,
                         unsigned short mode) {
     unsigned int status;
 
@@ -416,7 +416,7 @@ static int vbe_set_mode(const struct linux_loader_config* config,
     return 0;
 }
 
-static int linux_set_vbe_1024x768(const struct linux_loader_config* config) {
+static int linux_set_vbe_1024x768(const struct app_boot_context* config) {
     unsigned short attrs;
     unsigned short width;
     unsigned short height;
@@ -569,7 +569,7 @@ static int linux_read_partition(unsigned int index,
     return linux_parse_mbr_partition(index, part, mbr);
 }
 
-static int linux_select_kernel_source(const struct linux_loader_config* config,
+static int linux_select_kernel_source(const struct app_boot_context* config,
                                       struct linux_partition* part,
                                       unsigned char* whole_disk) {
     unsigned char* sector0 = (unsigned char*)LINUX_SECTOR_BUF;
@@ -660,7 +660,7 @@ static int linux_read_partition_bytes(const struct linux_partition* part,
     return 0;
 }
 
-static int linux_elf_entry_phys(const struct linux_loader_config* config,
+static int linux_elf_entry_phys(const struct app_boot_context* config,
                                 unsigned int entry, unsigned char* phdrs,
                                 unsigned int phnum, unsigned int phentsize,
                                 unsigned int* entry_phys) {
@@ -701,7 +701,7 @@ static int linux_resolve_load_phys(unsigned int paddr, unsigned int vaddr,
     return -1;
 }
 
-static int linux_load_initrd(const struct linux_loader_config* config,
+static int linux_load_initrd(const struct app_boot_context* config,
                              const struct linux_partition* part,
                              unsigned int load_high, unsigned int* initrd_base,
                              unsigned int* initrd_size) {
@@ -728,7 +728,7 @@ static int linux_load_initrd(const struct linux_loader_config* config,
     return 0;
 }
 
-static void linux_write_cmdline(const struct linux_loader_config* config) {
+static void linux_write_cmdline(const struct app_boot_context* config) {
     unsigned int i;
     unsigned char* dst = (unsigned char*)LINUX_CMDLINE;
 
@@ -756,7 +756,7 @@ static void linux_write_cmdline(const struct linux_loader_config* config) {
     dst[i] = '\0';
 }
 
-static void linux_setup_boot_params(const struct linux_loader_config* config,
+static void linux_setup_boot_params(const struct app_boot_context* config,
                                     unsigned int entry_phys,
                                     unsigned int initrd_base,
                                     unsigned int initrd_size) {
@@ -811,7 +811,7 @@ static void linux_setup_boot_params(const struct linux_loader_config* config,
     linux_put32(bp + 0x0238u, LINUX_CMDLINE_CAPACITY);
 }
 
-void linux_loader_prepare_boot_params(const struct linux_loader_config* config,
+void linux_loader_prepare_boot_params(const struct app_boot_context* config,
                                       unsigned int entry_phys,
                                       unsigned int initrd_base,
                                       unsigned int initrd_size) {
@@ -828,7 +828,7 @@ void linux_loader_prepare_boot_params(const struct linux_loader_config* config,
     }
 }
 
-static void linux_record_boot_success(const struct linux_loader_config* config) {
+static void linux_record_boot_success(const struct app_boot_context* config) {
     unsigned char kind;
 
     if (CFG_BOOT_PRIORITY(config) != BIOS_NVRAM_BOOT_PRIORITY_AUTO) {
@@ -844,7 +844,7 @@ static void linux_record_boot_success(const struct linux_loader_config* config) 
     serial_write_string("\r\n");
 }
 
-static void linux_release_boot_services(const struct linux_loader_config* config) {
+static void linux_release_boot_services(const struct app_boot_context* config) {
     volatile unsigned int* slot;
     struct shared_service_table* shared;
 
@@ -874,7 +874,7 @@ static void linux_jump(unsigned int entry_phys) {
     }
 }
 
-int linux_loader_load_elf_image(const struct linux_loader_config* config,
+int linux_loader_load_elf_image(const struct app_boot_context* config,
                                 unsigned char* elf, unsigned int image_size,
                                 unsigned int* entry_phys) {
     unsigned int entry;
@@ -954,7 +954,7 @@ int linux_loader_load_elf_image(const struct linux_loader_config* config,
     return 0;
 }
 
-static int try_boot_linux_current(const struct linux_loader_config* config) {
+static int try_boot_linux_current(const struct app_boot_context* config) {
     struct linux_partition kernel_part;
     struct linux_partition initrd_part;
     unsigned char* ehdr = (unsigned char*)LINUX_SECTOR_BUF;
@@ -1160,7 +1160,7 @@ static int try_boot_linux_current(const struct linux_loader_config* config) {
     return 1;
 }
 
-int linux_loader_try_boot(const struct linux_loader_config* config) {
+int linux_loader_try_boot(const struct app_boot_context* config) {
     linux_loader_set_active_config(config);
     storage_set_scratch_base(bios_memory_top_reserved_base(CFG_TOTAL_BYTES(config)));
     storage_scan(CFG_TOTAL_BYTES(config));
