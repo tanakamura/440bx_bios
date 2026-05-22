@@ -1,5 +1,6 @@
 #include "app/linux_loader/linux_loader.h"
 
+#include "app_shadow.h"
 #include "bios_acpi_runtime.h"
 #include "bios_memory.h"
 #include "bios_nvram.h"
@@ -78,6 +79,7 @@ static const struct app_boot_context* linux_active_config;
 #define CFG_VMLINUX_PART(c) ((c)->platform.nvram.vmlinux_partition)
 #define CFG_CMDLINE(c) ((c)->platform.nvram.linux_cmdline_suffix)
 
+extern void bios_call_vgabios_init_pm32(unsigned int bdf);
 extern void bios_call_vbe_mode_info_pm32(unsigned int mode);
 extern void bios_call_vbe_set_mode_pm32(unsigned int mode);
 extern unsigned char bios16_thunk_start[];
@@ -1162,6 +1164,9 @@ static int try_boot_linux_current(const struct app_boot_context* config) {
 
 int linux_loader_try_boot(const struct app_boot_context* config) {
     linux_loader_set_active_config(config);
+    app_shadow_install(CFG_TOTAL_BYTES(config));
+    app_shadow_install_vgabios(CFG_TOTAL_BYTES(config));
+    app_shadow_init_vgabios(bios_call_vgabios_init_pm32);
     storage_set_scratch_base(bios_memory_top_reserved_base(CFG_TOTAL_BYTES(config)));
     storage_scan(CFG_TOTAL_BYTES(config));
     if (CFG_BOOT_PRIORITY(config) == LINUX_LOADER_BOOT_PRIORITY_IDE) {

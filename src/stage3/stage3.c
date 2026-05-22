@@ -4,7 +4,6 @@
 #include "app/legacy/legacy_stage3.h"
 #include "app/linux_loader/linux_loader_stage3.h"
 #include "app/selftest/s3test/selftest_stage3.h"
-#include "app_runtime.h"
 #include "bios_benchmark.h"
 #include "bios_io.h"
 #include "bios_memory.h"
@@ -16,16 +15,12 @@
 #include "post_code.h"
 
 extern void bios_boot_freedos_pm32(void);
-extern void bios_call_vgabios_init_pm32(unsigned int bdf);
-extern unsigned int bios_call_vbe_mode_info_pm32(unsigned int mode);
-extern unsigned int bios_call_vbe_set_mode_pm32(unsigned int mode);
 
 static struct bios_stage_context bios_stage;
 static struct bios_settings bios_settings;
 static unsigned char bios_boot_drive = 0x80u;
 
-static void install_bios_thunks(void) {
-    app_install_video_services(&bios_stage, bios_call_vgabios_init_pm32);
+static void install_legacy_runtime(void) {
     legacy_stage3_install_runtime(&bios_stage, &bios_settings);
 }
 
@@ -33,16 +28,8 @@ static void prepare_boot_sector(void) {
     bios_boot_drive = legacy_stage3_prepare_boot_sector();
 }
 
-static void install_boot_drive(void) {
-    legacy_stage3_install_boot_drive(bios_boot_drive);
-}
-
 static unsigned int bios_top_reserved_base(void) {
     return bios_memory_top_reserved_base(bios_stage.total_bytes);
-}
-
-static void install_pm_stack_top(void) {
-    legacy_stage3_install_pm_stack_top(app_pm_stack_top(&bios_stage));
 }
 
 static void run_test_elf_payload(void) {
@@ -89,9 +76,7 @@ void bios_stage3_run(unsigned int total_bytes) {
     if (bios_stage.linux_loader_blob_linear != 0u) {
         storage_scan(total_bytes);
     }
-    install_bios_thunks();
-    install_boot_drive();
-    install_pm_stack_top();
+    install_legacy_runtime();
     serial_write_string("IVT thunks installed @ ");
     serial_write_hex32(LEGACY_DIRECT_THUNK_RUNTIME_BASE);
     serial_write_string("\r\n");
@@ -101,7 +86,6 @@ void bios_stage3_run(unsigned int total_bytes) {
         }
     }
     prepare_boot_sector();
-    install_boot_drive();
     serial_write_string("Booting drive=");
     serial_write_hex8(bios_boot_drive);
     serial_write_string("...\r\n");

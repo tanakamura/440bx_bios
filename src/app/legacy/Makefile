@@ -10,7 +10,7 @@ LEGACY_OBJS := $(RM_THUNK_BIOS16_OBJ) app/legacy/legacy_bda.o \
 	app/legacy/legacy_time.o app/legacy/legacy_video.o
 LEGACY_APP_LIB_OBJS := lib/serial/bios_serial.o lib/pci/bios_pci.o \
 	lib/storage/bios_storage.o lib/x86/bios_memory.o lib/x86/bios_nvram.o \
-	lib/x86/bios_rtc.o
+	lib/x86/bios_rtc.o lib/app/app_shadow.o lib/app/app_runtime.o
 LEGACY_APP_OBJS := app/legacy/entry.o $(LEGACY_OBJS) $(LEGACY_APP_LIB_OBJS)
 LEGACY_C_OBJS := app/legacy/entry.o $(filter-out $(RM_THUNK_BIOS16_OBJ),$(LEGACY_OBJS))
 

@@ -3,7 +3,6 @@
 #include "app_boot.h"
 #include "app/legacy/legacy_stage3.h"
 #include "app_loader.h"
-#include "app_runtime.h"
 #include "bios_acpi_runtime.h"
 #include "bios_memory.h"
 #include "bios_nvram.h"
@@ -289,7 +288,6 @@ void selftest_stage3_run_elf_payload(
     storage_scan(stage->total_bytes);
     legacy_stage3_install_runtime(stage, settings);
     legacy_stage3_install_boot_drive(0x80u);
-    legacy_stage3_install_pm_stack_top(app_pm_stack_top(stage));
     selftest_prepare_platform(stage);
     selftest_prepare_boot_params(stage->total_bytes, entry_phys);
     app_boot_context_fill(info, APP_BOOT_ID_SELFTEST, stage, settings);

@@ -174,7 +174,13 @@ static void install_runtime_gdt(void) {
     load_bios_gdt((const unsigned long long*)BIOS_RUNTIME_GDT_LINEAR);
 }
 
-void app_shadow_install(unsigned char already_ready) {
+void app_shadow_install(unsigned int total_bytes) {
+    struct shared_service_table* shared = shared_service_from_total(total_bytes);
+    struct shared_boot_context* boot = shared_boot_context(shared);
+    unsigned char already_ready =
+        (boot != 0 &&
+         (boot->flags & SHARED_BOOT_FLAG_SHADOW_READY) != 0u);
+
     if (already_ready != 0u) {
         install_runtime_gdt();
         serial_write_string("PAM shadow already ready\r\n");
@@ -188,8 +194,9 @@ void app_shadow_install(unsigned char already_ready) {
     install_runtime_gdt();
 }
 
-void app_shadow_install_vgabios(unsigned int blob_linear, blob_load_fn load,
-                                unsigned int total_bytes) {
+void app_shadow_install_vgabios(unsigned int total_bytes) {
+    struct shared_service_table* shared = shared_service_from_total(total_bytes);
+    blob_load_fn load = 0;
     struct blob_status status;
     unsigned int load_addr = VGA_BIOS_LINEAR;
     unsigned int size;
@@ -198,9 +205,13 @@ void app_shadow_install_vgabios(unsigned int blob_linear, blob_load_fn load,
     int rc;
 
     vgabios_shadow_ready = 0u;
-    if (blob_linear == 0u) {
+    if (shared == 0) {
         return;
     }
+    if (shared_payload_find(shared, SHARED_PAYLOAD_ID_VGABIOS) == 0) {
+        return;
+    }
+    load = (blob_load_fn)shared->blob_load;
     if (load == 0) {
         serial_write_string("VBIOS blob service missing\r\n");
         return;

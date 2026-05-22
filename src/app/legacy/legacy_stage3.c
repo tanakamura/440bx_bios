@@ -62,12 +62,3 @@ void legacy_stage3_install_boot_drive(unsigned char boot_drive) {
     }
     legacy_direct_thunk_install_boot_drive(boot_drive);
 }
-
-void legacy_stage3_install_pm_stack_top(unsigned int pm_stack_top) {
-    if (legacy_exports_ready() &&
-        legacy_stage3_exports.install_pm_stack_top != 0) {
-        legacy_stage3_exports.install_pm_stack_top(pm_stack_top);
-        return;
-    }
-    legacy_direct_thunk_install_pm_stack_top(pm_stack_top);
-}

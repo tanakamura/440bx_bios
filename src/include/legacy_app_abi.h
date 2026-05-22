@@ -12,7 +12,6 @@ struct legacy_app_exports {
     unsigned int size;
     unsigned char (*prepare_boot_sector)(void);
     void (*install_boot_drive)(unsigned char boot_drive);
-    void (*install_pm_stack_top)(unsigned int stack_top);
 };
 
 struct legacy_runtime_config {

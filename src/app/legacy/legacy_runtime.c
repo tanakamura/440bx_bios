@@ -10,6 +10,7 @@
 #include "app/legacy/legacy_service.h"
 #include "app/legacy/legacy_timer.h"
 #include "app/legacy/legacy_thunk.h"
+#include "app_runtime.h"
 
 static void legacy_local_hdd_get_geometry(
     struct legacy_hdd_geometry* geometry) {
@@ -81,7 +82,6 @@ void legacy_runtime_fill_exports(struct legacy_app_exports* exports) {
     exports->size = sizeof(*exports);
     exports->prepare_boot_sector = legacy_prepare_boot_sector;
     exports->install_boot_drive = legacy_install_boot_drive;
-    exports->install_pm_stack_top = legacy_install_pm_stack_top;
 }
 
 void legacy_runtime_init(const struct legacy_runtime_config* config) {
@@ -99,6 +99,7 @@ void legacy_runtime_init(const struct legacy_runtime_config* config) {
     floppy_dpt_linear = legacy_install_bios_thunks(
         legacy_floppy_present(), bios_hdd_is_present(), config->base_mem_kb,
         config->ebda_segment, 0, 0);
+    legacy_install_pm_stack_top(app_pm_stack_top(config->platform.total_bytes));
 
     context.platform = config->platform;
     context.floppy_dpt_linear = floppy_dpt_linear;
