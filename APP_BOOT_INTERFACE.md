@@ -13,23 +13,25 @@
 
 ## 現状の問題
 
-今は次の不揃いがあったが、整理を進めている。
+大枠の ABI はかなり揃った。現状は次の状態。
 
 - `legacy`
-  - 以前は `legacy_runtime_config + exports` という双方向 ABI だった
-  - いまは `app_entry(ctx)` へ移行済みで、stage3 main からは独立した
+  - 以前の `legacy_runtime_config + exports` は削除済み
+  - いまは `app_entry(ctx)` で起動する
 - `linux_loader`
-  - `linux_loader_config` を受ける一方向 ABI
-  - app 本体は self-contained だが、起動 glue は別
+  - `linux_loader_config` は削除済み
+  - いまは `app_entry(ctx)` で起動する
 - `selftest`
-  - `selftest_runtime_info` を受ける別 ABI
-  - 以前は中で `legacy_stage3_*` を呼んでいた
+  - `selftest_runtime_info` は削除済み
+  - いまは `app_entry(ctx)` で起動する
 
 つまり今は、
 
-- 共通情報の運び方はかなり揃ってきた
-- しかし entry ABI と lifecycle が app ごとに揃っていない
-- 主に `legacy` の旧 callback/export 名残をどう消すかが論点だった
+- entry ABI 自体は 3 app で揃った
+- NVRAM snapshot と ACPI 情報の handoff も揃った
+- まだ残っている論点は、`stage3` が app ごとの薄い起動 glue を
+  どこまで持つか、`lib/app` の helper API から
+  `bios_stage_context` / `bios_settings` 依存をどこまで消すか、である
 
 ## 原則
 
@@ -181,7 +183,7 @@ struct app_boot_context {
   - Linux boot params 構築
   - VBIOS shadow / init
 - `app/selftest/`
-  - selftest image load
+  - selftest executable blob load
   - uACPI test 実行
   - selftest 専用 boot params 構築
   - VBIOS は不要なら持たない
@@ -257,17 +259,24 @@ int legacy_app_entry(const struct app_boot_context* ctx);
 
 ### linux_loader
 
-`linux_loader` はすでにかなり理想に近い。
+`linux_loader` は `app_boot_context` へ統合済み。
 
-必要なのは、
+いま残っている論点は、
 
-- `linux_loader_config` をやめて `app_boot_context` に統合
-- `runtime_protect_*` を `ctx` 共通フィールドへ移す
-- VBIOS shadow / init は `linux_loader` 側で実行する
+- `linux_loader` 自体は generic な direct app boot に乗った
+- 残る論点は、他 app でも同じ direct app boot 経路を
+  どこまで共通化するかだけである
 
 ### selftest
 
-`selftest` も `selftest_runtime_info` をやめて `app_boot_context` に統合する。
+`selftest` も `app_boot_context` に統合済み。
+
+selftest は ROM free の executable blob を読む薄い loader app とする。
+実行本体は `objcopy -O binary` した raw image と load address を
+ヘッダで包んだ selftest executable blob である。
+
+selftest app は ROM 末尾 descriptor と blob header の magic を見て、
+有効なら所定 load address へ copy して実行する。
 
 ただし selftest が Linux 互換 boot params を見るなら、
 
@@ -306,7 +315,7 @@ payload 側から見える symbol 名は統一する。
 
 `stage3` から app を呼ぶ helper も app ごとの差を減らす。
 
-理想形:
+現状:
 
 ```c
 int app_boot_run(unsigned int payload_id,
@@ -315,9 +324,16 @@ int app_boot_run(unsigned int payload_id,
                  const char* label);
 ```
 
-これは `lib/app/` に置く。
+実装は `lib/app/` にあるが、実際の関数境界はまだ次のような状態。
 
-これがやること:
+- `app_boot_context_alloc(total_bytes, shared_service)`
+- `app_boot_context_init(ctx, app_id)`
+- `app_boot_run(blob_load, total_bytes, payload_id, label, ctx)`
+
+`lib/app` の public API から `bios_stage_context` / `bios_settings`
+依存は外れた。
+
+共通 helper がやること:
 
 1. payload を `APP_SLOT_LOAD_LINEAR` へ load
 2. `app_entry(ctx)` を call
@@ -329,36 +345,33 @@ int app_boot_run(unsigned int payload_id,
 app に `stage3` ポインタを渡してはならない。
 必要な情報は call 前に `app_boot_context` へコピーし切る。
 
-## すぐやるべき整理
+## 残っている整理
 
 優先順はこれ。
 
-1. `linux_loader_config` / `selftest_runtime_info` を
-   `app_boot_context` へ統合する
-2. `lib/app/` に `app_boot_abi.h` と `app_boot_run()` を作る
-3. `stage3` は
-   - context 構築
-   - app 実行順制御
-   だけにする
-4. app 実行に必要な `ctx` / work 領域を
-   `shared service` heap 上へ置く
+1. `stage3` 側で `app_boot_context` を埋める処理の重複を
+   どこへ置くか整理する
+2. `ctx` / work 領域の ownership をさらに明確にする
+3. この文書と `memo/refactor.md` を実装に追随させ続ける
 
 ## いまの設計に対する判断
 
-今の配置は前進しているが、まだ最終形ではない。
+今の配置はかなり良くなっているが、まだ最終形ではない。
 
 良くなった点:
 
+- 3 app とも `app_entry(const struct app_boot_context*)` に揃った
 - app 固有コードが `stage3` からかなり減った
 - 共通 helper が `lib/app` へ出始めた
+- NVRAM snapshot と ACPI 情報の handoff が共通化された
+- `lib/app` の public API から `stage3` private 型依存が外れた
 
 まだ変な点:
 
-- `legacy` だけ exports ベースの別 ABI
-- `linux_loader` と `selftest` も専用 config struct を持っている
-- app entry 名も形も揃っていない
-- 一部 glue がまだ `stage3` 所有 state を前提にしている
-- `ctx` / work 領域の最終配置先が ABI としてまだ固定されていない
+- `ctx` / work 領域の ownership は shared heap 前提で揃ったが、
+  helper API の責務分割はまだ詰め切れていない
+- selftest executable blob の load/work 領域の扱いは、
+  文書上まだ ownership を詰め切れていない
 
 したがって、次の正しい方向は
 
@@ -367,6 +380,6 @@ app に `stage3` ポインタを渡してはならない。
 
 に加えて、
 
-- 「entry ABI そのものも 1 個に揃える」
+- 「ctx と executable blob 作業領域の ownership を詰める」
 
 である。

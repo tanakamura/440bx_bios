@@ -148,6 +148,8 @@ def extract_elf_load_image(data: bytes) -> tuple[bytes, int]:
         p_paddr = read_u32(data, off + 12)
         p_filesz = read_u32(data, off + 16)
         p_memsz = read_u32(data, off + 20)
+        if p_filesz == 0 and p_memsz == 0:
+            continue
         addr = p_paddr if p_paddr != 0 else p_vaddr
         if p_filesz > p_memsz or p_offset + p_filesz > len(data):
             raise ValueError("bad ELF PT_LOAD bounds")

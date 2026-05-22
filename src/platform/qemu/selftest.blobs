@@ -1,4 +1,4 @@
 stage2,stage2/stage2.elf
 stage3,../../stage3/stage3.elf
-test_elf,../../app/selftest/s3test/s3test.elf
+selftest,../../app/selftest/s3test/selftest_app.elf
 stage1,stage1/stage1.elf

@@ -20,7 +20,7 @@ void bios_stage_context_load(struct bios_stage_context* context,
     context->vgabios_blob_linear = 0u;
     context->legacy_app_blob_linear = 0u;
     context->linux_loader_blob_linear = 0u;
-    context->test_elf_payload_linear = 0u;
+    context->selftest_app_blob_linear = 0u;
     context->rsdp_linear = 0u;
     context->acpi_pm1_evt = 0u;
     context->acpi_pm1_cnt = 0u;
@@ -65,9 +65,10 @@ void bios_stage_context_load(struct bios_stage_context* context,
     if (blob != 0u) {
         context->linux_loader_blob_linear = blob;
     }
-    blob = payload_blob_ptr(context->shared_service, SHARED_PAYLOAD_ID_TEST_ELF);
+    blob = payload_blob_ptr(context->shared_service,
+                            SHARED_PAYLOAD_ID_SELFTEST_APP);
     if (blob != 0u) {
-        context->test_elf_payload_linear = blob;
+        context->selftest_app_blob_linear = blob;
     }
 }
 

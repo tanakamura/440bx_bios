@@ -7,6 +7,7 @@ SECTIONS
 
     .text :
     {
+        KEEP(*(.text.entry))
         *(.text)
         *(.text.*)
     }
@@ -21,10 +22,6 @@ SECTIONS
     {
         *(.data)
         *(.data.*)
-    }
-
-    .bss :
-    {
         *(.bss)
         *(.bss.*)
         *(COMMON)

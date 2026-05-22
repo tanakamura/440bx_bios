@@ -25,7 +25,7 @@ QEMU_STAGE2_ELF := platform/qemu/stage2/stage2.elf
 STAGE3_DIR_ELF := stage3/stage3.elf
 LEGACY_APP_ELF := app/legacy/legacy_app.elf
 LINUX_LOADER_APP_ELF := app/linux_loader/linux_loader_app.elf
-SELFTEST_ELF := app/selftest/s3test/s3test.elf
+SELFTEST_ELF := app/selftest/s3test/selftest_app.elf
 GENROM_STAGE_ELFS := $(P2B_STAGE1_ELF) $(P2B_STAGE15_ELF) $(P2B_STAGE2_ELF) \
 	$(QEMU_STAGE1_ELF) $(QEMU_STAGE2_ELF) $(STAGE3_DIR_ELF)
 BUILD_ARTIFACT_DIRS := app/legacy app/linux_loader app/selftest/s3test \
@@ -94,4 +94,4 @@ genrom: $(GENROM_BINS)
 -include $(DEPS)
 
 clean:
-	rm -f start start_legacy start_legacy_test start.elf start_legacy.elf linuxprobe.elf *.map *.o *.d *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc include/blob.inc include/blob.ld shared_service/service_table.inc shared_service/service_table.ld $(SHARED_SERVICE_RELOC_CHECK) $(GENROM_STAGE_ELFS) $(LEGACY_APP_ELF) $(LINUX_LOADER_APP_ELF) $(SELFTEST_ELF) $(P2B98_XV_BLOB_DEPFILES) $(QEMU_BLOB_DEPFILES) $(addsuffix /*.o,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.d,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.su,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.map,$(BUILD_ARTIFACT_DIRS)) app/legacy/*.bin app/linux_loader/*.bin platform/p2b98_xv/stage15/stage15.bin platform/p2b98_xv/stage1/stage15_crc.inc
+	rm -f start start_legacy start_legacy_test start.elf start_legacy.elf linuxprobe.elf *.map *.o *.d *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc include/blob.inc include/blob.ld shared_service/service_table.inc shared_service/service_table.ld $(SHARED_SERVICE_RELOC_CHECK) $(GENROM_STAGE_ELFS) $(LEGACY_APP_ELF) $(LINUX_LOADER_APP_ELF) $(SELFTEST_ELF) $(P2B98_XV_BLOB_DEPFILES) $(QEMU_BLOB_DEPFILES) $(addsuffix /*.o,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.d,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.su,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.map,$(BUILD_ARTIFACT_DIRS)) app/legacy/*.bin app/linux_loader/*.bin app/selftest/s3test/*.bin app/selftest/s3test/*.elf platform/p2b98_xv/stage15/stage15.bin platform/p2b98_xv/stage1/stage15_crc.inc

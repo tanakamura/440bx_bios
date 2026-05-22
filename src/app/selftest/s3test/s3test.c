@@ -146,6 +146,7 @@ unsigned int s3test_entry(const struct app_boot_context* info) {
     return ok != 0u ? 0x53334f4bu : 0x53334e47u;
 }
 
-int app_entry(const struct app_boot_context* ctx) {
+__attribute__((section(".text.entry"), used)) int app_entry(
+    const struct app_boot_context* ctx) {
     return (int)s3test_entry(ctx);
 }

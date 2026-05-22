@@ -17,5 +17,9 @@ qemu_legacy_test_bios.bin: qemu_legacy_bios.bin test_floppy_blob.bin $(BUILD_SCR
 	cp qemu_legacy_bios.bin $@
 	python3 $(BUILD_SCRIPTS)/patch_rom_free.py $@ test_floppy_blob.bin
 
+qemu_selftest_bios.bin: qemu_selftest_genrom.bin app/selftest/s3test/s3test_exec_blob.bin $(BUILD_SCRIPTS)/patch_rom_free.py
+	cp qemu_selftest_genrom.bin $@
+	python3 $(BUILD_SCRIPTS)/patch_rom_free.py $@ app/selftest/s3test/s3test_exec_blob.bin
+
 platform/qemu/stage1/qemu_start.o: platform/qemu/stage1/qemu_start.asm | include/blob.inc shared_service/service_table.inc
 	$(COMPILE_ASM_ELF32)

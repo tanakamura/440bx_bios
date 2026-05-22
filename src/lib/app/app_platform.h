@@ -2,11 +2,20 @@
 #define APP_PLATFORM_H
 
 #include "app_platform_abi.h"
-#include "bios_settings.h"
-#include "bios_stage_context.h"
 
-void app_platform_fill(struct app_platform_info* info,
-                       const struct bios_stage_context* stage,
-                       const struct bios_settings* settings);
+void app_platform_init(struct app_platform_info* info);
+void app_platform_set_memory(struct app_platform_info* info,
+                             unsigned int total_bytes);
+void app_platform_set_acpi(struct app_platform_info* info,
+                           unsigned int rsdp_linear,
+                           unsigned int pm1_evt,
+                           unsigned int pm1_cnt,
+                           unsigned int gpe0,
+                           unsigned int gpe0_len,
+                           unsigned int flags,
+                           unsigned int table_base,
+                           unsigned int table_size);
+void app_platform_set_nvram(struct app_platform_info* info,
+                            const struct app_nvram_snapshot* nvram);
 
 #endif
