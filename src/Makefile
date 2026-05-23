@@ -3,6 +3,7 @@ LD := ld
 OBJCOPY := objcopy
 LIBGCC := $(shell $(CC) -m32 -print-libgcc-file-name)
 VBIOS_INIT_MODE ?= vm86
+IDE_ENABLE_DMA ?= 0
 CPPFLAGS := -I. -Iinclude -Istage3 -Ilib/acpi -Ilib/app -Ilib/vm86 -Ilib/x86 -Ilib/pci -Ilib/serial -Ilib/storage
 DEPFLAGS := -MMD -MP
 CFLAGS := -O2 -m32 -march=pentium2 -ffreestanding -fno-pic -fno-pie -fno-stack-protector -ffunction-sections -fdata-sections -fstack-usage -Wstack-usage=256 -nostdlib -nostartfiles -nodefaultlibs -Wall -Wextra $(DEPFLAGS)
@@ -20,6 +21,7 @@ CPPFLAGS += -DLEGACY_VGABIOS_USE_VM86=0
 else
 CPPFLAGS += -DLEGACY_VGABIOS_USE_VM86=1
 endif
+CPPFLAGS += -DBIOS_IDE_ENABLE_DMA=$(IDE_ENABLE_DMA)
 
 %.o: %.c
 	$(COMPILE_C)

@@ -173,7 +173,7 @@ static unsigned int linux_memory_e820_entry_count(unsigned int total_bytes) {
         return bios_memory_e820_entry_count(total_bytes);
     }
 
-    count = 2u;
+    count = 4u;
     if (acpi_base > 0x00100000u) {
         ++count;
     }
@@ -205,13 +205,29 @@ static int linux_memory_e820_get_entry(unsigned int total_bytes,
         if (index == 1u) {
             entry->base_low = 0x0009fc00u;
             entry->base_high = 0u;
-            entry->length_low = 0x00060400u;
+            entry->length_low = 0x00000400u;
             entry->length_high = 0u;
             entry->type = BIOS_E820_TYPE_RESERVED;
             return 0;
         }
+        if (index == 2u) {
+            entry->base_low = 0x000a0000u;
+            entry->base_high = 0u;
+            entry->length_low = 0x00040000u;
+            entry->length_high = 0u;
+            entry->type = BIOS_E820_TYPE_RESERVED;
+            return 0;
+        }
+        if (index == 3u) {
+            entry->base_low = 0x000e0000u;
+            entry->base_high = 0u;
+            entry->length_low = 0x00020000u;
+            entry->length_high = 0u;
+            entry->type = BIOS_E820_TYPE_USABLE;
+            return 0;
+        }
 
-        index -= 2u;
+        index -= 4u;
         if (acpi_base > 0x00100000u) {
             if (index == 0u) {
                 entry->base_low = 0x00100000u;

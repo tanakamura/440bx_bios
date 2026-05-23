@@ -415,6 +415,10 @@ static unsigned short storage_alloc_pci_io(unsigned int total_bytes,
 #define IDE_XFER_PIO0 0x08u
 #define IDE_XFER_MWDMA0 0x20u
 #define IDE_XFER_UDMA0 0x40u
+
+#ifndef BIOS_IDE_ENABLE_DMA
+#define BIOS_IDE_ENABLE_DMA 0
+#endif
 #define IDE_BM_CMD_START 0x01u
 #define IDE_BM_CMD_READ 0x08u
 #define IDE_BM_STATUS_ACTIVE 0x01u
@@ -506,6 +510,25 @@ static unsigned char ide_best_mwdma_mode(const unsigned short* id) {
         return 0xffu;
     }
     modes = id[63] & 0x0007u;
+    if ((modes & 0x0004u) != 0u) {
+        return 2u;
+    }
+    if ((modes & 0x0002u) != 0u) {
+        return 1u;
+    }
+    if ((modes & 0x0001u) != 0u) {
+        return 0u;
+    }
+    return 0xffu;
+}
+
+static unsigned char ide_best_udma_mode(const unsigned short* id) {
+    unsigned short modes;
+
+    if ((id[49] & 0x0100u) == 0u) {
+        return 0xffu;
+    }
+    modes = id[88] & 0x003fu;
     if ((modes & 0x0004u) != 0u) {
         return 2u;
     }
@@ -1019,10 +1042,15 @@ void bios_hdd_get_dma_caps(unsigned char* dma_enabled,
 
 void bios_hdd_set_dma_caps(unsigned char dma_enabled,
                            unsigned char lba48_dma_enabled) {
+#if BIOS_IDE_ENABLE_DMA
+    bios_hdd_dma_enabled = dma_enabled;
+    bios_hdd_lba48_dma_enabled = lba48_dma_enabled;
+#else
     (void)dma_enabled;
     (void)lba48_dma_enabled;
     bios_hdd_dma_enabled = 0u;
     bios_hdd_lba48_dma_enabled = 0u;
+#endif
 }
 
 int bios_hdd_force_pio4(void) {
@@ -1094,9 +1122,24 @@ int bios_hdd_read_sectors(unsigned int lba, unsigned int count,
             if (chunk > 256u) {
                 chunk = 256u;
             }
-            rc = ide_read_lba28(bios_hdd_io, bios_hdd_ctrl, bios_hdd_drive,
-                                lba + i, chunk,
-                                (unsigned char*)(dest + i * 512u));
+#if BIOS_IDE_ENABLE_DMA
+            if (bios_hdd_lba48_dma_enabled != 0u && chunk <= 2048u) {
+                rc = ide_read_dma_lba48(bios_hdd_io, bios_hdd_ctrl,
+                                        bios_hdd_bmio, bios_hdd_drive, lba + i,
+                                        chunk,
+                                        (unsigned char*)(dest + i * 512u));
+            } else if (bios_hdd_dma_enabled != 0u) {
+                rc = ide_read_dma_lba28(bios_hdd_io, bios_hdd_ctrl,
+                                        bios_hdd_bmio, bios_hdd_drive, lba + i,
+                                        chunk,
+                                        (unsigned char*)(dest + i * 512u));
+            } else
+#endif
+            {
+                rc = ide_read_lba28(bios_hdd_io, bios_hdd_ctrl,
+                                    bios_hdd_drive, lba + i, chunk,
+                                    (unsigned char*)(dest + i * 512u));
+            }
             if (rc == 0) {
                 i += chunk;
                 continue;
@@ -1218,6 +1261,12 @@ static void ide_scan_channel(const char* name, unsigned short io,
         serial_write_string("\r\n");
         if (sectors != 0u) {
             unsigned char mwdma = ide_best_mwdma_mode(id);
+#if BIOS_IDE_ENABLE_DMA
+            unsigned char udma = ide_best_udma_mode(id);
+            unsigned char lba48 = ide_supports_lba48(id);
+            unsigned char dma_enabled = 0u;
+            unsigned char lba48_dma_enabled = 0u;
+#endif
             if (bmio != 0u && mwdma != 0xffu &&
                 ide_set_transfer_mode(
                     io, ctrl, drive,
@@ -1228,7 +1277,41 @@ static void ide_scan_channel(const char* name, unsigned short io,
                 serial_write_hex16(bmio);
                 serial_write_string("\r\n");
             }
+#if BIOS_IDE_ENABLE_DMA
+            if (bmio != 0u && udma != 0xffu &&
+                ide_set_transfer_mode(
+                    io, ctrl, drive,
+                    (unsigned char)(IDE_XFER_UDMA0 | udma)) == 0) {
+                unsigned int shift =
+                    (unsigned int)drive * 4u +
+                    (io == 0x0170u ? 8u : 0u);
+                storage_ide_udmactl =
+                    (unsigned char)(storage_ide_udmactl |
+                                    (1u << (drive + (io == 0x0170u ? 2u : 0u))));
+                storage_ide_udmatim = (unsigned short)(
+                    (storage_ide_udmatim & (unsigned short)~(0x000fu << shift)) |
+                    ((unsigned short)udma << shift));
+                pci_write8(storage_ide_bdf.bus, storage_ide_bdf.dev,
+                           storage_ide_bdf.fn, 0x48u, storage_ide_udmactl);
+                pci_write16(storage_ide_bdf.bus, storage_ide_bdf.dev,
+                            storage_ide_bdf.fn, 0x4au, storage_ide_udmatim);
+                serial_write_string("  UDMA");
+                serial_write_hex8(udma);
+                serial_write_string(" enabled bm=");
+                serial_write_hex16(bmio);
+                serial_write_string(" ctl=");
+                serial_write_hex8(storage_ide_udmactl);
+                serial_write_string(" tim=");
+                serial_write_hex16(storage_ide_udmatim);
+                serial_write_string("\r\n");
+                dma_enabled = 1u;
+                lba48_dma_enabled = lba48;
+            }
+            bios_hdd_register(io, ctrl, bmio, drive, sectors, dma_enabled,
+                              lba48_dma_enabled);
+#else
             bios_hdd_register(io, ctrl, bmio, drive, sectors, 0u, 0u);
+#endif
         }
         if (ide_read_lba28(io, ctrl, drive, 0u, 1u, sector) == 0) {
             serial_dump_bytes("IDE LBA0", sector, 16u);
@@ -1281,12 +1364,19 @@ static void ide_enable_piix4_legacy(unsigned int total_bytes) {
         }
     }
     storage_ide_bmiba = bmiba;
+#if BIOS_IDE_ENABLE_DMA
+    storage_ide_udmactl = pci_read8(storage_ide_bdf.bus, storage_ide_bdf.dev,
+                                    storage_ide_bdf.fn, 0x48u);
+    storage_ide_udmatim = pci_read16(storage_ide_bdf.bus, storage_ide_bdf.dev,
+                                     storage_ide_bdf.fn, 0x4au);
+#else
     storage_ide_udmactl = 0u;
     storage_ide_udmatim = 0u;
     pci_write8(storage_ide_bdf.bus, storage_ide_bdf.dev, storage_ide_bdf.fn,
                0x48u, storage_ide_udmactl);
     pci_write16(storage_ide_bdf.bus, storage_ide_bdf.dev, storage_ide_bdf.fn,
                 0x4au, storage_ide_udmatim);
+#endif
     serial_write_string("IDE cfg cmd=");
     serial_write_hex16(pci_read16(storage_ide_bdf.bus, storage_ide_bdf.dev,
                                   storage_ide_bdf.fn, 0x04u));
