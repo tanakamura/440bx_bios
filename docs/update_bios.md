@@ -34,6 +34,8 @@ socat - /tmp/ttyS0_bcast.sock
 
 通常の実機作業では、ROM emu 起因の stage1 起動失敗を BIOS バグと混同しないため、
 まず reset を assert したまま upload する。
+`--hold-reset` を付けると、readback 検証のあと自動で `scripts/reset_wrapper.py` を呼び、
+`start stage1.5 @ ` が見えるまで起動リトライする。
 
 ```bash
 python3 scripts/upload_rom.py file --hold-reset
@@ -45,8 +47,10 @@ read back を保存したいなら:
 python3 scripts/upload_rom.py file --hold-reset --readback readback.bin
 ```
 
-そのあと `scripts/reset_wrapper.py` で release/reset を繰り返し、
+`scripts/reset_wrapper.py` は release/reset を繰り返し、
 serial に `start stage1.5 @ ` が見えるまで最大 10 回やり直す。
+`upload_rom.py --hold-reset` は通常これを自動で呼ぶので、
+手動で叩くのは wrapper 単体で再試行したいときだけでよい。
 
 ```bash
 python3 scripts/reset_wrapper.py
@@ -65,6 +69,13 @@ python3 scripts/tty_bcast.py --path /tmp/ttyS0_bcast.sock
 python3 scripts/upload_rom.py file
 ```
 
+`--hold-reset` で upload だけして wrapper を呼びたくないときだけ、
+例外的に `--no-reset-wrapper` を使う。
+
+```bash
+python3 scripts/upload_rom.py file --hold-reset --no-reset-wrapper
+```
+
 シリアル出力を取り逃がしたくないときは `scripts/run_with_serial_capture.py` を使う。
 この script は broadcaster (`/tmp/ttyS0_bcast.sock`) に接続する logger を起動し、
 upload の前から記録して、upload 後に増えた分だけを表示する。
@@ -78,4 +89,5 @@ python3 scripts/run_with_serial_capture.py file
 ## Reset
 
 `--hold-reset` を付けない upload では、ROM 更新後に自動でリセットがかかる。
-ただし実機検証では、基本的に `--hold-reset` と `scripts/reset_wrapper.py` を使う。
+ただし実機検証では、基本的に `--hold-reset` を使い、
+`upload_rom.py` の自動 wrapper 実行まで含めて 1 コマンドで流す。

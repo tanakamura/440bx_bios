@@ -503,47 +503,11 @@ static unsigned char ide_best_mwdma_mode(const unsigned short* id) {
     return 0xffu;
 }
 
-static unsigned char ide_best_udma_mode(const unsigned short* id) {
-    unsigned short modes;
-    if ((id[53] & 0x0004u) == 0u) {
-        return 0xffu;
-    }
-    modes = id[88] & 0x0007u;
-    if ((modes & 0x0004u) != 0u) {
-        return 2u;
-    }
-    if ((modes & 0x0002u) != 0u) {
-        return 1u;
-    }
-    if ((modes & 0x0001u) != 0u) {
-        return 0u;
-    }
-    return 0xffu;
-}
-
 static unsigned char ide_supports_lba48(const unsigned short* id) {
     if ((id[83] & 0xc000u) != 0x4000u) {
         return 0u;
     }
     return (id[83] & 0x0400u) != 0u ? 1u : 0u;
-}
-
-static void ide_configure_piix4_udma(unsigned char channel,
-                                     unsigned char drive,
-                                     unsigned char mode) {
-    unsigned char enable_bit = (unsigned char)(channel * 2u + drive);
-    unsigned char shift = (unsigned char)(channel * 8u + drive * 4u);
-    unsigned short mask = (unsigned short)(0x0003u << shift);
-
-    storage_ide_udmactl =
-        (unsigned char)(storage_ide_udmactl | (unsigned char)(1u << enable_bit));
-    storage_ide_udmatim =
-        (unsigned short)((storage_ide_udmatim & (unsigned short)~mask) |
-                         ((unsigned short)(mode & 0x03u) << shift));
-    pci_write16(storage_ide_bdf.bus, storage_ide_bdf.dev, storage_ide_bdf.fn,
-                0x4au, storage_ide_udmatim);
-    pci_write8(storage_ide_bdf.bus, storage_ide_bdf.dev, storage_ide_bdf.fn,
-               0x48u, storage_ide_udmactl);
 }
 
 static int ide_identify(unsigned short io, unsigned short ctrl,
@@ -1123,8 +1087,8 @@ static unsigned char storage_sector_has_mbr(const unsigned char* sector) {
     return has_active;
 }
 
-static void ide_scan_channel(const char* name, unsigned char channel,
-                             unsigned short io, unsigned short ctrl,
+static void ide_scan_channel(const char* name, unsigned short io,
+                             unsigned short ctrl,
                              unsigned short bmio) {
     unsigned char drive;
     unsigned short* id = (unsigned short*)STORAGE_ID_LINEAR;
@@ -1150,25 +1114,9 @@ static void ide_scan_channel(const char* name, unsigned char channel,
         serial_write_string("\r\n");
         if (sectors != 0u) {
             unsigned char dma_enabled = 0u;
-            unsigned char udma = ide_best_udma_mode(id);
             unsigned char mwdma = ide_best_mwdma_mode(id);
             unsigned char lba48 = ide_supports_lba48(id);
-            if (bmio != 0u && udma != 0xffu &&
-                ide_set_transfer_mode(
-                    io, ctrl, drive,
-                    (unsigned char)(IDE_XFER_UDMA0 | udma)) == 0) {
-                ide_configure_piix4_udma(channel, drive, udma);
-                dma_enabled = 1u;
-                serial_write_string("  UDMA");
-                serial_write_hex8(udma);
-                serial_write_string(" enabled bm=");
-                serial_write_hex16(bmio);
-                serial_write_string(" ctl=");
-                serial_write_hex8(storage_ide_udmactl);
-                serial_write_string(" tim=");
-                serial_write_hex16(storage_ide_udmatim);
-                serial_write_string("\r\n");
-            } else if (bmio != 0u && mwdma != 0xffu &&
+            if (bmio != 0u && mwdma != 0xffu &&
                 ide_set_transfer_mode(
                     io, ctrl, drive,
                     (unsigned char)(IDE_XFER_MWDMA0 | mwdma)) == 0) {
@@ -1198,9 +1146,10 @@ static void ide_scan_channel(const char* name, unsigned char channel,
     }
 }
 
-static void ide_enable_piix4_legacy(void) {
+static void ide_enable_piix4_legacy(unsigned int total_bytes) {
     unsigned short cmd;
     unsigned short bmiba;
+    unsigned int raw_bar4;
     unsigned short primary_timing;
     unsigned short secondary_timing;
 
@@ -1218,9 +1167,19 @@ static void ide_enable_piix4_legacy(void) {
     pci_write16(storage_ide_bdf.bus, storage_ide_bdf.dev, storage_ide_bdf.fn,
                 0x42u, (unsigned short)(secondary_timing | 0x8000u));
 
-    bmiba = (unsigned short)(pci_read16(storage_ide_bdf.bus, storage_ide_bdf.dev,
-                                        storage_ide_bdf.fn, 0x20u) &
-                             0xfff0u);
+    raw_bar4 = pci_read32(storage_ide_bdf.bus, storage_ide_bdf.dev,
+                          storage_ide_bdf.fn, 0x20u);
+    bmiba = (unsigned short)(raw_bar4 & 0xfff0u);
+    if (bmiba == 0u) {
+        bmiba = storage_alloc_pci_io(total_bytes, 0x10u, 0x10u);
+        if (bmiba != 0u) {
+            pci_write32(storage_ide_bdf.bus, storage_ide_bdf.dev,
+                        storage_ide_bdf.fn, 0x20u, (unsigned int)bmiba | 1u);
+            raw_bar4 = pci_read32(storage_ide_bdf.bus, storage_ide_bdf.dev,
+                                  storage_ide_bdf.fn, 0x20u);
+            bmiba = (unsigned short)(raw_bar4 & 0xfff0u);
+        }
+    }
     storage_ide_bmiba = bmiba;
     storage_ide_udmactl = 0u;
     storage_ide_udmatim = 0u;
@@ -1233,6 +1192,8 @@ static void ide_enable_piix4_legacy(void) {
                                   storage_ide_bdf.fn, 0x04u));
     serial_write_string(" bmiba=");
     serial_write_hex16(bmiba);
+    serial_write_string(" raw=");
+    serial_write_hex16((unsigned short)raw_bar4);
     serial_write_string(" pri=");
     serial_write_hex16(pci_read16(storage_ide_bdf.bus, storage_ide_bdf.dev,
                                   storage_ide_bdf.fn, 0x40u));
@@ -1247,18 +1208,18 @@ static void ide_enable_piix4_legacy(void) {
     serial_write_string("\r\n");
 }
 
-static void ide_scan(void) {
+static void ide_scan(unsigned int total_bytes) {
     if (!storage_ide_found) {
         serial_write_string("IDE: controller not found\r\n");
         return;
     }
-    ide_enable_piix4_legacy();
+    ide_enable_piix4_legacy(total_bytes);
     serial_write_string("IDE scan ");
     storage_print_bdf(storage_ide_bdf.bus, storage_ide_bdf.dev,
                       storage_ide_bdf.fn);
     serial_write_string("\r\n");
-    ide_scan_channel("pri", 0u, 0x01f0u, 0x03f6u, storage_ide_bmiba);
-    ide_scan_channel("sec", 1u, 0x0170u, 0x0376u,
+    ide_scan_channel("pri", 0x01f0u, 0x03f6u, storage_ide_bmiba);
+    ide_scan_channel("sec", 0x0170u, 0x0376u,
                      storage_ide_bmiba != 0u
                          ? (unsigned short)(storage_ide_bmiba + 8u)
                          : 0u);
@@ -1896,7 +1857,7 @@ void storage_scan(unsigned int total_bytes) {
     storage_memset(&bios_hdd_ide_candidate, 0u, sizeof(bios_hdd_ide_candidate));
     storage_memset(&bios_hdd_usb_candidate, 0u, sizeof(bios_hdd_usb_candidate));
     storage_find_pci_devices(total_bytes);
-    ide_scan();
+    ide_scan(total_bytes);
     usb_scan(total_bytes);
     if (bios_hdd_ide_candidate.present != 0u) {
         bios_hdd_activate_candidate(&bios_hdd_ide_candidate);

@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import http.client
+import subprocess
 import sys
 from pathlib import Path
 
@@ -10,6 +11,7 @@ DEFAULT_HOST = "alarm.local"
 DEFAULT_PORT = 8080
 DEFAULT_PATH = "/rom"
 DEFAULT_SIZE = 256 * 1024
+DEFAULT_RESET_WRAPPER = "scripts/reset_wrapper.py"
 
 
 def sha256_hex(data: bytes) -> str:
@@ -86,6 +88,16 @@ def parse_args():
         action="store_true",
         help="skip comparing uploaded bytes with readback bytes",
     )
+    parser.add_argument(
+        "--reset-wrapper",
+        default=DEFAULT_RESET_WRAPPER,
+        help="path to reset wrapper helper",
+    )
+    parser.add_argument(
+        "--no-reset-wrapper",
+        action="store_true",
+        help="do not invoke reset_wrapper.py after --hold-reset upload",
+    )
     return parser.parse_args()
 
 
@@ -135,6 +147,22 @@ def main() -> int:
         print("compare=skipped")
     else:
         print("compare=ok")
+
+    if args.hold_reset and not args.no_reset_wrapper:
+        wrapper_cmd = [
+            sys.executable,
+            args.reset_wrapper,
+            "--host",
+            args.host,
+            "--port",
+            str(args.port),
+        ]
+        print(
+            "reset_wrapper="
+            + " ".join(str(part) for part in wrapper_cmd[1:]),
+            file=sys.stderr,
+        )
+        subprocess.run(wrapper_cmd, check=True)
     return 0
 
 

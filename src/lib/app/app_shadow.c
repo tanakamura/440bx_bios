@@ -6,6 +6,10 @@
 #include "bios_serial.h"
 #include "shared_service/service_table.h"
 
+#ifndef LEGACY_VGABIOS_USE_VM86
+#define LEGACY_VGABIOS_USE_VM86 1
+#endif
+
 #define BIOS_RUNTIME_GDT_LINEAR 0x000ff800u
 #define VGA_BIOS_LINEAR SHARED_ROM_LOW_BASE
 #define VGA_BIOS_CAPACITY (BIOS_LOAD_LINEAR - VGA_BIOS_LINEAR)
@@ -17,6 +21,30 @@ static const unsigned long long bios_gdt_template[] = {
     0x0000000000000000ull, 0x00cf9b000000ffffull, 0x00cf93000000ffffull,
     0x00009b0fe000ffffull, 0x0000930fe000ffffull,
 };
+
+static void cache_writeback_invalidate(void) {
+    __asm__ volatile("wbinvd" : : : "memory");
+}
+
+static void patch_direct_vgabios_private_ints(void) {
+#if !LEGACY_VGABIOS_USE_VM86
+    static const unsigned short int_sites[] = {
+        0x0291u, 0x1351u, 0x3e04u, 0x3e1au,
+        0x3e2au, 0x3e3bu, 0x3e51u, 0x3e61u,
+    };
+    unsigned int i;
+
+    for (i = 0u; i < sizeof(int_sites) / sizeof(int_sites[0]); ++i) {
+        volatile unsigned char* p =
+            (volatile unsigned char*)(VGA_BIOS_LINEAR + int_sites[i]);
+        if (p[0] == 0xcdu) {
+            p[0] = 0x90u;
+            p[1] = 0x90u;
+        }
+    }
+    cache_writeback_invalidate();
+#endif
+}
 
 struct gdtr32 {
     unsigned short limit;
@@ -32,10 +60,6 @@ static unsigned long long rdmsr64(unsigned int msr) {
 
 static void wrmsr64(unsigned int msr, unsigned int lo, unsigned int hi) {
     __asm__ volatile("wrmsr" : : "c"(msr), "a"(lo), "d"(hi));
-}
-
-static void cache_writeback_invalidate(void) {
-    __asm__ volatile("wbinvd" : : : "memory");
 }
 
 static void load_bios_gdt(const unsigned long long* gdt) {
@@ -254,6 +278,7 @@ void app_shadow_install_vgabios(unsigned int total_bytes) {
         return;
     }
 
+    patch_direct_vgabios_private_ints();
     vgabios_shadow_ready = 1u;
     serial_write_string("VBIOS ok size=");
     serial_write_hex8(*(volatile unsigned char*)(VGA_BIOS_LINEAR + 2u));
