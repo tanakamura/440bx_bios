@@ -8,7 +8,6 @@ import sys
 import time
 from pathlib import Path
 
-
 DEFAULT_HOST = "alarm.local"
 DEFAULT_PORT = 8080
 DEFAULT_SOCKET = "/tmp/ttyS0_bcast.sock"
@@ -38,9 +37,7 @@ def drain_socket(sock: socket.socket) -> None:
             return
 
 
-def wait_for_marker(
-    sock: socket.socket, marker: bytes, timeout_seconds: float
-) -> bool:
+def wait_for_marker(sock: socket.socket, marker: bytes, timeout_seconds: float) -> bool:
     sel = selectors.DefaultSelector()
     buf = bytearray()
     deadline = time.monotonic() + timeout_seconds
@@ -63,7 +60,7 @@ def wait_for_marker(
             if marker in buf:
                 return True
             if len(buf) > 65536:
-                del buf[:-len(marker)]
+                del buf[: -len(marker)]
         return False
     finally:
         sel.close()
@@ -74,7 +71,9 @@ def parse_args():
         description="Release/reset ROM emu until stage1.5 banner appears."
     )
     parser.add_argument("--host", default=DEFAULT_HOST, help="HTTP updater host")
-    parser.add_argument("--port", default=DEFAULT_PORT, type=int, help="HTTP updater port")
+    parser.add_argument(
+        "--port", default=DEFAULT_PORT, type=int, help="HTTP updater port"
+    )
     parser.add_argument(
         "--socket",
         default=DEFAULT_SOCKET,
@@ -90,7 +89,7 @@ def parse_args():
     )
     parser.add_argument(
         "--timeout-seconds",
-        default=0.5,
+        default=1.0,
         type=float,
         help="time to wait for the marker after releasing reset",
     )
@@ -118,9 +117,7 @@ def main() -> int:
         for attempt in range(1, args.attempts + 1):
             print(f"reset attempt {attempt}/{args.attempts}", file=sys.stderr)
             http_reset(args.host, args.port, "release")
-            if wait_for_marker(
-                sock, args.marker.encode("ascii"), args.timeout_seconds
-            ):
+            if wait_for_marker(sock, args.marker.encode("ascii"), args.timeout_seconds):
                 print("stage1.5 marker seen", file=sys.stderr)
                 return 0
             http_reset(args.host, args.port, "assert")

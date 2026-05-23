@@ -10,23 +10,31 @@ ROOT = Path.cwd()
 
 
 def run_case(name: str, cmd: list[str], expect: list[str]) -> bool:
+    log_dir = ROOT / "test-logs"
+    log_dir.mkdir(exist_ok=True)
+    log_path = log_dir / f"{name}.log"
     try:
-        proc = subprocess.run(
-            cmd,
-            input=b"\r\r\r\r\r\r\r\r\r\r",
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            timeout=90,
-            check=False,
-        )
-        out_bytes = proc.stdout
+        with log_path.open("wb") as log_file:
+            proc = subprocess.run(
+                cmd,
+                input=b"\r\r\r\r\r\r\r\r\r\r",
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                timeout=90,
+                check=False,
+            )
+        out_bytes = log_path.read_bytes()
         rc = proc.returncode
     except subprocess.TimeoutExpired as exc:
-        out_bytes = exc.stdout or b""
+        out_bytes = b""
+        if log_path.exists():
+            out_bytes = log_path.read_bytes()
+        elif exc.stdout is not None:
+            out_bytes = exc.stdout
         rc = None
     out = out_bytes.decode("latin-1", errors="replace")
     print(f"== {name} ==")
-    print(out)
+    print(f"LOG {log_path}")
     ok = all(token in out for token in expect)
     if rc is None:
         print(f"RESULT {name}: TIMEOUT")
@@ -65,10 +73,12 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="440bx-storage-") as tmpdir:
         tmp = Path(tmpdir)
         ide_img = tmp / "ide.img"
+        usbmbr_img = tmp / "usbmbr.img"
         linuxprobe_img = tmp / "linuxprobe.img"
         linuxprobe_raw_img = tmp / "linuxprobe_raw.img"
         linuxprobe_overlap_img = tmp / "linuxprobe_overlap.img"
         shutil.copyfile(ROOT / "usbmbr.img", ide_img)
+        shutil.copyfile(ROOT / "usbmbr.img", usbmbr_img)
         shutil.copyfile(ROOT / "linuxprobe.img", linuxprobe_img)
         shutil.copyfile(ROOT / "linuxprobe_raw.img", linuxprobe_raw_img)
         shutil.copyfile(ROOT / "linuxprobe_overlap.img", linuxprobe_overlap_img)
@@ -175,7 +185,7 @@ def main() -> int:
                 "-no-reboot",
                 "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
                 "-device", "piix4-usb-uhci,id=uhci",
-                "-drive", f"if=none,id=usbmbr,format=raw,file={ROOT / 'usbmbr.img'}",
+                "-drive", f"if=none,id=usbmbr,format=raw,file={usbmbr_img}",
                 "-device", "usb-storage,drive=usbmbr,bus=uhci.0",
             ],
             [

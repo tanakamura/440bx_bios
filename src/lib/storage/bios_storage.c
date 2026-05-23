@@ -441,6 +441,21 @@ static int ide_wait_not_busy(unsigned short io) {
     return -1;
 }
 
+static int ide_wait_not_busy_ms(unsigned short io, unsigned int timeout_ms) {
+    unsigned int ms;
+    for (ms = 0; ms < timeout_ms; ++ms) {
+        unsigned int spins = 1024u;
+        do {
+            unsigned char st = inb((unsigned short)(io + 7u));
+            if ((st & IDE_STATUS_BSY) == 0u) {
+                return 0;
+            }
+        } while (--spins != 0u);
+        delay_approx_ms(1u);
+    }
+    return -1;
+}
+
 static int ide_wait_not_busy_or_err(unsigned short io) {
     unsigned int timeout = 2000000u;
     unsigned char st;
@@ -510,40 +525,95 @@ static unsigned char ide_supports_lba48(const unsigned short* id) {
     return (id[83] & 0x0400u) != 0u ? 1u : 0u;
 }
 
+static int ide_identify_words_valid(const unsigned short* words) {
+    unsigned int i;
+    unsigned char all_zero = 1u;
+    unsigned char all_ff = 1u;
+
+    for (i = 0; i < 256u; ++i) {
+        if (words[i] != 0x0000u) {
+            all_zero = 0u;
+        }
+        if (words[i] != 0xffffu) {
+            all_ff = 0u;
+        }
+    }
+    if (all_zero != 0u || all_ff != 0u) {
+        return 0;
+    }
+    if (words[0] == 0x0000u || words[0] == 0xffffu) {
+        return 0;
+    }
+    return 1;
+}
+
 static int ide_identify(unsigned short io, unsigned short ctrl,
                         unsigned char drive, unsigned short* words) {
+    unsigned int attempt;
     unsigned int i;
     unsigned char st;
 
-    outb(ctrl, 0x02u);
-    outb((unsigned short)(io + 6u), (unsigned char)(0xa0u | (drive << 4)));
-    ide_400ns_delay(ctrl);
-    if (ide_wait_not_busy(io) != 0) {
-        return -1;
+    for (attempt = 0; attempt < 4u; ++attempt) {
+        outb(ctrl, 0x02u);
+        outb((unsigned short)(io + 6u), (unsigned char)(0xa0u | (drive << 4)));
+        ide_400ns_delay(ctrl);
+        st = inb((unsigned short)(io + 7u));
+        if (st == 0u || st == 0xffu) {
+            return -1;
+        }
+        if ((st & IDE_STATUS_BSY) != 0u) {
+            if (ide_wait_not_busy_ms(io, 3000u) != 0) {
+                if (attempt + 1u == 4u) {
+                    return -1;
+                }
+                delay_approx_ms(100u);
+                continue;
+            }
+        } else if (ide_wait_not_busy(io) != 0) {
+            if (attempt + 1u == 4u) {
+                return -1;
+            }
+            delay_approx_ms(100u);
+            continue;
+        }
+        outb((unsigned short)(io + 2u), 0u);
+        outb((unsigned short)(io + 3u), 0u);
+        outb((unsigned short)(io + 4u), 0u);
+        outb((unsigned short)(io + 5u), 0u);
+        outb((unsigned short)(io + 7u), 0xecu);
+        st = inb((unsigned short)(io + 7u));
+        if (st == 0u || st == 0xffu) {
+            return -1;
+        }
+        if (ide_wait_not_busy_ms(io, 3000u) != 0) {
+            if (attempt + 1u == 4u) {
+                return -1;
+            }
+            delay_approx_ms(100u);
+            continue;
+        }
+        if (inb((unsigned short)(io + 4u)) != 0u ||
+            inb((unsigned short)(io + 5u)) != 0u) {
+            return -1;
+        }
+        if (ide_wait_drq(io) != 0) {
+            if (attempt + 1u == 4u) {
+                return -1;
+            }
+            delay_approx_ms(100u);
+            continue;
+        }
+        for (i = 0; i < 256u; ++i) {
+            words[i] = inw(io);
+        }
+        if (ide_identify_words_valid(words) != 0) {
+            return 0;
+        }
+        if (attempt + 1u != 4u) {
+            delay_approx_ms(100u);
+        }
     }
-    outb((unsigned short)(io + 2u), 0u);
-    outb((unsigned short)(io + 3u), 0u);
-    outb((unsigned short)(io + 4u), 0u);
-    outb((unsigned short)(io + 5u), 0u);
-    outb((unsigned short)(io + 7u), 0xecu);
-    st = inb((unsigned short)(io + 7u));
-    if (st == 0u || st == 0xffu) {
-        return -1;
-    }
-    if (ide_wait_not_busy(io) != 0) {
-        return -1;
-    }
-    if (inb((unsigned short)(io + 4u)) != 0u ||
-        inb((unsigned short)(io + 5u)) != 0u) {
-        return -1;
-    }
-    if (ide_wait_drq(io) != 0) {
-        return -1;
-    }
-    for (i = 0; i < 256u; ++i) {
-        words[i] = inw(io);
-    }
-    return 0;
+    return -1;
 }
 
 static int ide_read_lba28(unsigned short io, unsigned short ctrl,
@@ -763,6 +833,17 @@ static void bios_hdd_save_candidate(struct bios_hdd_candidate* cand) {
     cand->cylinders = bios_hdd_cylinders;
 }
 
+static void uhci_prepare_schedule(unsigned short io);
+static void usb_msd_test_unit_ready(struct usb_dev* dev);
+static int uhci_controller_reset(unsigned short io);
+static int uhci_reset_port(unsigned short io, unsigned char port_index,
+                           unsigned char* low_speed);
+static int usb_enumerate_device(struct usb_dev* dev);
+static int usb_msd_read_capacity(struct usb_dev* dev, unsigned int* sectors);
+static int usb_msd_read_lba_count(struct usb_dev* dev, unsigned int lba,
+                                  unsigned int count, unsigned char* sector);
+static unsigned char storage_sector_has_mbr(const unsigned char* sector);
+
 static void bios_hdd_activate_candidate(const struct bios_hdd_candidate* cand) {
     if (cand->present == 0u) {
         bios_hdd_present = 0u;
@@ -781,6 +862,12 @@ static void bios_hdd_activate_candidate(const struct bios_hdd_candidate* cand) {
     bios_hdd_dma_fallback_logged = 0u;
     bios_hdd_dma_ext_fallback_logged = 0u;
     storage_memcpy(&bios_hdd_usb_dev, &cand->usb_dev, sizeof(bios_hdd_usb_dev));
+    if (bios_hdd_kind == BIOS_HDD_KIND_USB) {
+        bios_hdd_usb_dev.bulk_in_toggle = 0u;
+        bios_hdd_usb_dev.bulk_out_toggle = 0u;
+        uhci_prepare_schedule(bios_hdd_usb_dev.io);
+        usb_msd_test_unit_ready(&bios_hdd_usb_dev);
+    }
     bios_hdd_total_sectors = cand->total_sectors;
     bios_hdd_heads = cand->heads;
     bios_hdd_spt = cand->spt;
@@ -845,6 +932,54 @@ static void bios_hdd_register_usb(struct usb_dev* dev, unsigned int sectors,
     bios_hdd_save_candidate(&bios_hdd_usb_candidate);
 }
 
+static int usb_refresh_boot_device(void) {
+    unsigned int bar4;
+    unsigned short io;
+    unsigned char port;
+
+    if (!storage_uhci_found) {
+        return -1;
+    }
+    pci_write16(storage_uhci_bdf.bus, storage_uhci_bdf.dev, storage_uhci_bdf.fn,
+                0x04u,
+                (unsigned short)(pci_read16(storage_uhci_bdf.bus,
+                                            storage_uhci_bdf.dev,
+                                            storage_uhci_bdf.fn, 0x04u) |
+                                 0x0005u));
+    bar4 = pci_read32(storage_uhci_bdf.bus, storage_uhci_bdf.dev,
+                      storage_uhci_bdf.fn, 0x20u);
+    io = (unsigned short)(bar4 & 0xffe0u);
+    if (io == 0u || uhci_controller_reset(io) != 0) {
+        return -1;
+    }
+    for (port = 0; port < 2u; ++port) {
+        struct usb_dev dev;
+        unsigned char low_speed = 0;
+        unsigned char* sector = (unsigned char*)USB_SECTOR_LINEAR;
+        unsigned int sectors = 0;
+
+        if (uhci_reset_port(io, port, &low_speed) != 0) {
+            continue;
+        }
+        storage_memset(&dev, 0u, sizeof(dev));
+        dev.io = io;
+        dev.low_speed = low_speed;
+        if (usb_enumerate_device(&dev) != 0) {
+            continue;
+        }
+        usb_msd_test_unit_ready(&dev);
+        if (usb_msd_read_capacity(&dev, &sectors) != 0) {
+            continue;
+        }
+        if (usb_msd_read_lba_count(&dev, 0u, 1u, sector) == 0) {
+            bios_hdd_register_usb(&dev, sectors,
+                                  storage_sector_has_mbr(sector));
+            return 0;
+        }
+    }
+    return -1;
+}
+
 unsigned char bios_hdd_is_present(void) { return bios_hdd_present; }
 
 unsigned char bios_hdd_current_kind(void) { return bios_hdd_kind; }
@@ -863,6 +998,9 @@ unsigned char bios_hdd_select_kind(unsigned char kind) {
         return 0u;
     }
     bios_hdd_activate_candidate(cand);
+    if (kind == BIOS_HDD_KIND_USB && usb_refresh_boot_device() != 0) {
+        return 0u;
+    }
     serial_write_string("HDD80 select kind=");
     serial_write_hex8(kind);
     serial_write_string("\r\n");
@@ -881,8 +1019,10 @@ void bios_hdd_get_dma_caps(unsigned char* dma_enabled,
 
 void bios_hdd_set_dma_caps(unsigned char dma_enabled,
                            unsigned char lba48_dma_enabled) {
-    bios_hdd_dma_enabled = dma_enabled;
-    bios_hdd_lba48_dma_enabled = lba48_dma_enabled;
+    (void)dma_enabled;
+    (void)lba48_dma_enabled;
+    bios_hdd_dma_enabled = 0u;
+    bios_hdd_lba48_dma_enabled = 0u;
 }
 
 int bios_hdd_force_pio4(void) {
@@ -924,9 +1064,6 @@ void bios_hdd_get_geometry(struct bios_hdd_geometry* geometry) {
     geometry->sectors_per_track = bios_hdd_spt;
 }
 
-static int usb_msd_read_lba_count(struct usb_dev* dev, unsigned int lba,
-                                  unsigned int count, unsigned char* sector);
-
 static unsigned int usb_msd_max_read_sectors(struct usb_dev* dev) {
     unsigned int max_bytes = (unsigned int)dev->bulk_in_mps * USB_MAX_TD;
     unsigned int max_sectors = max_bytes >> 9;
@@ -954,41 +1091,8 @@ int bios_hdd_read_sectors(unsigned int lba, unsigned int count,
         int rc;
         if (bios_hdd_kind == BIOS_HDD_KIND_IDE) {
             unsigned int chunk = count - i;
-            if (bios_hdd_dma_enabled != 0u &&
-                bios_hdd_lba48_dma_enabled != 0u) {
-                if (chunk > 2048u) {
-                    chunk = 2048u;
-                }
-                if (ide_read_dma_lba48(bios_hdd_io, bios_hdd_ctrl,
-                                       bios_hdd_bmio, bios_hdd_drive, lba + i,
-                                       chunk,
-                                       (unsigned char*)(dest + i * 512u)) == 0) {
-                    i += chunk;
-                    continue;
-                }
-                bios_hdd_lba48_dma_enabled = 0u;
-                if (bios_hdd_dma_ext_fallback_logged == 0u) {
-                    bios_hdd_dma_ext_fallback_logged = 1u;
-                    serial_write_string("IDE DMA EXT failed; fallback DMA28\r\n");
-                }
-                continue;
-            }
             if (chunk > 256u) {
                 chunk = 256u;
-            }
-            if (bios_hdd_dma_enabled != 0u &&
-                ide_read_dma_lba28(bios_hdd_io, bios_hdd_ctrl, bios_hdd_bmio,
-                                   bios_hdd_drive, lba + i, chunk,
-                                   (unsigned char*)(dest + i * 512u)) == 0) {
-                i += chunk;
-                continue;
-            }
-            if (bios_hdd_dma_enabled != 0u) {
-                bios_hdd_dma_enabled = 0u;
-                if (bios_hdd_dma_fallback_logged == 0u) {
-                    bios_hdd_dma_fallback_logged = 1u;
-                    serial_write_string("IDE DMA failed; fallback PIO\r\n");
-                }
             }
             rc = ide_read_lba28(bios_hdd_io, bios_hdd_ctrl, bios_hdd_drive,
                                 lba + i, chunk,
@@ -1113,22 +1217,18 @@ static void ide_scan_channel(const char* name, unsigned short io,
         serial_write_hex32(sectors);
         serial_write_string("\r\n");
         if (sectors != 0u) {
-            unsigned char dma_enabled = 0u;
             unsigned char mwdma = ide_best_mwdma_mode(id);
-            unsigned char lba48 = ide_supports_lba48(id);
             if (bmio != 0u && mwdma != 0xffu &&
                 ide_set_transfer_mode(
                     io, ctrl, drive,
                     (unsigned char)(IDE_XFER_MWDMA0 | mwdma)) == 0) {
-                dma_enabled = 1u;
                 serial_write_string("  MWDMA");
                 serial_write_hex8(mwdma);
                 serial_write_string(" enabled bm=");
                 serial_write_hex16(bmio);
                 serial_write_string("\r\n");
             }
-            bios_hdd_register(io, ctrl, bmio, drive, sectors, dma_enabled,
-                              (unsigned char)(dma_enabled != 0u && lba48 != 0u));
+            bios_hdd_register(io, ctrl, bmio, drive, sectors, 0u, 0u);
         }
         if (ide_read_lba28(io, ctrl, drive, 0u, 1u, sector) == 0) {
             serial_dump_bytes("IDE LBA0", sector, 16u);
