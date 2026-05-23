@@ -11,6 +11,7 @@
 #include "app/legacy/legacy_timer.h"
 #include "app/legacy/legacy_thunk.h"
 #include "app_runtime.h"
+#include "shared_service/service_table.h"
 
 void legacy_runtime_init(const struct app_boot_context* ctx) {
     struct legacy_service_context context;
@@ -19,9 +20,8 @@ void legacy_runtime_init(const struct app_boot_context* ctx) {
     static const unsigned short ebda_segment = 0x0000u;
 
     legacy_boot_init(&ctx->platform);
-    storage_set_scratch_base(bios_memory_top_reserved_base(
-        ctx->platform.total_bytes));
-    storage_scan(ctx->platform.total_bytes);
+    storage_snapshot_import((const struct shared_storage_snapshot*)
+                                ctx->platform.storage_snapshot_linear);
     legacy_floppy_probe();
     floppy_dpt_linear = legacy_install_bios_thunks(
         legacy_floppy_present(), bios_hdd_is_present(), base_mem_kb,

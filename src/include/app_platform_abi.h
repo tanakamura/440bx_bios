@@ -14,6 +14,8 @@ struct app_nvram_snapshot {
 
 struct app_platform_info {
     unsigned int total_bytes;
+    unsigned int pci_snapshot_linear;
+    unsigned int storage_snapshot_linear;
     unsigned int acpi_rsdp_linear;
     unsigned int acpi_pm1_evt;
     unsigned int acpi_pm1_cnt;

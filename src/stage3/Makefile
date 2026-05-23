@@ -2,7 +2,8 @@
 
 STAGE3_CORE_OBJS := stage3/entry.o stage3/stage3.o \
 	stage3/bios_maintenance.o stage3/bios_memtest.o stage3/bios_settings.o \
-	stage3/bios_stage_context.o stage3/app_context_builder.o
+	stage3/bios_stage_context.o stage3/app_context_builder.o \
+	stage3/pci_snapshot.o
 STAGE3_LIB_OBJS := $(X86_OBJS) $(SERIAL_OBJS) $(PCI_OBJS) $(STORAGE_OBJS) \
 	lib/acpi/bios_acpi_runtime.o $(APP_COMMON_OBJS)
 STAGE3_OBJS := $(STAGE3_CORE_OBJS) $(STAGE3_LIB_OBJS)

@@ -20,7 +20,7 @@ LINUX_LOADER_APP_OBJS := app/linux_loader/entry.o $(LINUX_LOADER_OBJS) \
 LINUX_LOADER_C_OBJS := $(LINUX_LOADER_APP_OBJS)
 
 $(LINUX_LOADER_APP_ELF): $(LINUX_LOADER_APP_OBJS) app/linux_loader/linux_loader.ld include/blob.ld
-	$(LD) -m elf_i386 -T app/linux_loader/linux_loader.ld -Map app/linux_loader/linux_loader_app.map -o $@ $(LINUX_LOADER_APP_OBJS)
+	$(LD) -m elf_i386 --gc-sections -T app/linux_loader/linux_loader.ld -Map app/linux_loader/linux_loader_app.map -o $@ $(LINUX_LOADER_APP_OBJS)
 
 app/linux_loader/linux_loader_app.bin: $(LINUX_LOADER_APP_ELF)
 	$(OBJCOPY) -O binary $< $@

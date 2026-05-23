@@ -9,6 +9,10 @@
 #define SHARED_PAYLOAD_VERSION 2u
 #define SHARED_BOOT_CONTEXT_MAGIC 0x42544358u
 #define SHARED_BOOT_CONTEXT_VERSION 1u
+#define SHARED_PCI_SNAPSHOT_MAGIC 0x49435053u
+#define SHARED_PCI_SNAPSHOT_VERSION 1u
+#define SHARED_STORAGE_SNAPSHOT_MAGIC 0x53545253u
+#define SHARED_STORAGE_SNAPSHOT_VERSION 1u
 
 #define SHARED_PAYLOAD_MAX 16u
 #define SHARED_TABLE_BYTES 0x4000u
@@ -47,6 +51,8 @@
 #define SHARED_BOOT_FLAG_PLATFORM_P2B98_XV 0x00000200u
 
 #define SHARED_BOOT_ACPI_FLAG_ENABLE_SCI 0x00000001u
+
+#define SHARED_PCI_SNAPSHOT_MAX_DEVICES 64u
 
 struct shared_payload_entry {
     unsigned int id;
@@ -97,6 +103,99 @@ struct shared_nvram_snapshot {
     unsigned char enable_memtest;
     unsigned char run_test_blob;
     char linux_cmdline_suffix[BIOS_NVRAM_CMDLINE_MAX];
+};
+
+struct shared_pci_device {
+    unsigned int vendor_device;
+    unsigned int class_code;
+    unsigned int bars[6];
+    unsigned short command;
+    unsigned short status;
+    unsigned short parent_index;
+    unsigned short reserved0;
+    unsigned char bus;
+    unsigned char dev;
+    unsigned char fn;
+    unsigned char header_type;
+    unsigned char interrupt_line;
+    unsigned char interrupt_pin;
+    unsigned char secondary_bus;
+    unsigned char subordinate_bus;
+};
+
+struct shared_pci_snapshot {
+    unsigned int magic;
+    unsigned int version;
+    unsigned int size;
+    unsigned int count;
+    struct shared_pci_device devices[SHARED_PCI_SNAPSHOT_MAX_DEVICES];
+};
+
+struct shared_storage_pci_bdf {
+    unsigned char bus;
+    unsigned char dev;
+    unsigned char fn;
+    unsigned char present;
+};
+
+struct shared_storage_usb_dev {
+    unsigned short io;
+    unsigned char addr;
+    unsigned char low_speed;
+    unsigned char ep0_mps;
+    unsigned char bulk_in;
+    unsigned char bulk_out;
+    unsigned short bulk_in_mps;
+    unsigned short bulk_out_mps;
+    unsigned char bulk_in_toggle;
+    unsigned char bulk_out_toggle;
+    unsigned char interface_number;
+};
+
+struct shared_storage_hdd_candidate {
+    unsigned char present;
+    unsigned char kind;
+    unsigned char has_mbr;
+    unsigned short io;
+    unsigned short ctrl;
+    unsigned short bmio;
+    unsigned char drive;
+    unsigned char dma_enabled;
+    unsigned char lba48_dma_enabled;
+    struct shared_storage_usb_dev usb_dev;
+    unsigned int total_sectors;
+    unsigned short heads;
+    unsigned short spt;
+    unsigned short cylinders;
+};
+
+struct shared_storage_snapshot {
+    unsigned int magic;
+    unsigned int version;
+    unsigned int size;
+    struct shared_storage_pci_bdf ide_bdf;
+    struct shared_storage_pci_bdf uhci_bdf;
+    unsigned short ide_bmiba;
+    unsigned char ide_udmactl;
+    unsigned char reserved0;
+    unsigned short ide_udmatim;
+    unsigned char bios_hdd_present;
+    unsigned char bios_hdd_kind;
+    unsigned char bios_hdd_has_mbr;
+    unsigned char bios_hdd_drive;
+    unsigned short bios_hdd_io;
+    unsigned short bios_hdd_ctrl;
+    unsigned short bios_hdd_bmio;
+    unsigned char bios_hdd_dma_enabled;
+    unsigned char bios_hdd_lba48_dma_enabled;
+    unsigned short bios_hdd_heads;
+    unsigned short bios_hdd_spt;
+    unsigned short bios_hdd_cylinders;
+    unsigned short reserved1;
+    unsigned int bios_hdd_total_sectors;
+    struct shared_storage_usb_dev bios_hdd_usb_dev;
+    struct shared_storage_hdd_candidate ide_candidate;
+    struct shared_storage_hdd_candidate usb_candidate;
 };
 
 typedef char shared_rom_payload_directory_size_check[
@@ -152,6 +251,8 @@ struct shared_service_table {
     unsigned int heap_limit;
     unsigned int boot_context_ptr;
     unsigned int payload_manifest_ptr;
+    unsigned int pci_snapshot_ptr;
+    unsigned int storage_snapshot_ptr;
     unsigned int blob_load;
     unsigned int heap_alloc;
     unsigned int heap_free;
@@ -348,6 +449,39 @@ static inline struct shared_boot_context* shared_boot_context(
         return 0;
     }
     return ctx;
+}
+
+static inline struct shared_pci_snapshot* shared_pci_snapshot(
+    const struct shared_service_table* table) {
+    struct shared_pci_snapshot* snapshot;
+
+    if (table == 0 || table->pci_snapshot_ptr == 0u) {
+        return 0;
+    }
+    snapshot = (struct shared_pci_snapshot*)table->pci_snapshot_ptr;
+    if (snapshot->magic != SHARED_PCI_SNAPSHOT_MAGIC ||
+        snapshot->version != SHARED_PCI_SNAPSHOT_VERSION ||
+        snapshot->size < sizeof(*snapshot) ||
+        snapshot->count > SHARED_PCI_SNAPSHOT_MAX_DEVICES) {
+        return 0;
+    }
+    return snapshot;
+}
+
+static inline struct shared_storage_snapshot* shared_storage_snapshot(
+    const struct shared_service_table* table) {
+    struct shared_storage_snapshot* snapshot;
+
+    if (table == 0 || table->storage_snapshot_ptr == 0u) {
+        return 0;
+    }
+    snapshot = (struct shared_storage_snapshot*)table->storage_snapshot_ptr;
+    if (snapshot->magic != SHARED_STORAGE_SNAPSHOT_MAGIC ||
+        snapshot->version != SHARED_STORAGE_SNAPSHOT_VERSION ||
+        snapshot->size < sizeof(*snapshot)) {
+        return 0;
+    }
+    return snapshot;
 }
 
 #endif

@@ -8,6 +8,7 @@
 #include "bios_serial.h"
 #include "bios_storage.h"
 #include "shared_service/service_table.h"
+#include "shared_service/service_table.h"
 
 #define LINUX_SECTOR_BUF 0x00080000u
 #define LINUX_PHDR_BUF 0x00088000u
@@ -1285,12 +1286,12 @@ static int try_boot_linux_current(const struct app_boot_context* config) {
 
 int linux_loader_try_boot(const struct app_boot_context* config) {
     linux_loader_set_active_config(config);
+    storage_snapshot_import((const struct shared_storage_snapshot*)
+                                config->platform.storage_snapshot_linear);
     linux_vgabios_runtime_init(config);
     app_shadow_install(CFG_TOTAL_BYTES(config));
     app_shadow_install_vgabios(CFG_TOTAL_BYTES(config));
-        app_shadow_init_vgabios(legacy_vgabios_init);
-    storage_set_scratch_base(bios_memory_top_reserved_base(CFG_TOTAL_BYTES(config)));
-    storage_scan(CFG_TOTAL_BYTES(config));
+    app_shadow_init_vgabios(legacy_vgabios_init);
     if (CFG_BOOT_PRIORITY(config) == LINUX_LOADER_BOOT_PRIORITY_IDE) {
         if (linux_hdd_select_kind(LINUX_LOADER_HDD_KIND_IDE) == 0u) {
             return 0;

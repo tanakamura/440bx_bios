@@ -43,6 +43,10 @@ struct app_boot_context* stage3_app_context_alloc_and_fill(
     app_boot_context_init(ctx, app_id);
     app_platform_init(&ctx->platform);
     app_platform_set_memory(&ctx->platform, stage->total_bytes);
+    app_platform_set_pci_snapshot(&ctx->platform,
+                                  stage->shared_service->pci_snapshot_ptr);
+    app_platform_set_storage_snapshot(
+        &ctx->platform, stage->shared_service->storage_snapshot_ptr);
     app_platform_set_acpi(&ctx->platform, stage->rsdp_linear,
                           stage->acpi_pm1_evt, stage->acpi_pm1_cnt,
                           stage->acpi_gpe0, stage->acpi_gpe0_len,
