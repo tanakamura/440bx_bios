@@ -66,6 +66,11 @@ def parse_args():
     parser.add_argument("--port", default=DEFAULT_PORT, type=int, help="HTTP updater port")
     parser.add_argument("--path", default=DEFAULT_PATH, help="HTTP updater path")
     parser.add_argument(
+        "--hold-reset",
+        action="store_true",
+        help="keep reset asserted after upload by sending PUT /rom?reset=hold",
+    )
+    parser.add_argument(
         "--expected-size",
         default=DEFAULT_SIZE,
         type=lambda x: int(x, 0),
@@ -93,7 +98,11 @@ def main() -> int:
             f"unexpected image size: {len(payload)} != {args.expected_size}"
         )
 
-    put_body = put_rom(args.host, args.port, args.path, payload)
+    put_path = args.path
+    if args.hold_reset:
+        sep = "&" if "?" in put_path else "?"
+        put_path = f"{put_path}{sep}reset=hold"
+    put_body = put_rom(args.host, args.port, put_path, payload)
     written = parse_put_response(put_body)
     if written != args.expected_size:
         raise RuntimeError(f"unexpected written size: {written} != {args.expected_size}")
@@ -118,7 +127,7 @@ def main() -> int:
     print(f"image={image_path}")
     print(f"bytes={written}")
     print(f"host={args.host}:{args.port}")
-    print(f"path={args.path}")
+    print(f"path={put_path}")
     print(f"sha256={sha256_hex(payload)}")
     if args.readback is not None:
         print(f"readback={args.readback}")

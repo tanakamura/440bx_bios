@@ -14,6 +14,7 @@ import sys
 import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
 
 DEFAULT_UIO = "/dev/uio0"
 DEFAULT_SIZE = 256 * 1024
@@ -104,12 +105,21 @@ class GpioWriter:
             f.write(f"{value}\n")
             f.flush()
 
-    def pulse_for_write(self):
+    def read(self) -> int:
+        return int(read_sysfs_text(self.value_path), 10)
+
+    def assert_reset(self):
         self.write(1)
+
+    def release_reset(self):
+        self.write(0)
+
+    def pulse_for_write(self):
+        self.assert_reset()
 
     def release_after_write(self):
         time.sleep(0.1)
-        self.write(0)
+        self.release_reset()
 
 
 class PutHandler(BaseHTTPRequestHandler):
@@ -124,7 +134,8 @@ class PutHandler(BaseHTTPRequestHandler):
         self.wfile.write(encoded)
 
     def do_GET(self):
-        if self.path == "/" or self.path == "/healthz":
+        parsed = urlparse(self.path)
+        if parsed.path == "/" or parsed.path == "/healthz":
             addr_text = (
                 "unknown"
                 if self.server.writer.addr is None
@@ -146,7 +157,7 @@ class PutHandler(BaseHTTPRequestHandler):
                 ),
             )
             return
-        if self.path == "/rom":
+        if parsed.path == "/rom":
             try:
                 body = self.server.writer.read()
             except (ValueError, OSError) as exc:
@@ -158,10 +169,42 @@ class PutHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if parsed.path == "/reset":
+            try:
+                value = self.server.gpio.read()
+            except OSError as exc:
+                self._write_text(HTTPStatus.INTERNAL_SERVER_ERROR, f"{exc}\n")
+                return
+            self._write_text(
+                HTTPStatus.OK,
+                f"value={value}\nstate={'asserted' if value else 'released'}\n",
+            )
+            return
         self._write_text(HTTPStatus.NOT_FOUND, "not found\n")
 
     def do_PUT(self):
-        if self.path != "/rom":
+        parsed = urlparse(self.path)
+        params = parse_qs(parsed.query)
+        if parsed.path == "/reset":
+            action = params.get("action", [""])[0]
+            try:
+                if action == "assert":
+                    self.server.gpio.assert_reset()
+                elif action == "release":
+                    self.server.gpio.release_reset()
+                else:
+                    self._write_text(
+                        HTTPStatus.BAD_REQUEST,
+                        "expected /reset?action=assert|release\n",
+                    )
+                    return
+            except OSError as exc:
+                self._write_text(HTTPStatus.INTERNAL_SERVER_ERROR, f"{exc}\n")
+                return
+            self._write_text(HTTPStatus.OK, f"reset={action}\n")
+            return
+
+        if parsed.path != "/rom":
             self._write_text(HTTPStatus.NOT_FOUND, "not found\n")
             return
 
@@ -191,6 +234,7 @@ class PutHandler(BaseHTTPRequestHandler):
             self._write_text(HTTPStatus.BAD_REQUEST, "short request body\n")
             return
 
+        hold_reset = params.get("reset", ["pulse"])[0] == "hold"
         try:
             self.server.gpio.pulse_for_write()
             written = self.server.writer.write(body)
@@ -199,7 +243,10 @@ class PutHandler(BaseHTTPRequestHandler):
             return
         finally:
             try:
-                self.server.gpio.release_after_write()
+                if hold_reset:
+                    pass
+                else:
+                    self.server.gpio.release_after_write()
             except OSError as exc:
                 sys.stderr.write(f"failed to drive gpio low: {exc}\n")
 
@@ -208,6 +255,7 @@ class PutHandler(BaseHTTPRequestHandler):
             (
                 "written\n"
                 f"bytes={written}\n"
+                f"reset={'hold' if hold_reset else 'pulse'}\n"
                 f"uio={self.server.writer.uio_path}\n"
                 f"gpio_value_path={self.server.gpio.value_path}\n"
             ),
