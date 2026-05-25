@@ -4,6 +4,7 @@ OBJCOPY := objcopy
 LIBGCC := $(shell $(CC) -m32 -print-libgcc-file-name)
 VBIOS_INIT_MODE ?= vm86
 IDE_ENABLE_DMA ?= 0
+IDE_ENABLE_UDMA ?= 0
 CPPFLAGS := -I. -Iinclude -Istage3 -Ilib/acpi -Ilib/app -Ilib/vm86 -Ilib/x86 -Ilib/pci -Ilib/serial -Ilib/storage
 DEPFLAGS := -MMD -MP
 CFLAGS := -O2 -m32 -march=pentium2 -ffreestanding -fno-pic -fno-pie -fno-stack-protector -ffunction-sections -fdata-sections -fstack-usage -Wstack-usage=256 -nostdlib -nostartfiles -nodefaultlibs -Wall -Wextra $(DEPFLAGS)
@@ -22,6 +23,7 @@ else
 CPPFLAGS += -DLEGACY_VGABIOS_USE_VM86=1
 endif
 CPPFLAGS += -DBIOS_IDE_ENABLE_DMA=$(IDE_ENABLE_DMA)
+CPPFLAGS += -DBIOS_IDE_ENABLE_UDMA=$(IDE_ENABLE_UDMA)
 
 %.o: %.c
 	$(COMPILE_C)
@@ -38,7 +40,7 @@ SELFTEST_ELF := app/selftest/s3test/selftest_app.elf
 GENROM_STAGE_ELFS := $(P2B_STAGE1_ELF) $(P2B_STAGE15_ELF) $(P2B_STAGE2_ELF) \
 	$(QEMU_STAGE1_ELF) $(QEMU_STAGE2_ELF) $(STAGE3_DIR_ELF)
 BUILD_ARTIFACT_DIRS := app/legacy app/linux_loader app/selftest/s3test \
-	app/selftest/benchmark \
+	app/selftest/benchmark app/selftest/monitor \
 	lib/acpi lib/app lib/pci lib/rm_thunk lib/serial lib/storage lib/vm86 lib/x86 \
 	shared_service stage3 \
 	platform/p2b98_xv/stage1 platform/p2b98_xv/stage15 \
@@ -60,6 +62,7 @@ include app/legacy/Makefile
 include app/linux_loader/Makefile
 include app/selftest/s3test/Makefile
 include app/selftest/benchmark/Makefile
+include app/selftest/monitor/Makefile
 include tests/Makefile
 include lib/acpi/Makefile
 include lib/app/Makefile
@@ -106,4 +109,4 @@ genrom: $(GENROM_BINS)
 -include $(DEPS)
 
 clean:
-	rm -f start start_legacy start_legacy_test start_selftest start_benchmark start.elf start_legacy.elf linuxprobe.elf *.map *.o *.d *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc include/blob.inc include/blob.ld shared_service/service_table.inc shared_service/service_table.ld $(SHARED_SERVICE_RELOC_CHECK) $(GENROM_STAGE_ELFS) $(LEGACY_APP_ELF) $(LINUX_LOADER_APP_ELF) $(SELFTEST_ELF) $(P2B98_XV_BLOB_DEPFILES) $(QEMU_BLOB_DEPFILES) $(addsuffix /*.o,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.d,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.su,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.map,$(BUILD_ARTIFACT_DIRS)) app/legacy/*.bin app/linux_loader/*.bin app/selftest/s3test/*.bin app/selftest/s3test/*.elf app/selftest/benchmark/*.bin app/selftest/benchmark/*.elf platform/p2b98_xv/stage15/stage15.bin platform/p2b98_xv/stage1/stage15_crc.inc
+	rm -f start start_legacy start_legacy_test start_selftest start_benchmark start_monitor start.elf start_legacy.elf linuxprobe.elf *.map *.o *.d *.su *.bin *.exe *.com *.obj *.img *.aml *.asl romtest post_code.h post_code.inc include/blob.inc include/blob.ld shared_service/service_table.inc shared_service/service_table.ld $(SHARED_SERVICE_RELOC_CHECK) $(GENROM_STAGE_ELFS) $(LEGACY_APP_ELF) $(LINUX_LOADER_APP_ELF) $(SELFTEST_ELF) $(P2B98_XV_BLOB_DEPFILES) $(QEMU_BLOB_DEPFILES) $(addsuffix /*.o,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.d,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.su,$(BUILD_ARTIFACT_DIRS)) $(addsuffix /*.map,$(BUILD_ARTIFACT_DIRS)) app/legacy/*.bin app/linux_loader/*.bin app/selftest/s3test/*.bin app/selftest/s3test/*.elf app/selftest/benchmark/*.bin app/selftest/benchmark/*.elf app/selftest/monitor/*.bin app/selftest/monitor/*.elf platform/p2b98_xv/stage15/stage15.bin platform/p2b98_xv/stage1/stage15_crc.inc

@@ -419,8 +419,13 @@ static unsigned short storage_alloc_pci_io(unsigned int total_bytes,
 #ifndef BIOS_IDE_ENABLE_DMA
 #define BIOS_IDE_ENABLE_DMA 0
 #endif
+
+#ifndef BIOS_IDE_ENABLE_UDMA
+#define BIOS_IDE_ENABLE_UDMA 0
+#endif
 #define IDE_BM_CMD_START 0x01u
-#define IDE_BM_CMD_READ 0x08u
+#define IDE_BM_CMD_TO_MEM 0x08u
+#define IDE_BM_CMD_FROM_MEM 0x00u
 #define IDE_BM_STATUS_ACTIVE 0x01u
 #define IDE_BM_STATUS_ERROR 0x02u
 #define IDE_BM_STATUS_INTR 0x04u
@@ -475,6 +480,21 @@ static int ide_wait_not_busy_or_err(unsigned short io) {
     return -1;
 }
 
+static int ide_wait_cmd_ready(unsigned short io) {
+    unsigned int timeout = 2000000u;
+    unsigned char st;
+    do {
+        st = inb((unsigned short)(io + 7u));
+        if ((st & IDE_STATUS_ERR) != 0u) {
+            return -1;
+        }
+        if ((st & (IDE_STATUS_BSY | IDE_STATUS_DRQ)) == 0u) {
+            return 0;
+        }
+    } while (--timeout != 0u);
+    return -1;
+}
+
 static int ide_wait_drq(unsigned short io) {
     unsigned int timeout = 2000000u;
     unsigned char st;
@@ -492,10 +512,10 @@ static int ide_wait_drq(unsigned short io) {
 
 static int ide_set_transfer_mode(unsigned short io, unsigned short ctrl,
                                  unsigned char drive, unsigned char mode) {
-    outb(ctrl, 0x02u);
+    outb(ctrl, 0x00u);
     outb((unsigned short)(io + 6u), (unsigned char)(0xe0u | (drive << 4)));
     ide_400ns_delay(ctrl);
-    if (ide_wait_not_busy(io) != 0) {
+    if (ide_wait_cmd_ready(io) != 0) {
         return -1;
     }
     outb((unsigned short)(io + 1u), IDE_FEATURE_SET_TRANSFER_MODE);
@@ -648,11 +668,11 @@ static int ide_read_lba28(unsigned short io, unsigned short ctrl,
         return -1;
     }
 
-    outb(ctrl, 0x02u);
+    outb(ctrl, 0x00u);
     outb((unsigned short)(io + 6u),
          (unsigned char)(0xe0u | (drive << 4) | ((lba >> 24) & 0x0fu)));
     ide_400ns_delay(ctrl);
-    if (ide_wait_not_busy(io) != 0) {
+    if (ide_wait_cmd_ready(io) != 0) {
         return -1;
     }
     outb((unsigned short)(io + 2u), (unsigned char)count);
@@ -684,9 +704,14 @@ struct ide_prd {
 static int ide_build_prd(unsigned int dest, unsigned int bytes) {
     struct ide_prd* prd = (struct ide_prd*)IDE_PRD_LINEAR;
     unsigned int index = 0u;
+    unsigned int i;
 
     if (bytes == 0u) {
         return -1;
+    }
+    for (i = 0u; i < IDE_MAX_PRD; ++i) {
+        prd[i].base = 0u;
+        prd[i].count_eot = 0u;
     }
     while (bytes != 0u) {
         unsigned int boundary = 0x10000u - (dest & 0xffffu);
@@ -720,18 +745,21 @@ static int ide_read_dma_lba28(unsigned short io, unsigned short ctrl,
                               unsigned char* dst) {
     unsigned int timeout = 4000000u;
     unsigned char bmst;
+    unsigned char last_bmst = 0u;
     unsigned char st;
+    unsigned char err;
 
     if (bmio == 0u || count == 0u || count > 256u ||
         ide_build_prd((unsigned int)dst, count * 512u) != 0) {
         return -1;
     }
 
-    outb(bmio, 0x00u);
+    outb(bmio, IDE_BM_CMD_TO_MEM);
     outb((unsigned short)(bmio + 2u), IDE_BM_STATUS_CLEAR);
     outl((unsigned short)(bmio + 4u), IDE_PRD_LINEAR);
+    cache_writeback_invalidate();
 
-    outb(ctrl, 0x02u);
+    outb(ctrl, 0x00u);
     outb((unsigned short)(io + 6u),
          (unsigned char)(0xe0u | (drive << 4) | ((lba >> 24) & 0x0fu)));
     ide_400ns_delay(ctrl);
@@ -743,11 +771,15 @@ static int ide_read_dma_lba28(unsigned short io, unsigned short ctrl,
     outb((unsigned short)(io + 4u), (unsigned char)(lba >> 8));
     outb((unsigned short)(io + 5u), (unsigned char)(lba >> 16));
     outb((unsigned short)(io + 7u), IDE_CMD_READ_DMA);
-    outb(bmio, IDE_BM_CMD_READ | IDE_BM_CMD_START);
+    outb(bmio, IDE_BM_CMD_TO_MEM | IDE_BM_CMD_START);
 
     do {
         bmst = inb((unsigned short)(bmio + 2u));
+        last_bmst = bmst;
         if ((bmst & IDE_BM_STATUS_ERROR) != 0u) {
+            break;
+        }
+        if ((bmst & IDE_BM_STATUS_INTR) != 0u) {
             break;
         }
         if ((bmst & IDE_BM_STATUS_ACTIVE) == 0u) {
@@ -755,13 +787,20 @@ static int ide_read_dma_lba28(unsigned short io, unsigned short ctrl,
         }
     } while (--timeout != 0u);
 
-    outb(bmio, IDE_BM_CMD_READ);
+    if ((last_bmst & IDE_BM_STATUS_INTR) != 0u &&
+        (last_bmst & IDE_BM_STATUS_ERROR) == 0u) {
+        (void)inb((unsigned short)(io + 7u));
+        (void)ide_wait_cmd_ready(io);
+    }
+    outb(bmio, IDE_BM_CMD_TO_MEM);
+    cache_writeback_invalidate();
     st = inb((unsigned short)(io + 7u));
     bmst = inb((unsigned short)(bmio + 2u));
+    err = inb((unsigned short)(io + 1u));
     outb((unsigned short)(bmio + 2u), IDE_BM_STATUS_CLEAR);
 
     if (timeout == 0u || (bmst & IDE_BM_STATUS_ERROR) != 0u ||
-        (st & (IDE_STATUS_BSY | IDE_STATUS_ERR)) != 0u) {
+        (st & (IDE_STATUS_BSY | IDE_STATUS_ERR | IDE_STATUS_DRQ)) != 0u) {
         return -1;
     }
     return 0;
@@ -773,21 +812,24 @@ static int ide_read_dma_lba48(unsigned short io, unsigned short ctrl,
                               unsigned char* dst) {
     unsigned int timeout = 4000000u;
     unsigned char bmst;
+    unsigned char last_bmst = 0u;
     unsigned char st;
+    unsigned char err;
 
     if (bmio == 0u || count == 0u || count > 2048u ||
         ide_build_prd((unsigned int)dst, count * 512u) != 0) {
         return -1;
     }
 
-    outb(bmio, 0x00u);
+    outb(bmio, IDE_BM_CMD_TO_MEM);
     outb((unsigned short)(bmio + 2u), IDE_BM_STATUS_CLEAR);
     outl((unsigned short)(bmio + 4u), IDE_PRD_LINEAR);
+    cache_writeback_invalidate();
 
-    outb(ctrl, 0x02u);
+    outb(ctrl, 0x00u);
     outb((unsigned short)(io + 6u), (unsigned char)(0x40u | (drive << 4)));
     ide_400ns_delay(ctrl);
-    if (ide_wait_not_busy(io) != 0) {
+    if (ide_wait_cmd_ready(io) != 0) {
         return -1;
     }
 
@@ -800,11 +842,15 @@ static int ide_read_dma_lba48(unsigned short io, unsigned short ctrl,
     outb((unsigned short)(io + 4u), (unsigned char)(lba >> 8));
     outb((unsigned short)(io + 5u), (unsigned char)(lba >> 16));
     outb((unsigned short)(io + 7u), IDE_CMD_READ_DMA_EXT);
-    outb(bmio, IDE_BM_CMD_READ | IDE_BM_CMD_START);
+    outb(bmio, IDE_BM_CMD_TO_MEM | IDE_BM_CMD_START);
 
     do {
         bmst = inb((unsigned short)(bmio + 2u));
+        last_bmst = bmst;
         if ((bmst & IDE_BM_STATUS_ERROR) != 0u) {
+            break;
+        }
+        if ((bmst & IDE_BM_STATUS_INTR) != 0u) {
             break;
         }
         if ((bmst & IDE_BM_STATUS_ACTIVE) == 0u) {
@@ -812,13 +858,20 @@ static int ide_read_dma_lba48(unsigned short io, unsigned short ctrl,
         }
     } while (--timeout != 0u);
 
-    outb(bmio, IDE_BM_CMD_READ);
+    if ((last_bmst & IDE_BM_STATUS_INTR) != 0u &&
+        (last_bmst & IDE_BM_STATUS_ERROR) == 0u) {
+        (void)inb((unsigned short)(io + 7u));
+        (void)ide_wait_cmd_ready(io);
+    }
+    outb(bmio, IDE_BM_CMD_TO_MEM);
+    cache_writeback_invalidate();
     st = inb((unsigned short)(io + 7u));
     bmst = inb((unsigned short)(bmio + 2u));
+    err = inb((unsigned short)(io + 1u));
     outb((unsigned short)(bmio + 2u), IDE_BM_STATUS_CLEAR);
 
     if (timeout == 0u || (bmst & IDE_BM_STATUS_ERROR) != 0u ||
-        (st & (IDE_STATUS_BSY | IDE_STATUS_ERR)) != 0u) {
+        (st & (IDE_STATUS_BSY | IDE_STATUS_ERR | IDE_STATUS_DRQ)) != 0u) {
         return -1;
     }
     return 0;
@@ -1053,6 +1106,38 @@ void bios_hdd_set_dma_caps(unsigned char dma_enabled,
 #endif
 }
 
+int bios_hdd_force_mwdma2(void) {
+    unsigned short reg;
+    unsigned short timing;
+
+    if (!bios_hdd_present || bios_hdd_kind != BIOS_HDD_KIND_IDE) {
+        return -1;
+    }
+    if (ide_set_transfer_mode(bios_hdd_io, bios_hdd_ctrl, bios_hdd_drive,
+                              (unsigned char)(IDE_XFER_MWDMA0 | 2u)) != 0) {
+        return -1;
+    }
+    if (storage_ide_found != 0u) {
+        reg = bios_hdd_io == 0x0170u ? 0x42u : 0x40u;
+        timing = pci_read16(storage_ide_bdf.bus, storage_ide_bdf.dev,
+                            storage_ide_bdf.fn, reg);
+        if (reg == 0x40u) {
+            timing = 0xa30fu;
+        } else {
+            timing = (unsigned short)(timing | 0x8000u);
+        }
+        pci_write16(storage_ide_bdf.bus, storage_ide_bdf.dev,
+                    storage_ide_bdf.fn, reg, timing);
+        serial_write_string("IDETIM");
+        serial_write_hex8((unsigned char)reg);
+        serial_write_char('=');
+        serial_write_hex16(timing);
+        serial_write_string("\r\n");
+    }
+    serial_write_string("MWDMA02 forced\r\n");
+    return 0;
+}
+
 int bios_hdd_force_pio4(void) {
     unsigned short reg;
     unsigned short timing;
@@ -1069,7 +1154,7 @@ int bios_hdd_force_pio4(void) {
         timing = pci_read16(storage_ide_bdf.bus, storage_ide_bdf.dev,
                             storage_ide_bdf.fn, reg);
         if (reg == 0x40u) {
-            timing = 0xe307u;
+            timing = 0xa307u;
         } else {
             timing = (unsigned short)(timing | 0x8000u);
         }
@@ -1123,6 +1208,9 @@ int bios_hdd_read_sectors(unsigned int lba, unsigned int count,
                 chunk = 256u;
             }
 #if BIOS_IDE_ENABLE_DMA
+            if (bios_hdd_dma_enabled != 0u && chunk == 256u) {
+                chunk = 255u;
+            }
             if (bios_hdd_lba48_dma_enabled != 0u && chunk <= 2048u) {
                 rc = ide_read_dma_lba48(bios_hdd_io, bios_hdd_ctrl,
                                         bios_hdd_bmio, bios_hdd_drive, lba + i,
@@ -1278,6 +1366,8 @@ static void ide_scan_channel(const char* name, unsigned short io,
                 serial_write_string("\r\n");
             }
 #if BIOS_IDE_ENABLE_DMA
+            dma_enabled = (bmio != 0u && mwdma != 0xffu) ? 1u : 0u;
+#if BIOS_IDE_ENABLE_UDMA
             if (bmio != 0u && udma != 0xffu &&
                 ide_set_transfer_mode(
                     io, ctrl, drive,
@@ -1307,6 +1397,10 @@ static void ide_scan_channel(const char* name, unsigned short io,
                 dma_enabled = 1u;
                 lba48_dma_enabled = lba48;
             }
+#else
+            (void)udma;
+            (void)lba48;
+#endif
             bios_hdd_register(io, ctrl, bmio, drive, sectors, dma_enabled,
                               lba48_dma_enabled);
 #else
